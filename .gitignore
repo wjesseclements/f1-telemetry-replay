@@ -1,0 +1,34 @@
+# --- Node / Vite (app/) ---
+node_modules/
+dist/
+dist-ssr/
+*.local
+.vite/
+coverage/
+
+# --- Generated replay data (pipeline writes these; not committed) ---
+# The tiny committed fixture lives at app/src/engine/__fixtures__/ and is NOT ignored.
+app/public/data/
+
+# --- Python pipeline ---
+pipeline/.venv/
+__pycache__/
+*.py[cod]
+
+# --- FastF1 cache (can be hundreds of MB per session) ---
+.f1cache/
+**/.f1cache/
+
+# --- Secrets / env ---
+.env
+.env.*
+!.env.example
+
+# --- Editor / OS ---
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# --- Claude Code local-only settings (personal, never shared) ---
+.claude/settings.local.json
