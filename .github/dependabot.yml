@@ -1,0 +1,26 @@
+version: 2
+updates:
+  # Frontend app
+  - package-ecosystem: npm
+    directory: /app
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # One grouped PR for routine bumps keeps review noise low.
+      app-dependencies:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  # Python pipeline
+  - package-ecosystem: pip
+    directory: /pipeline
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+
+  # GitHub Actions versions
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
