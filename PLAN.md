@@ -9,7 +9,7 @@ built **into** the slice that introduces them — never deferred to a late audit
 
 ## Phase v1 — one car, one lap
 
-### [ ] Slice 1 — Scaffold app/ + green CI quality gate
+### [x] Slice 1 — Scaffold app/ + green CI quality gate
 - Scaffold Vite + React 18 + TS **into the existing `app/`** (keep `app/vercel.json`
   when prompted about the non-empty directory). Add `package.json` scripts: `dev`,
   `build`, `typecheck` (`tsc --noEmit`), `lint` (ESLint), `test` (Vitest).
