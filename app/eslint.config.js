@@ -31,4 +31,32 @@ export default tseslint.config(
       globals: { ...globals.browser, ...globals.node },
     },
   },
+  {
+    // CLAUDE.md rule 4: src/engine/ is pure and headless — no React/DOM/canvas.
+    // Enforce the React/react-dom ban here (DOM/canvas are globals, not imports).
+    files: ["src/engine/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "react",
+              message: "src/engine/ must be pure and headless (no React).",
+            },
+            {
+              name: "react-dom",
+              message: "src/engine/ must be pure and headless (no react-dom).",
+            },
+          ],
+          patterns: [
+            {
+              group: ["react", "react/*", "react-dom", "react-dom/*"],
+              message: "src/engine/ must be pure and headless (no React).",
+            },
+          ],
+        },
+      ],
+    },
+  },
 );
