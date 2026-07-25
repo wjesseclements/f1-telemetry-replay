@@ -17,6 +17,8 @@ from FastF1 data. PRD.md holds the detail; this file holds the law.
 - Lint: `cd app && npm run lint`
 - Test: `cd app && npm run test` (CI: `npm run test -- --run`)
 - Build: `cd app && npm run build`
+- **All gates: `cd app && npm run check`** (typecheck + lint + test + build; the
+  definition-of-done command — run this, not the four individually)
 - Pipeline: `cd pipeline && python build_replay.py --year 2024 --gp Monza --session Q --driver VER --out ../app/public/data/monza_ver.json`
 
 ## Architecture rules (non-negotiable — see PRD §Load-bearing decisions)
@@ -55,14 +57,15 @@ from FastF1 data. PRD.md holds the detail; this file holds the law.
   speed→color stops, schema acceptance + rejection, (v2) session-time alignment.
 - Tests use the committed `src/engine/__fixtures__/sample-lap.json` — **never the
   network.** App, tests, and CI must run fully offline.
-- A slice is not done until typecheck + lint + test + build are green.
+- A slice is not done until `npm run check` is green.
 
 ## Workflow
 
 - Read PLAN.md and CLAUDE.md at the start of each session; implement the next unchecked
   slice only. One slice per session; `/clear` between slices.
-- Self-verify (typecheck + lint + test + build green) before declaring done.
-- Self-review the diff against these rules before declaring done.
+- Self-verify with `npm run check` before declaring done.
+- Self-review the diff before declaring done by running the `/review` command
+  (`.claude/commands/review.md`) and reporting its checklist results.
 - If a direction is wrong, stop and say so rather than absorbing a bad instruction.
 - **Flag consequences** of an instruction instead of silently complying.
 
@@ -98,6 +101,15 @@ from FastF1 data. PRD.md holds the detail; this file holds the law.
 
 Accounts, credentials, tokens, domains, the GitHub repo, and deploy/host setup are the
 human's job. Don't ask for tokens or try to automate these.
+
+## prototype/ (reference-only — do not emulate)
+
+`prototype/TelemetryReplay.jsx` predates the architecture rules above and violates
+several of them by design (it is a single-file prototype). Use it only to port visual
+constants (palette / `THERMAL` stops, bucketing) and as a reference for intended
+look-and-feel. **Never import from it and never copy its React/state/clock patterns.**
+Its synthetic generator is fixture/dev material, not production code. Delete the
+directory once Slices 4–5 have extracted what they need.
 
 ## Out of scope (defend)
 
