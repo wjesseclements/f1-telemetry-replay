@@ -12,18 +12,11 @@ updates:
         patterns: ["*"]
         update-types: ["minor", "patch"]
     ignore:
-      # Framework-generation upgrades are deliberate migration slices, not bot PRs.
-      - dependency-name: "vite"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "@vitejs/*"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "react"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "react-dom"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "@types/react*"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "@types/node"
+      # All npm majors are deliberate migration work, reviewed via periodic
+      # `npm outdated` checks — not bot PRs. Note: this can also suppress
+      # security updates that require a major bump; GitHub security alerts
+      # still surface these.
+      - dependency-name: "*"
         update-types: ["version-update:semver-major"]
 
   # Python pipeline
