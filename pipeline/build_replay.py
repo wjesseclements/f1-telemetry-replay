@@ -50,9 +50,12 @@ def build_lap_replay(year, gp, session_id, driver, cache_dir=".f1cache"):
     t = t - t[0]
     lap_time = float(t[-1])
 
-    # DRS channel: codes 10/12/14 => DRS open/active
-    drs_raw = tel["DRS"].to_numpy()
-    drs = np.isin(drs_raw, [10, 12, 14]).astype(int)
+    # DRS channel: emit the RAW FastF1 code and let the app decode it. The
+    # undocumented 10/12/14 => open mapping lives in exactly one place,
+    # app/src/engine/drs.ts (isDrsOpen); decoding here too would duplicate the
+    # guess across two languages. It is a discrete channel, so it is
+    # forward-filled onto the uniform grid below, never interpolated.
+    drs = tel["DRS"].to_numpy().astype(int)
 
     X = tel["X"].to_numpy(dtype=float)
     Y = tel["Y"].to_numpy(dtype=float)
