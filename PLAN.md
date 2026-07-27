@@ -121,6 +121,21 @@ built **into** the slice that introduces them — never deferred to a late audit
 - **Verify:** multi-car replay shows all cars at the same instant; **≥50fps with 20
   cars** on a mid-tier laptop; selecting/highlighting drivers works by keyboard.
 
+## Maintenance (not phase-bound — schedule after the slices above)
+
+### [ ] Slice 10 — Toolchain: Vite 8 + vitest 4 migration
+- `vite` 5→8, `vitest` + `@vitest/coverage-v8` 2→4. These are **interlocked** — vitest 4
+  requires a Vite 6+ peer — so they move together or not at all.
+- `@vitejs/plugin-react` 4→5 (v5 supports Vite 8; v6 is optional, later).
+- Clears **all 7 `npm audit` advisories**, including the transitive `brace-expansion`
+  copies pinned by `minimatch` under `eslint` and `@vitest/coverage-v8`.
+- **Expect config work, not a version bump.** PR #9 (vite 5→8) had its Vercel build
+  **fail**; budget for Vite config and plugin-API changes.
+- **Hand-rolled PR** per the PR #20 pattern — `.github/dependabot.yml` ignores all npm
+  majors, so no bot PR will arrive for these.
+- **Verify:** `npm run check` green; `npm audit` clean (or only dev-only residual, stated
+  explicitly); a **real Vercel preview build** succeeds — not an "Ignored Build Step" skip.
+
 ## Backlog (ideas — not committed)
 - WebGL/3D escalation **only** if measured 20-car perf demands it (documented path).
 - Track-surface niceties: kerbs, sector coloring, mini-map.

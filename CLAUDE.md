@@ -59,6 +59,11 @@ from FastF1 data. PRD.md holds the detail; this file holds the law.
   network.** App, tests, and CI must run fully offline.
 - A slice is not done until `npm run check` is green.
 
+## Gotchas
+
+- `npm audit` criticals in vitest/vite are dev-toolchain only, unreachable as configured
+  (no `@vitest/ui`); resolved by the toolchain slice — don't panic-fix.
+
 ## Workflow
 
 - Read PLAN.md and CLAUDE.md at the start of each session; implement the next unchecked
