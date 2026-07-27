@@ -36,8 +36,12 @@ scales to a full 20-car race replay (v2) with no frontend rewrite.
   lets the canvas stay out of React's render path. (See load-bearing decision #1.)
 - **Tailwind CSS + CSS custom properties** for chrome and design tokens. Canvas 2D
   for the visualization itself.
-- **Zod** for the replay schema — one runtime validator that is *also* the TS type via
+- **Zod v4** for the replay schema — one runtime validator that is *also* the TS type via
   `z.infer`. Single source of truth; catches pipeline/frontend drift at load time.
+  v4 (not v3) for its unified error API — `error.issues` plus top-level
+  `z.prettifyError`, which turns a mismatch into a path-annotated, human-readable
+  message instead of v3's nested `.format()` object. That is what makes "fails loudly
+  with an actionable error" cheap to deliver.
 - **Vitest + React Testing Library** — engine gets thorough unit tests; components get
   light smoke tests.
 - **ESLint + Prettier** — enforced in CI; Prettier-on-save via a PostToolUse hook.
@@ -91,6 +95,7 @@ as a Zod schema; the loader validates against it; the Python pipeline emits it.
 ```jsonc
 {
   "meta": {
+    "schemaVersion": 1,        // breaking-change guard; unknown keys are stripped
     "year": 2024, "event": "Monza", "session": "Q",
     "track": "Italian Grand Prix",
     "rotation": 75.0,          // degrees, from circuit_info; applied at render
@@ -109,8 +114,9 @@ as a Zod schema; the loader validates against it; the Python pipeline emits it.
         // uniform time grid at sampleRateHz.
         // Core kinematics are always required. `drs` is OPTIONAL and present
         // only for 2018-2025 data; it is absent for 2026+ (see notes).
+        // `drs` carries the RAW FastF1 code (12 here), decoded by engine/drs.ts.
         { "t": 0.0, "x": 0, "y": 0, "speed": 0,
-          "throttle": 0, "brake": 0, "gear": 1, "drs": 0 }
+          "throttle": 0, "brake": 0, "gear": 1, "drs": 12 }
       ]
     }
   ]
@@ -128,13 +134,20 @@ Notes pinned to sources:
   exists but is **all zeros**, and X-mode/Z-mode, Overtake Mode, Boost, and ERS are
   **not available via FastF1 or any tool**. (Sources [5], [6].)
 - Consequence for design: **`drs` is an optional, season-dependent channel**, not a
-  core field. The loader omits it when all-zero/absent; the HUD renders a DRS indicator
-  only when the data carries one. Do **not** plan features on active-aero or energy
-  state — that data does not exist publicly. Core kinematics (X/Y, Speed, Throttle,
-  Brake, nGear, RPM) are unaffected across all seasons.
+  core field. The **pipeline** omits it when the column is all-zero/absent; the HUD
+  renders a DRS indicator only when the data carries one. Do **not** plan features on
+  active-aero or energy state — that data does not exist publicly. Core kinematics
+  (X/Y, Speed, Throttle, Brake, nGear, RPM) are unaffected across all seasons.
 - For pre-2026 data, the DRS integer encoding is **not formally documented** (FastF1
   calls it only a "DRS indicator"; community reading is values ≥10 mean open). Isolate
   that mapping in one function and validate against a known lap. (Source [2].)
+  Decided in Slice 2: the JSON carries the **raw** code and `src/engine/drs.ts` is the
+  single decoder, so the guess lives in one function with a real caller rather than
+  being duplicated in Python. The schema keeps `drs` all-or-nothing per car — a
+  partially present channel is drift and fails loudly.
+- The schema is versioned by `meta.schemaVersion`. Unknown keys are **stripped**, so
+  additive pipeline channels never break an older app build; a *breaking* change bumps
+  the version and the loader rejects mismatched JSON outright.
 
 ## UX flows
 

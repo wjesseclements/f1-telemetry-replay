@@ -1,0 +1,192 @@
+/**
+ * Loader + schema tests.
+ *
+ * `sample-lap.json` was generated once from the prototype's synthetic telemetry
+ * generator (prototype/TelemetryReplay.jsx, `useSyntheticReplay`) ported to a
+ * throwaway Node script at 10 Hz — the script is dev material and deliberately not
+ * committed (PLAN.md Slice 2). Rejection cases below are structural mutations of that
+ * one fixture, so these tests never touch the network and never need a second file.
+ */
+import { describe, it, expect } from "vitest";
+import sampleLap from "./__fixtures__/sample-lap.json";
+import { parseReplay, ReplayValidationError } from "./load";
+import { SCHEMA_VERSION } from "./schema";
+
+/** A mutable deep copy of the fixture, typed loosely so tests can break it on purpose. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- mutations are deliberately invalid; that is the point of these tests
+type Mutable = any;
+const clone = (): Mutable => structuredClone(sampleLap) as Mutable;
+
+/** Parse and return the error, asserting that parsing did fail. */
+function expectRejection(bad: unknown, source?: string): ReplayValidationError {
+  let thrown: unknown;
+  try {
+    parseReplay(bad, source);
+  } catch (e) {
+    thrown = e;
+  }
+  expect(thrown, "expected parseReplay to throw").toBeInstanceOf(ReplayValidationError);
+  return thrown as ReplayValidationError;
+}
+
+describe("parseReplay — acceptance", () => {
+  it("accepts the committed fixture and returns typed data", () => {
+    const replay = parseReplay(sampleLap, "sample-lap.json");
+
+    expect(replay.meta.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(replay.meta.sampleRateHz).toBe(10);
+    expect(replay.meta.units.speed).toBe("km/h");
+    expect(replay.cars).toHaveLength(1);
+    expect(replay.cars[0].driver).toBe("VER");
+    expect(replay.cars[0].samples.length).toBeGreaterThan(100);
+  });
+
+  it("keeps the fixture on a uniform time grid matching sampleRateHz", () => {
+    const { meta, cars } = parseReplay(sampleLap);
+    const { samples } = cars[0];
+
+    expect(samples).toHaveLength(Math.round(meta.duration * meta.sampleRateHz));
+    // O(1) lookup (rule 3) is only valid if index == t * sampleRateHz holds exactly.
+    for (const i of [0, 1, 42, samples.length - 1]) {
+      expect(samples[i].t).toBeCloseTo(i / meta.sampleRateHz, 6);
+    }
+  });
+
+  it("accepts a replay with no drs channel at all (2026+ data)", () => {
+    const bad = clone();
+    for (const s of bad.cars[0].samples) delete s.drs;
+
+    const replay = parseReplay(bad);
+    expect(replay.cars[0].samples.every((s) => s.drs === undefined)).toBe(true);
+  });
+
+  it("strips unknown keys instead of rejecting them (additive pipeline changes)", () => {
+    const extra = clone();
+    extra.cars[0].samples[0].rpm = 11500;
+
+    const replay = parseReplay(extra);
+    expect(replay.cars[0].samples[0]).not.toHaveProperty("rpm");
+  });
+});
+
+describe("parseReplay — rejection", () => {
+  it("rejects a missing core kinematics field, naming the sample path", () => {
+    const bad = clone();
+    delete bad.cars[0].samples[3].speed;
+
+    const err = expectRejection(bad, "sample-lap.json");
+    expect(err.message).toContain("Invalid replay data in sample-lap.json");
+    expect(err.message).toContain("cars[0].samples[3].speed");
+    expect(err.issues[0].path).toEqual(["cars", 0, "samples", 3, "speed"]);
+  });
+
+  it("rejects a wrong-typed field", () => {
+    const bad = clone();
+    bad.cars[0].samples[5].gear = "7";
+
+    const err = expectRejection(bad);
+    expect(err.message).toContain("cars[0].samples[5].gear");
+    expect(err.message).toMatch(/expected number/i);
+  });
+
+  it("rejects an empty cars array", () => {
+    const bad = clone();
+    bad.cars = [];
+
+    const err = expectRejection(bad);
+    expect(err.message).toContain("replay.cars must contain at least one car");
+  });
+
+  it("rejects a non-km/h speed unit", () => {
+    const bad = clone();
+    bad.meta.units.speed = "mph";
+
+    const err = expectRejection(bad);
+    expect(err.message).toContain("calibrated in km/h");
+    expect(err.issues[0].path).toEqual(["meta", "units", "speed"]);
+  });
+
+  it("rejects a schemaVersion the app was not built for", () => {
+    const bad = clone();
+    bad.meta.schemaVersion = 2;
+
+    const err = expectRejection(bad);
+    expect(err.message).toContain("schemaVersion must be 1");
+    expect(err.issues[0].path).toEqual(["meta", "schemaVersion"]);
+  });
+
+  it("rejects non-monotonic sample times", () => {
+    const bad = clone();
+    const s = bad.cars[0].samples;
+    [s[10].t, s[11].t] = [s[11].t, s[10].t];
+
+    const err = expectRejection(bad);
+    expect(err.message).toContain("strictly increasing in t");
+    expect(err.issues[0].path).toEqual(["cars", 0, "samples", 11, "t"]);
+  });
+
+  it("rejects duplicate sample times", () => {
+    const bad = clone();
+    bad.cars[0].samples[11].t = bad.cars[0].samples[10].t;
+
+    const err = expectRejection(bad);
+    expect(err.message).toContain("strictly increasing in t");
+  });
+
+  it("rejects a partially present drs channel", () => {
+    const bad = clone();
+    delete bad.cars[0].samples[7].drs;
+
+    const err = expectRejection(bad);
+    expect(err.message).toContain("drs must be present on every sample or none");
+    expect(err.message).toContain(`${bad.cars[0].samples.length - 1} of`);
+  });
+
+  it("rejects a car with fewer than two samples", () => {
+    const bad = clone();
+    bad.cars[0].samples = [bad.cars[0].samples[0]];
+
+    const err = expectRejection(bad);
+    expect(err.message).toContain("at least 2 samples");
+  });
+
+  it("rejects an out-of-range throttle rather than absorbing dirty upstream data", () => {
+    const bad = clone();
+    bad.cars[0].samples[2].throttle = 104;
+
+    const err = expectRejection(bad);
+    expect(err.message).toContain("cars[0].samples[2].throttle");
+  });
+
+  it("rejects a malformed car color", () => {
+    const bad = clone();
+    bad.cars[0].color = "3671C6";
+
+    const err = expectRejection(bad);
+    expect(err.message).toContain("color must be a hex color");
+  });
+
+  it("rejects non-object input", () => {
+    expect(() => parseReplay(null)).toThrow(ReplayValidationError);
+    expect(() => parseReplay("{}")).toThrow(ReplayValidationError);
+  });
+
+  it("reports every violation at once, not just the first", () => {
+    const bad = clone();
+    delete bad.meta.duration;
+    bad.cars[0].color = "nope";
+
+    const err = expectRejection(bad);
+    expect(err.issues.length).toBeGreaterThanOrEqual(2);
+    expect(err.message).toContain("2 schema violations");
+  });
+
+  it("omits the source clause when no source is given", () => {
+    const bad = clone();
+    bad.meta.sampleRateHz = -10;
+
+    const err = expectRejection(bad);
+    expect(err.message).toMatch(/^Invalid replay data: /);
+    expect(err.source).toBeUndefined();
+  });
+});

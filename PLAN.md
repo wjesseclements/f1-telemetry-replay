@@ -87,7 +87,12 @@ built **into** the slice that introduces them — never deferred to a late audit
 
 ### [ ] Slice 6 — Wire real data via pipeline (offline app stays on fixture)
 - Refactor `pipeline/build_replay.py` so output conforms **exactly** to `schema.ts`
-  (continuous interp; discrete forward-fill; **omit `drs` when all-zero/2026+**). Add a
+  (continuous interp; discrete forward-fill; **omit `drs` when all-zero/2026+**).
+  **Inherited from Slice 2** (decided there, not optional here): emit
+  `meta.schemaVersion: 1`; forward-fill the **raw** DRS code instead of decoding it
+  (drop `np.isin(drs_raw, [10,12,14])` — `src/engine/drs.ts` owns that mapping now);
+  **clamp** throttle into 0–100, since real FastF1 data occasionally exceeds 100 and the
+  schema will reject it. Add a
   step that **prints the actual telemetry columns** for the loaded session and validates
   shape before trusting any channel. Pin `requirements.txt` (FastF1 3.8+, Py 3.10+).
 - Generate a real lap (default: `2024 Monza Q VER`) into `app/public/data/` (gitignored)
