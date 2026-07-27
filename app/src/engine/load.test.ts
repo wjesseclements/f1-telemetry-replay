@@ -6,6 +6,12 @@
  * throwaway Node script at 10 Hz — the script is dev material and deliberately not
  * committed (PLAN.md Slice 2). Rejection cases below are structural mutations of that
  * one fixture, so these tests never touch the network and never need a second file.
+ *
+ * If you ever regenerate it: the prototype's `SCALE = 46` is inconsistent with its own
+ * "lap ~4.6km" comment — it yields a 16.7 km circuit whose curvature is so low the car
+ * sits pinned at 299-338 km/h with zero corners. The fixture was generated with
+ * SCALE = 12.7 (a 4.62 km lap), which is what gives it braking zones, a 157-338 km/h
+ * range, gears 4-8 and 9 corners. Geometry is unchanged: scale is uniform.
  */
 import { describe, it, expect } from "vitest";
 import sampleLap from "./__fixtures__/sample-lap.json";
@@ -25,7 +31,9 @@ function expectRejection(bad: unknown, source?: string): ReplayValidationError {
   } catch (e) {
     thrown = e;
   }
-  expect(thrown, "expected parseReplay to throw").toBeInstanceOf(ReplayValidationError);
+  expect(thrown, "expected parseReplay to throw").toBeInstanceOf(
+    ReplayValidationError,
+  );
   return thrown as ReplayValidationError;
 }
 
@@ -138,7 +146,9 @@ describe("parseReplay — rejection", () => {
     delete bad.cars[0].samples[7].drs;
 
     const err = expectRejection(bad);
-    expect(err.message).toContain("drs must be present on every sample or none");
+    expect(err.message).toContain(
+      "drs must be present on every sample or none",
+    );
     expect(err.message).toContain(`${bad.cars[0].samples.length - 1} of`);
   });
 

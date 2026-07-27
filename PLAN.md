@@ -24,7 +24,7 @@ built **into** the slice that introduces them — never deferred to a late audit
   npm run build` all green; `npm run dev` serves the placeholder. Push branch → Vercel
   preview + `verify` check go green (this is what makes Vercel's first deploy succeed).
 
-### [ ] Slice 2 — Engine: Zod schema + fixture + loader (validation at load)
+### [x] Slice 2 — Engine: Zod schema + fixture + loader (validation at load)
 - `src/engine/schema.ts`: the **single contract** as one Zod schema; export the TS type
   via `z.infer`. `cars` is an array (len ≥ 1). Core kinematics required
   (`t,x,y,speed,throttle,brake,gear`); `drs` **optional**. `meta` includes

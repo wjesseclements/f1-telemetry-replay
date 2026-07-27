@@ -18,7 +18,11 @@ export class ReplayValidationError extends Error {
   readonly issues: readonly z.core.$ZodIssue[];
   readonly source: string | undefined;
 
-  constructor(message: string, issues: readonly z.core.$ZodIssue[], source?: string) {
+  constructor(
+    message: string,
+    issues: readonly z.core.$ZodIssue[],
+    source?: string,
+  ) {
     super(message);
     this.name = "ReplayValidationError";
     this.issues = issues;
