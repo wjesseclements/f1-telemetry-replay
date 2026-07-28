@@ -608,6 +608,52 @@ describe("TrackCanvas trail", () => {
     expect(firstBadge).toBeLessThan(firstMarker);
   });
 
+  it("starts a newly-loaded replay at the line", () => {
+    // The clock ref deliberately outlives the effect so a resize resumes the lap.
+    // Loading a DIFFERENT replay is the one case where that is wrong — otherwise a
+    // picked lap would begin most of the way round someone else's circuit.
+    const { rerender } = render(<TrackCanvas replay={replay} />);
+    raf.tick();
+    // Two frames, not one of 200 ms: `MAX_FRAME_DT_S` would clamp that to 100 ms.
+    raf.tick(100);
+    raf.tick(100);
+    expect(markers(lastFrame(recording))[0].x).not.toBeCloseTo(
+      expectedMarker(0).x,
+      3,
+    );
+
+    // Same geometry, different object — what the file picker produces.
+    rerender(<TrackCanvas replay={structuredClone(replay)} />);
+    raf.tick();
+
+    const at = markers(lastFrame(recording))[0];
+    expect(at.x).toBeCloseTo(expectedMarker(0).x, 6);
+    expect(at.y).toBeCloseTo(expectedMarker(0).y, 6);
+  });
+
+  it("resumes the lap across a resize rather than restarting it", () => {
+    // The complement of the test above: the reset is keyed on the replay's identity,
+    // so a re-measure must not trip it.
+    render(<TrackCanvas replay={replay} />);
+    raf.tick();
+    raf.tick(100);
+    raf.tick(100);
+    act(() => {
+      recording.resize(1000, 700);
+    });
+    raf.tick(0); // repaint at the new size without advancing the clock
+
+    const refit = fitTransform(scene.bounds, 1000, 700, PAD_PX);
+    const snapshots = sampleAt(replay, 0.2);
+    const want = applyTransform(
+      rotateWorld(snapshots, replay.meta.rotation)[0],
+      refit,
+    );
+    const at = markers(lastFrame(recording))[0];
+    expect(at.x).toBeCloseTo(want.x, 6);
+    expect(at.y).toBeCloseTo(want.y, 6);
+  });
+
   it("still never re-renders, across frames AND a resize", () => {
     let commits = 0;
     render(

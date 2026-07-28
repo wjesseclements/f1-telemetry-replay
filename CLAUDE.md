@@ -19,7 +19,12 @@ from FastF1 data. PRD.md holds the detail; this file holds the law.
 - Build: `cd app && npm run build`
 - **All gates: `cd app && npm run check`** (typecheck + lint + test + build; the
   definition-of-done command — run this, not the four individually)
-- Pipeline: `cd pipeline && python build_replay.py --year 2024 --gp Monza --session Q --driver VER --out ../app/public/data/monza_ver.json`
+- Pipeline (needs network — human's machine, never CI): `cd pipeline && python
+  build_replay.py --year 2024 --gp Monza --session Q --driver VER --out
+  ../app/public/data/monza_ver.json`. It validates its own output through the app's
+  real schema before exiting; load the result with the app's "Load replay JSON" picker.
+- Pipeline tests (no network, gated in CI): `cd pipeline && pytest`
+- Validate any replay JSON by hand: `cd app && npm run validate:replay -- <file>`
 
 ## Architecture rules (non-negotiable — see PRD §Load-bearing decisions)
 

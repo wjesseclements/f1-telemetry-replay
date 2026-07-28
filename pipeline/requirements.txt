@@ -1,3 +1,6 @@
-fastf1>=3.8.3
-numpy
-pandas
+# Runtime dependencies for `build_replay.py` — a HUMAN's machine only.
+# This is the network-facing half of the pipeline; CI never installs this file.
+# Python 3.10+ (FastF1 3.8's own floor).
+fastf1>=3.8.3,<4
+numpy>=1.26
+pandas>=2.2

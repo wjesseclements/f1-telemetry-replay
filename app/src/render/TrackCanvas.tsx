@@ -48,6 +48,16 @@ export function TrackCanvas({ replay }: TrackCanvasProps) {
    * where it was rather than snapping back to the start/finish line.
    */
   const clockRef = useRef(0);
+  /**
+   * Which replay the clock belongs to.
+   *
+   * The clock ref deliberately outlives the effect so a resize or StrictMode's
+   * remount resumes the lap. Loading a DIFFERENT replay is the one case where that
+   * is wrong: 45 s into a 58 s lap, a picked 30 s lap would start most of the way
+   * round someone else's circuit. Comparing identity distinguishes the two — a
+   * remount sees the same object and keeps its clock.
+   */
+  const clockOwnerRef = useRef(replay);
 
   // Rotating and bounding every sample is O(samples): once per replay, never per
   // frame.
@@ -62,6 +72,12 @@ export function TrackCanvas({ replay }: TrackCanvasProps) {
     if (ctx === null) return;
 
     const colors = readChromeColors();
+
+    // A new lap starts at the line. See `clockOwnerRef`.
+    if (clockOwnerRef.current !== replay) {
+      clockOwnerRef.current = replay;
+      clockRef.current = 0;
+    }
 
     /**
      * Size the backing store, refit the track and re-project it into screen space.
