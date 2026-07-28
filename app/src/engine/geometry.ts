@@ -110,6 +110,28 @@ export function fitTransform(
   };
 }
 
+/**
+ * The screen-space equivalent of a world-space heading, in radians.
+ *
+ * `rotateWorld` turns world points into the frame the track is actually drawn in,
+ * so a heading measured in world coordinates — as `sampleCarAt` returns it — is
+ * off by exactly `rotationDeg` once drawn. Nothing about that error is visible in
+ * the car's position, only in anything that points: at the fixture's -14° it aims
+ * the heading tick 14° away from the direction the car is visibly travelling.
+ *
+ * Adding the rotation is exact rather than approximate: rotating a direction
+ * vector `(cos h, sin h)` by `r` yields `(cos(h+r), sin(h+r))`, and `fitTransform`
+ * only ever applies a uniform scale and a translation — no flip, no shear — so it
+ * leaves angles untouched.
+ *
+ * The result is normalised into `(-π, π]`, matching `atan2`'s range, so it can be
+ * compared against a heading measured from screen coordinates directly.
+ */
+export function rotateHeading(headingRad: number, rotationDeg: number): number {
+  const a = headingRad + rotationDeg * DEG_TO_RAD;
+  return Math.atan2(Math.sin(a), Math.cos(a));
+}
+
 /** Apply a fit transform to one point. */
 export function applyTransform(p: Point, t: FitTransform): Point {
   return {
