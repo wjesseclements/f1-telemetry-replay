@@ -59,7 +59,10 @@ export class RecordingPath2D {
   segments(): PathSegment[] {
     const out: PathSegment[] = [];
     for (let i = 0; i < this.ops.length - 1; i++) {
-      if (this.ops[i].method === "moveTo" && this.ops[i + 1].method === "lineTo") {
+      if (
+        this.ops[i].method === "moveTo" &&
+        this.ops[i + 1].method === "lineTo"
+      ) {
         out.push({
           from: { x: this.ops[i].args[0], y: this.ops[i].args[1] },
           to: { x: this.ops[i + 1].args[0], y: this.ops[i + 1].args[1] },
@@ -96,11 +99,9 @@ function createContext(calls: DrawCall[]): CanvasRenderingContext2D {
       calls.push({ method, args, ...state });
     };
 
-  const recordPath =
-    (method: string) =>
-    (path?: RecordingPath2D) => {
-      calls.push({ method, args: [], ...state, path });
-    };
+  const recordPath = (method: string) => (path?: RecordingPath2D) => {
+    calls.push({ method, args: [], ...state, path });
+  };
 
   const ctx = {
     get strokeStyle() {

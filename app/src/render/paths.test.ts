@@ -58,10 +58,7 @@ describe("buildScenePaths corners", () => {
     const paths = buildScenePaths(scene, fit);
     for (const corner of paths.corners) {
       expect(
-        Math.hypot(
-          corner.badge.x - corner.on.x,
-          corner.badge.y - corner.on.y,
-        ),
+        Math.hypot(corner.badge.x - corner.on.x, corner.badge.y - corner.on.y),
         corner.text,
       ).toBeCloseTo(CORNER_OFFSET_PX, 6);
     }
@@ -91,7 +88,10 @@ describe("buildScenePaths corners", () => {
     for (const corner of paths.corners) {
       let nearest = Infinity;
       for (const p of ribbon) {
-        nearest = Math.min(nearest, Math.hypot(p.x - corner.badge.x, p.y - corner.badge.y));
+        nearest = Math.min(
+          nearest,
+          Math.hypot(p.x - corner.badge.x, p.y - corner.badge.y),
+        );
       }
       // Half the trail's width plus the badge's radius is the point of the offset:
       // clearing the painted line rather than merely being distinct from the corner.

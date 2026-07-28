@@ -163,9 +163,9 @@ describe("TrackCanvas", () => {
       (c) => c.method === "stroke" && c.lineWidth === TRACK_EDGE_WIDTH,
     )?.path;
     expect(ribbon).toBeDefined();
-    expect(
-      ribbon?.ops.filter((op) => op.method === "lineTo"),
-    ).toHaveLength(car.samples.length - 1);
+    expect(ribbon?.ops.filter((op) => op.method === "lineTo")).toHaveLength(
+      car.samples.length - 1,
+    );
     expect(ribbon?.ops.some((op) => op.method === "closePath")).toBe(true);
 
     // One marker per car, at the start/finish line at clock 0 — no count
@@ -538,7 +538,9 @@ describe("TrackCanvas trail", () => {
     useTransport.getState().seek(replay.meta.duration - 0.05);
     raf.tick(16);
     const built = recording.pathsBuilt();
-    expect(trailSegmentCount(lastFrame(recording))).toBe(car.samples.length - 1);
+    expect(trailSegmentCount(lastFrame(recording))).toBe(
+      car.samples.length - 1,
+    );
 
     raf.tick(100); // past the end of the lap: wraps to 0.05
     expect(recording.pathsBuilt()).toBe(built + PATHS_PER_RESET);

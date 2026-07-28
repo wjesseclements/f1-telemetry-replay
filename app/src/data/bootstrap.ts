@@ -21,8 +21,7 @@ import { FIXTURE_SOURCE } from "./fixture";
 
 /** Either a validated replay, or a message fit to put on screen. */
 export type BootstrapResult =
-  | { replay: Replay; error: null }
-  | { replay: null; error: string };
+  { replay: Replay; error: null } | { replay: null; error: string };
 
 /**
  * Load and validate the replay the app boots with.

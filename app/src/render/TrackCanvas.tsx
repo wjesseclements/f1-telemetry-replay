@@ -26,6 +26,7 @@ import { fitTransform } from "../engine/geometry";
 import { sampleAt, wrapClock } from "../engine/interpolate";
 import type { Replay } from "../engine/schema";
 import { useTransport } from "../store/transport";
+import { telemetry } from "../telemetry/channel";
 import { readChromeColors } from "./palette";
 import { buildScenePaths, type ScenePaths } from "./paths";
 import { buildScene, drawFrame, type Viewport } from "./scene";
@@ -135,6 +136,13 @@ export function TrackCanvas({ replay }: TrackCanvasProps) {
 
       const snapshots = sampleAt(replay, clockRef.current);
       drawFrame(ctx, scene, measured.paths, measured.view, snapshots, colors);
+
+      // Hand the same snapshot to the HUD. This is a plain function call into a module,
+      // NOT a setState: the channel rate-limits to <=30fps and wakes its subscribers
+      // itself, so nothing here enters React's render path and this component's commit
+      // count stays at one. `nowMs` is the rAF timestamp, so the HUD's cadence is
+      // measured on the same clock as the frames.
+      telemetry.publish(nowMs, clockRef.current, snapshots);
     };
 
     rafId = requestAnimationFrame(frame);

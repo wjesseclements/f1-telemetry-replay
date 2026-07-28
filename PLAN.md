@@ -149,13 +149,44 @@ built **into** the slice that introduces them — never deferred to a late audit
 - **Verify:** trail paints by speed; corners + start/finish render correctly; reduced-motion
   starts paused; a deliberately broken fixture shows the error state instead of a blank canvas.
 
-### [ ] Slice 5 — Transport controls + HUD (keyboard-operable, ≤30fps reads)
+### [x] Slice 5 — Transport controls + HUD (keyboard-operable, ≤30fps reads)
 - `src/components/`: Transport (play/pause, restart, 0.5/1/2/4× multiplier, scrub) and
   HUD (speed, gear, throttle, brake, lap clock, speed-trace sparkline + playhead).
 - HUD reads an **interpolated snapshot ≤30fps**, never per frame; canvas stays out of
   React's render path. Seek/scrub writes `seekTarget`; the rAF loop applies it.
 - **DRS indicator renders only when the data carries `drs`** — no year branching.
 - **Keyboard**: space=play/pause, arrows=seek/restart, etc.; visible focus rings.
+- **Amendment (this slice):** the HUD reads through a **telemetry channel**
+  (`src/telemetry/channel.ts`), not the store. Per-frame values in the store are what
+  rule 1 forbids, so a separate module makes the boundary structural. The rAF loop calls
+  `publish(nowMs, clock, cars)` every frame — a plain function call, never a `setState` —
+  and the channel emits only when **both** a 30 Hz window has elapsed **and** a displayed
+  value actually changed. Components read it with `useSyncExternalStore`.
+  - The changed-value condition is what makes reduced-motion's paused start cost **zero**
+    HUD renders instead of 30/sec of identical digits.
+  - The first publish emits immediately (`lastEmitMs` starts `null`) so the HUD paints on
+    mount rather than sitting blank for 33 ms; the cadence window starts from that emit.
+  - `nowMs` is the rAF timestamp, so cadence is measured on the same clock as the frames
+    and is deterministic under the existing `installRafDriver`.
+  - `TrackCanvas` publishes and subscribes to nothing; `Hud` and `TransportBar` are its
+    **siblings**, never ancestors. `commits === 1` is pinned in `TrackCanvas.test.tsx`;
+    `App.test.tsx` adds the complementary bound — commits scale with the 30 Hz cadence,
+    never with frame rate.
+- **Amendment (this slice):** the scrubber commits **live** (`seek` on every change) and
+  holds a local value only while a pointer drag is in flight, so the 30 Hz snapshot cannot
+  yank the thumb backwards under the finger during playback. On release it returns to
+  snapshot-driven: no snap-back, and `isPlaying` is never touched, so playback resumes
+  from where it was let go. `step` is set explicitly to one grid step (`1/sampleRateHz`) —
+  left unset it defaults to 1 s, ten times coarser than every other seek path.
+- **Amendment (this slice):** relative keyboard seeks are based on the last published
+  clock (the UI cannot read the loop's ref) and the hook remembers the target it last
+  issued, so key-repeat does not compound 33 ms of staleness into a short landing. The
+  handler stands down whenever the event landed on an element that already handles that
+  key natively — otherwise arrowing the focused scrubber would seek twice per press.
+- **Amendment (this slice):** `prettier --check` joined `npm run check` as `format:check`.
+  Prettier was a devDependency wired into nothing, so the PostToolUse hook and the repo
+  had silently drifted — 8 files on `main` failed it, all from Slice 4b. Fixed here, and
+  now gated in CI via `verify`.
 - **Verify:** every control is keyboard-operable with visible focus; HUD + playhead
   track the clock; DRS pill absent on a `drs`-less fixture; no per-frame `setState`.
 
@@ -205,6 +236,12 @@ built **into** the slice that introduces them — never deferred to a late audit
   constraint rather than rediscovering it. `TrailPainter` already supports this: trail
   length is whatever range of segments gets appended, so a short tail is a bounded
   `syncTo` window, not a different mechanism.
+  - **The speed trace joins this.** `Hud` sources its sparkline from `cars[0]`, which —
+    unlike the track ribbon's `cars[0]` — is **not** a choice-of-source argument. Track
+    geometry is shared, so any car's lap is the circuit; a speed trace is per-car data
+    with no such equivalence. It is a placeholder for *the focused car*, well-defined
+    today only because there is exactly one. Slice 9 binds it to the selection mechanism,
+    same as the thermal trail.
 - **Verify:** multi-car replay shows all cars at the same instant; **≥50fps with 20
   cars** on a mid-tier laptop; selecting/highlighting drivers works by keyboard.
 
