@@ -12,6 +12,7 @@ import {
   applyTransform,
   computeBounds,
   fitTransform,
+  rotateHeading,
   rotateWorld,
   type Point,
 } from "./geometry";
@@ -203,5 +204,61 @@ describe("applyTransform", () => {
     const low = applyTransform({ x: 0, y: 0 }, t);
     const high = applyTransform({ x: 0, y: 10 }, t);
     expect(high.y).toBeGreaterThan(low.y);
+  });
+});
+
+describe("rotateHeading", () => {
+  it("adds the rotation to the angle", () => {
+    expect(rotateHeading(0, 90)).toBeCloseTo(Math.PI / 2, 12);
+    expect(rotateHeading(Math.PI / 2, -90)).toBeCloseTo(0, 12);
+  });
+
+  it("leaves a heading alone at zero rotation", () => {
+    expect(rotateHeading(0.206591, 0)).toBeCloseTo(0.206591, 12);
+  });
+
+  it("normalises into atan2's range so it can be compared with a measured angle", () => {
+    const r = rotateHeading(3.0, 45);
+    expect(r).toBeGreaterThan(-Math.PI);
+    expect(r).toBeLessThanOrEqual(Math.PI);
+    expect(r).toBeCloseTo(3.0 + Math.PI / 4 - 2 * Math.PI, 12);
+  });
+
+  it("matches the direction of travel measured in the DRAWN frame", () => {
+    // The pin for the world-vs-screen heading bug. A world-space heading drawn
+    // against rotated points is wrong by exactly `rotation` — invisible in the
+    // car's position, visible only as a tick that points off-track. Measuring
+    // atan2 from successive rotated+fitted points is the independent check.
+    const { rotation } = replay.meta;
+    const samples = replay.cars[0].samples;
+    const fit = fitTransform(
+      computeBounds(rotateWorld(lapPoints, rotation)),
+      800,
+      600,
+      40,
+    );
+
+    for (const i of [0, 137, 400, samples.length - 2]) {
+      const worldHeading = Math.atan2(
+        samples[i + 1].y - samples[i].y,
+        samples[i + 1].x - samples[i].x,
+      );
+      const [a, b] = rotateWorld(
+        [
+          { x: samples[i].x, y: samples[i].y },
+          { x: samples[i + 1].x, y: samples[i + 1].y },
+        ],
+        rotation,
+      ).map((p) => applyTransform(p, fit));
+      const drawnHeading = Math.atan2(b.y - a.y, b.x - a.x);
+
+      expect(rotateHeading(worldHeading, rotation)).toBeCloseTo(
+        drawnHeading,
+        10,
+      );
+      // And the unadjusted world heading does NOT match — i.e. this test would
+      // have caught the bug rather than passing either way.
+      expect(Math.abs(worldHeading - drawnHeading)).toBeGreaterThan(0.2);
+    }
   });
 });
