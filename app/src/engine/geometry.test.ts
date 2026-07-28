@@ -159,14 +159,24 @@ describe("fitTransform", () => {
   });
 
   it("falls back to scale 1 for a point-like bounds instead of dividing by zero", () => {
-    const t = fitTransform({ minX: 5, minY: 5, maxX: 5, maxY: 5 }, 400, 200, 20);
+    const t = fitTransform(
+      { minX: 5, minY: 5, maxX: 5, maxY: 5 },
+      400,
+      200,
+      20,
+    );
     expect(t.scale).toBe(1);
     expect(applyTransform({ x: 5, y: 5 }, t)).toEqual({ x: 200, y: 100 });
   });
 
   it("lets a single unconstrained axis take the other axis's scale", () => {
     // Zero height: only width constrains, so scale comes from x alone.
-    const t = fitTransform({ minX: 0, minY: 7, maxX: 100, maxY: 7 }, 400, 200, 0);
+    const t = fitTransform(
+      { minX: 0, minY: 7, maxX: 100, maxY: 7 },
+      400,
+      200,
+      0,
+    );
     expect(t.scale).toBeCloseTo(4, 12);
   });
 
@@ -184,7 +194,12 @@ describe("applyTransform", () => {
   });
 
   it("keeps screen y increasing with world y", () => {
-    const t = fitTransform({ minX: 0, minY: 0, maxX: 10, maxY: 10 }, 100, 100, 0);
+    const t = fitTransform(
+      { minX: 0, minY: 0, maxX: 10, maxY: 10 },
+      100,
+      100,
+      0,
+    );
     const low = applyTransform({ x: 0, y: 0 }, t);
     const high = applyTransform({ x: 0, y: 10 }, t);
     expect(high.y).toBeGreaterThan(low.y);

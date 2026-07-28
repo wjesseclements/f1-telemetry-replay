@@ -188,7 +188,10 @@ describe("sampleCarAt — boundaries and wrap", () => {
     expect(snap.index).toBe(584);
     expect(snap.x).toBeCloseTo((samples[584].x + samples[0].x) / 2, 6);
     expect(snap.y).toBeCloseTo((samples[584].y + samples[0].y) / 2, 6);
-    expect(snap.speed).toBeCloseTo((samples[584].speed + samples[0].speed) / 2, 6);
+    expect(snap.speed).toBeCloseTo(
+      (samples[584].speed + samples[0].speed) / 2,
+      6,
+    );
     // and it points back toward the start/finish line, not at the last sample.
     expect(snap.heading).toBeCloseTo(0.2532657662, 6);
   });
@@ -197,7 +200,10 @@ describe("sampleCarAt — boundaries and wrap", () => {
 describe("sampleCarAt — heading", () => {
   it("is the atan2 of the segment leaving the leading sample", () => {
     expect(sampleCarAt(car, 20.05, RATE).heading).toBeCloseTo(
-      Math.atan2(samples[201].y - samples[200].y, samples[201].x - samples[200].x),
+      Math.atan2(
+        samples[201].y - samples[200].y,
+        samples[201].x - samples[200].x,
+      ),
       9,
     );
   });

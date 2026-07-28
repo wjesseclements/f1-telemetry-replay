@@ -85,7 +85,8 @@ whatever isn't defended — defend these.
 
 6. **Resampling respects channel type:** continuous channels (Speed, X, Y, RPM) are
    linearly interpolated; discrete channels (nGear, DRS, Brake) are forward-filled.
-   (Source [2].)
+   (Source [2].) **Throttle counts as continuous** and is interpolated — settled in
+   Slice 3; the prototype carried it forward, which made the HUD bar step.
 
 ## Data model — the replay schema
 
@@ -111,7 +112,9 @@ as a Zod schema; the loader validates against it; the Python pipeline emits it.
     {
       "driver": "VER", "team": "Red Bull", "color": "#3671C6",
       "samples": [
-        // uniform time grid at sampleRateHz.
+        // uniform time grid at sampleRateHz — ENFORCED by the schema since Slice 3:
+        // every t must be within 2 ms of k / sampleRateHz. The O(1) lookup never
+        // reads t, so irregular spacing has to fail at load, not misplace the car.
         // Core kinematics are always required. `drs` is OPTIONAL and present
         // only for 2018-2025 data; it is absent for 2026+ (see notes).
         // `drs` carries the RAW FastF1 code (12 here), decoded by engine/drs.ts.
