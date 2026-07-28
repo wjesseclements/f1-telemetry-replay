@@ -26,9 +26,9 @@ describe("useTransport", () => {
   it("holds no clock — the loop's ref owns it (architecture rule 1)", () => {
     // A guard, not a formality: a `clock`/`time`/`elapsed` field appearing here is
     // exactly the regression rule 1 forbids, and it would pass every other test.
-    expect(Object.keys(initial).filter((k) => /clock|time|elapsed/i.test(k))).toEqual(
-      [],
-    );
+    expect(
+      Object.keys(initial).filter((k) => /clock|time|elapsed/i.test(k)),
+    ).toEqual([]);
   });
 
   it("stores a validated replay", () => {

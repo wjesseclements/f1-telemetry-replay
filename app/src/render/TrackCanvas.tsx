@@ -106,10 +106,13 @@ export function TrackCanvas({ replay }: TrackCanvasProps) {
       // keeps it out of render — and what keeps `react-hooks/refs` quiet without
       // a suppression: everything below runs inside the effect's frame callback.
       if (seekTarget !== null) {
+        // A seek lands EXACTLY on its target: this frame's elapsed time is spent
+        // getting there, not added on top. Advancing as well would put the clock
+        // one frame past the requested position — 0.1 s out at 4x — so a scrub
+        // would never quite agree with the position it was released at.
         clockRef.current = wrapClock(seekTarget, duration);
         consumeSeek();
-      }
-      if (isPlaying) {
+      } else if (isPlaying) {
         // Scaled deltas accumulate; the clock is never derived from an absolute
         // timestamp, so changing speed does not rescale elapsed time. Wrapping is
         // the engine's `wrapClock`, reached through `advanceClock`.

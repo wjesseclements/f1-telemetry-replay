@@ -86,7 +86,9 @@ export function installCanvasEnvironment(
     recording.ctx as unknown as RenderingContext,
   );
   vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(width);
-  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(height);
+  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(
+    height,
+  );
   vi.stubGlobal("devicePixelRatio", 1);
   vi.stubGlobal(
     "ResizeObserver",

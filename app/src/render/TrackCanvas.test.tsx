@@ -92,6 +92,34 @@ function headingTick(frame: DrawCall[]): { from: Point; to: Point } {
 const angleOf = (from: Point, to: Point): number =>
   Math.atan2(to.y - from.y, to.x - from.x);
 
+/** One grid step either side of the asserted clock — the "off by a frame" case. */
+const NEIGHBOUR_S = 0.1;
+
+/**
+ * Assert the last frame put the car exactly where `clock` says, and NOT where a
+ * neighbouring clock would.
+ *
+ * The clock is unreachable from outside the loop by design, so the drawn marker is
+ * the only observation of it. The negative half is what makes this an exactness
+ * check rather than a tolerance check: a clock a frame past its target lands a
+ * measurable distance away, so it fails instead of passing at 6 decimal places by
+ * luck.
+ */
+function expectMarkerAt(clock: number): void {
+  const at = markers(lastFrame(recording))[0];
+  const want = expectedMarker(clock);
+  expect(at.x).toBeCloseTo(want.x, 6);
+  expect(at.y).toBeCloseTo(want.y, 6);
+
+  for (const delta of [-NEIGHBOUR_S, NEIGHBOUR_S]) {
+    const other = expectedMarker(clock + delta);
+    expect(
+      Math.hypot(at.x - other.x, at.y - other.y),
+      `clock ${clock} must be distinguishable from ${clock + delta}`,
+    ).toBeGreaterThan(1);
+  }
+}
+
 let recording: RecordingContext;
 let raf: RafDriver;
 
@@ -206,14 +234,31 @@ describe("TrackCanvas", () => {
     raf.tick();
 
     useTransport.getState().seek(replay.meta.duration - 0.05);
-    // The seek lands at 58.45 and the same frame advances 0.1 s on top of it,
-    // carrying the clock 0.05 s past the end of the lap.
-    raf.tick(100);
+    raf.tick(100); // lands exactly on 58.45 — a seek frame does not advance
+    expectMarkerAt(replay.meta.duration - 0.05);
 
-    const at = markers(lastFrame(recording))[0];
-    const want = expectedMarker(0.05);
-    expect(at.x).toBeCloseTo(want.x, 6);
-    expect(at.y).toBeCloseTo(want.y, 6);
+    raf.tick(100); // now 0.05 s past the end of the lap
+    expectMarkerAt(0.05);
+  });
+
+  it("lands a seek exactly on its target, not one frame past it", () => {
+    // The clock is deliberately unreachable from outside the loop, so exactness
+    // is asserted through the only thing it can be observed by: where the car was
+    // painted. `expectMarkerAt` also rejects the neighbouring clocks, so "one
+    // frame late" fails rather than passing inside a tolerance.
+    render(<TrackCanvas replay={replay} />);
+    raf.tick();
+
+    useTransport.getState().setSpeedMult(4);
+    useTransport.getState().seek(29.25);
+    raf.tick(100); // at 4x this frame would otherwise carry 0.4 s past the target
+
+    expect(useTransport.getState().seekTarget).toBeNull();
+    expectMarkerAt(29.25);
+
+    // The frame AFTER the seek resumes at full speed from the target.
+    raf.tick(100);
+    expectMarkerAt(29.25 + 0.4);
   });
 
   it("applies a pending seek and clears it, even while paused", () => {
@@ -225,10 +270,22 @@ describe("TrackCanvas", () => {
     raf.tick(16);
 
     expect(useTransport.getState().seekTarget).toBeNull();
-    const at = markers(lastFrame(recording))[0];
-    const want = expectedMarker(29.25);
-    expect(at.x).toBeCloseTo(want.x, 6);
-    expect(at.y).toBeCloseTo(want.y, 6);
+    expectMarkerAt(29.25);
+  });
+
+  it("wraps a seek past the end of the lap, exactly", () => {
+    render(<TrackCanvas replay={replay} />);
+    raf.tick();
+    useTransport.getState().pause();
+
+    useTransport.getState().seek(replay.meta.duration + 0.25);
+    raf.tick(16);
+    expectMarkerAt(0.25);
+
+    // ...and a negative seek folds back from the end.
+    useTransport.getState().seek(-0.25);
+    raf.tick(16);
+    expectMarkerAt(replay.meta.duration - 0.25);
   });
 
   it("points the heading tick along the direction of travel ON SCREEN", () => {
