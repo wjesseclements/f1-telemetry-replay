@@ -33,8 +33,8 @@ export function ReplayError({ message }: ReplayErrorProps) {
           {message}
         </pre>
         <p className="mt-4 text-xs leading-relaxed text-dim">
-          The replay data does not match the schema. This is a data problem, not a
-          network one — the app ships with its replay and never fetches.
+          The replay data does not match the schema. This is a data problem, not
+          a network one — the app ships with its replay and never fetches.
         </p>
       </div>
     </section>

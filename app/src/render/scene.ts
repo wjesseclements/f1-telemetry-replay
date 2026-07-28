@@ -106,8 +106,8 @@ export function buildScene(replay: Replay): Scene {
     carPaths,
     // The bucket of the segment LEAVING sample k, so index k is the trail segment
     // k → k+1. The last entry is only ever used by the head segment.
-    carBuckets: replay.cars.map(
-      (car) => Uint8Array.from(car.samples, (s) => bucketOf(s.speed)),
+    carBuckets: replay.cars.map((car) =>
+      Uint8Array.from(car.samples, (s) => bucketOf(s.speed)),
     ),
     bounds: computeBounds(carPaths.flat()),
     rotationDeg: rotation,
@@ -178,7 +178,10 @@ export function drawFrame(
     const snapshot = snapshots[i];
     // Rotation is linear, so rotating the interpolated position is identical to
     // interpolating between rotated positions.
-    const p = applyTransform(rotatePoint(snapshot, scene.rotationDeg), view.fit);
+    const p = applyTransform(
+      rotatePoint(snapshot, scene.rotationDeg),
+      view.fit,
+    );
     at[i * 2] = p.x;
     at[i * 2 + 1] = p.y;
 
@@ -271,7 +274,13 @@ function drawCorners(
 
     ctx.fillStyle = colors.panel2;
     ctx.beginPath();
-    ctx.arc(corner.badge.x, corner.badge.y, CORNER_BADGE_RADIUS, 0, Math.PI * 2);
+    ctx.arc(
+      corner.badge.x,
+      corner.badge.y,
+      CORNER_BADGE_RADIUS,
+      0,
+      Math.PI * 2,
+    );
     ctx.fill();
     ctx.stroke();
 

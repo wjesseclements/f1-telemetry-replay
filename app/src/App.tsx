@@ -1,5 +1,8 @@
+import { Hud } from "./components/Hud";
 import { ReplayError } from "./components/ReplayError";
 import { SpeedLegend } from "./components/SpeedLegend";
+import { TransportBar } from "./components/TransportBar";
+import { useTransportKeys } from "./keyboard/useTransportKeys";
 import { TrackCanvas } from "./render/TrackCanvas";
 import { useTransport } from "./store/transport";
 
@@ -16,6 +19,11 @@ export default function App({ bootstrapError = null }: AppProps) {
   // A discrete value: it changes when a replay is loaded, not per frame.
   const replay = useTransport((s) => s.replay);
 
+  // App itself subscribes to NOTHING per-frame. `Hud` and `TransportBar` own their own
+  // telemetry subscriptions, which is what keeps their 30 Hz re-renders away from
+  // `TrackCanvas` — a subscription up here would re-render the canvas with them.
+  useTransportKeys(replay);
+
   return (
     <main className="flex h-screen flex-col bg-bg text-txt">
       <header className="flex items-baseline gap-3 px-4 py-3">
@@ -29,20 +37,27 @@ export default function App({ bootstrapError = null }: AppProps) {
           </p>
         )}
       </header>
-      <div className="relative min-h-0 flex-1">
-        {bootstrapError !== null ? (
+
+      {bootstrapError !== null ? (
+        <div className="min-h-0 flex-1">
           <ReplayError message={bootstrapError} />
-        ) : replay !== null ? (
-          <>
-            <TrackCanvas replay={replay} />
-            <SpeedLegend />
-          </>
-        ) : (
-          <p className="flex h-full items-center justify-center font-mono text-xs text-dim">
-            No replay loaded.
-          </p>
-        )}
-      </div>
+        </div>
+      ) : replay !== null ? (
+        <>
+          <div className="flex min-h-0 flex-1">
+            <div className="relative min-w-0 flex-1">
+              <TrackCanvas replay={replay} />
+              <SpeedLegend />
+            </div>
+            <Hud replay={replay} />
+          </div>
+          <TransportBar replay={replay} />
+        </>
+      ) : (
+        <div className="flex min-h-0 flex-1 items-center justify-center">
+          <p className="font-mono text-xs text-dim">No replay loaded.</p>
+        </div>
+      )}
     </main>
   );
 }

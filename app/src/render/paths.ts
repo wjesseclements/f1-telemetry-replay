@@ -79,7 +79,8 @@ export function buildScenePaths(scene: Scene, fit: FitTransform): ScenePaths {
   return {
     ribbon: buildRibbonPath(scene.ribbon, fit),
     trails: scene.carPaths.map(
-      (pts, i) => new TrailPainter(toScreenArray(pts, fit), scene.carBuckets[i]),
+      (pts, i) =>
+        new TrailPainter(toScreenArray(pts, fit), scene.carBuckets[i]),
     ),
     corners: scene.corners.map((corner) => ({
       badge: offsetBy(corner.at, corner.dir, CORNER_OFFSET_PX, fit),
@@ -126,12 +127,7 @@ function buildRibbonPath(ribbon: readonly Point[], fit: FitTransform): Path2D {
  * resized. `fitTransform` is a uniform scale plus a translation with no flip, so a
  * unit direction in rotated-world space is the same direction on screen.
  */
-function offsetBy(
-  at: Point,
-  dir: Point,
-  px: number,
-  fit: FitTransform,
-): Point {
+function offsetBy(at: Point, dir: Point, px: number, fit: FitTransform): Point {
   const p = applyTransform(at, fit);
   return { x: p.x + dir.x * px, y: p.y + dir.y * px };
 }
