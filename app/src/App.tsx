@@ -1,7 +1,18 @@
+import { ReplayError } from "./components/ReplayError";
+import { SpeedLegend } from "./components/SpeedLegend";
 import { TrackCanvas } from "./render/TrackCanvas";
 import { useTransport } from "./store/transport";
 
-export default function App() {
+export interface AppProps {
+  /**
+   * A bootstrap load failure, or `null`. A prop rather than store state: the
+   * transport store holds discrete transport state and nothing else, and this is
+   * decided once before the first render and never changes.
+   */
+  bootstrapError?: string | null;
+}
+
+export default function App({ bootstrapError = null }: AppProps) {
   // A discrete value: it changes when a replay is loaded, not per frame.
   const replay = useTransport((s) => s.replay);
 
@@ -18,9 +29,19 @@ export default function App() {
           </p>
         )}
       </header>
-      <div className="min-h-0 flex-1">
-        {/* Slice 4b renders an error/empty state here when loading fails. */}
-        {replay !== null && <TrackCanvas replay={replay} />}
+      <div className="relative min-h-0 flex-1">
+        {bootstrapError !== null ? (
+          <ReplayError message={bootstrapError} />
+        ) : replay !== null ? (
+          <>
+            <TrackCanvas replay={replay} />
+            <SpeedLegend />
+          </>
+        ) : (
+          <p className="flex h-full items-center justify-center font-mono text-xs text-dim">
+            No replay loaded.
+          </p>
+        )}
       </div>
     </main>
   );

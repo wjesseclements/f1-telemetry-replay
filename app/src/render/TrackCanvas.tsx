@@ -27,6 +27,7 @@ import { sampleAt, wrapClock } from "../engine/interpolate";
 import type { Replay } from "../engine/schema";
 import { useTransport } from "../store/transport";
 import { readChromeColors } from "./palette";
+import { buildScenePaths, type ScenePaths } from "./paths";
 import { buildScene, drawFrame, type Viewport } from "./scene";
 
 /** Margin, in CSS pixels, between the fitted track and the canvas edge. */
@@ -61,8 +62,14 @@ export function TrackCanvas({ replay }: TrackCanvasProps) {
 
     const colors = readChromeColors();
 
-    /** Size the backing store and refit the track. Resize-time work only. */
-    const measure = (): Viewport => {
+    /**
+     * Size the backing store, refit the track and re-project it into screen space.
+     *
+     * All the O(samples) drawing work lives here rather than in the frame callback:
+     * the ribbon path, every sample's screen coordinates and the corner anchors
+     * depend on the viewport, and the viewport changes on resize, not on the clock.
+     */
+    const measure = (): { view: Viewport; paths: ScenePaths } => {
       const dpr = window.devicePixelRatio || 1;
       const width = wrap.clientWidth;
       const height = wrap.clientHeight;
@@ -70,17 +77,19 @@ export function TrackCanvas({ replay }: TrackCanvasProps) {
       canvas.height = Math.max(1, Math.round(height * dpr));
       canvas.style.width = `${width}px`;
       canvas.style.height = `${height}px`;
+      const fit = fitTransform(scene.bounds, width, height, PAD_PX);
       return {
-        width,
-        height,
-        dpr,
-        fit: fitTransform(scene.bounds, width, height, PAD_PX),
+        view: { width, height, dpr, fit },
+        // Fresh trail painters: they refill to the covered portion on the next
+        // frame, so a resize mid-lap redraws the trail at the new scale rather
+        // than leaving it stretched. See `buildScenePaths`.
+        paths: buildScenePaths(scene, fit),
       };
     };
 
-    let view = measure();
+    let measured = measure();
     const observer = new ResizeObserver(() => {
-      view = measure();
+      measured = measure();
     });
     observer.observe(wrap);
 
@@ -125,7 +134,7 @@ export function TrackCanvas({ replay }: TrackCanvasProps) {
       }
 
       const snapshots = sampleAt(replay, clockRef.current);
-      drawFrame(ctx, scene, view, snapshots, colors);
+      drawFrame(ctx, scene, measured.paths, measured.view, snapshots, colors);
     };
 
     rafId = requestAnimationFrame(frame);

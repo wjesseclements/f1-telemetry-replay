@@ -16,6 +16,8 @@ import {
   bucketOf,
   speedColor,
   speedRgb,
+  thermalGradientCss,
+  thermalRangeKmh,
 } from "./color";
 
 describe("THERMAL", () => {
@@ -154,5 +156,59 @@ describe("bucketColor", () => {
       Array.from({ length: SPEED_BUCKETS }, (_, b) => bucketColor(b)),
     );
     expect(colors.size).toBe(SPEED_BUCKETS);
+  });
+});
+
+describe("thermalRangeKmh", () => {
+  it("is the span of the ramp, read from the stops", () => {
+    expect(thermalRangeKmh()).toEqual([
+      THERMAL[0].kmh,
+      THERMAL[THERMAL.length - 1].kmh,
+    ]);
+  });
+});
+
+describe("thermalGradientCss", () => {
+  const css = thermalGradientCss();
+
+  it("carries every THERMAL stop, in order, with no re-typed hex", () => {
+    // Built from the stops themselves: retuning THERMAL retunes the legend, which
+    // is the whole reason this is generated rather than written out in CSS.
+    const colors = [...css.matchAll(/rgb\(\d+,\d+,\d+\)/g)].map((m) => m[0]);
+    expect(colors).toEqual(
+      THERMAL.map((s) => `rgb(${s.rgb[0]},${s.rgb[1]},${s.rgb[2]})`),
+    );
+    expect(css).not.toMatch(/#[0-9a-f]{3,6}/i);
+  });
+
+  it("spans 0% to 100% left to right", () => {
+    expect(css.startsWith("linear-gradient(90deg, ")).toBe(true);
+    expect(css).toContain(`rgb(${THERMAL[0].rgb.join(",")}) 0%`);
+    expect(css).toMatch(/100%\)$/);
+  });
+
+  it("positions stops by speed, not evenly by index", () => {
+    const pcts = [...css.matchAll(/ ([\d.]+)%/g)].map((m) => Number(m[1]));
+    expect(pcts).toHaveLength(THERMAL.length);
+    expect(pcts[0]).toBe(0);
+    expect(pcts[pcts.length - 1]).toBe(100);
+
+    const [coldest, hottest] = thermalRangeKmh();
+    THERMAL.forEach((stop, i) => {
+      const want = ((stop.kmh - coldest) / (hottest - coldest)) * 100;
+      expect(pcts[i], `stop ${stop.kmh}`).toBeCloseTo(want, 1);
+    });
+
+    // The ramp is deliberately non-uniform, so an evenly-spread gradient — the
+    // thing you get by ignoring `kmh` — must not pass.
+    const even = THERMAL.map((_, i) => (i / (THERMAL.length - 1)) * 100);
+    expect(pcts).not.toEqual(even);
+  });
+
+  it("stays monotonically ascending", () => {
+    const pcts = [...css.matchAll(/ ([\d.]+)%/g)].map((m) => Number(m[1]));
+    for (let i = 1; i < pcts.length; i++) {
+      expect(pcts[i]).toBeGreaterThan(pcts[i - 1]);
+    }
   });
 });

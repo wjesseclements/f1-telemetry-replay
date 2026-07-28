@@ -86,3 +86,30 @@ export function bucketColor(bucket: number): string {
   const span = BUCKET_MAX_KMH - BUCKET_MIN_KMH;
   return speedColor(BUCKET_MIN_KMH + ((bucket + 0.5) / SPEED_BUCKETS) * span);
 }
+
+/** The speeds the ramp spans, `[coldest, hottest]` in km/h — for legend labels. */
+export function thermalRangeKmh(): readonly [number, number] {
+  return [THERMAL[0].kmh, THERMAL[THERMAL.length - 1].kmh];
+}
+
+/**
+ * The thermal ramp as a CSS `linear-gradient`, left (cold) to right (hot).
+ *
+ * The legend swatch has to be GENERATED from `THERMAL` rather than re-typed as hex —
+ * see this file's header, and the prototype for the failure mode: it hard-codes the
+ * same five colours a second time in its stylesheet (`TelemetryReplay.jsx:588`), so
+ * retuning a stop silently desyncs the legend from the trail it is labelling.
+ *
+ * Stops are positioned by where their speed actually falls across the ramp, not
+ * spread evenly, so the swatch is the same non-uniform ramp `speedRgb` interpolates.
+ */
+export function thermalGradientCss(): string {
+  const [coldest, hottest] = thermalRangeKmh();
+  const span = hottest - coldest;
+  const stops = THERMAL.map((stop) => {
+    // One decimal place: enough to place a stop sub-pixel on any real swatch width.
+    const pct = Math.round(((stop.kmh - coldest) / span) * 1000) / 10;
+    return `rgb(${stop.rgb[0]},${stop.rgb[1]},${stop.rgb[2]}) ${pct}%`;
+  });
+  return `linear-gradient(90deg, ${stops.join(", ")})`;
+}

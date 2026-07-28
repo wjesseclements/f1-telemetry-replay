@@ -95,11 +95,57 @@ built **into** the slice that introduces them — never deferred to a late audit
   `clockRef` (not React/store state); no per-frame `setState`; one car, no count
   special-casing; smooth 60fps.
 
-### [ ] Slice 4b — Full track render + load/error states + reduced-motion
+### [x] Slice 4b — Full track render + load/error states + reduced-motion
 - Complete the render: speed-bucketed **trail** (the signature), start/finish line, and
   corner markers — all reading the engine, drawn in the same rAF loop.
 - Render an **error/empty state** if fixture load/parse fails (don't crash on bad data).
 - **`prefers-reduced-motion`**: start paused (no ambient motion); otherwise autoplay.
+- **Amendment (this slice):** the trail is **retained and append-only**, not rebuilt per
+  frame. `src/render/trail.ts` holds one `Path2D` per speed bucket per car and appends
+  only the segments the clock has newly crossed — 0 or 1 per frame at 60fps on a 10 Hz
+  grid. The prototype's approach (nine fresh `Path2D`s and a full re-walk every frame)
+  was the first real per-frame allocation pressure in the app, and 4a's `drawRibbon` was
+  already allocating ~585 point objects per frame to redraw a line that had not moved.
+  Both are gone: `src/render/paths.ts` projects world→screen once per **resize** into a
+  retained ribbon path and a flat `Float64Array`, so the frame callback allocates nothing
+  but one point per car.
+  - The only rebuild is a BACKWARDS clock (lap wrap or a backwards seek) — a `Path2D`
+    cannot be un-drawn — plus a resize. That accounting is now a test, not a comment:
+    `Path2D` construction is counted and asserted flat across 120 frames, +1 build on
+    resize, +1 reset on wrap/back-seek, and **zero** on a forward seek.
+  - A resize rebuilds the painters, which resets them; the next frame refills to exactly
+    the covered portion at the current index. Pinned by test at the new scale, with a
+    negative assertion that it is not the old projection.
+  - **Trail semantics: covered-portion.** The trail shows where the car has been THIS
+    lap and resets at the line. Confirmed over two laps against the alternative
+    (persist a completed lap, reset only on a backwards seek): at steady pace
+    lap-over-lap variation is minimal, so persistence preserves redundant information,
+    while the reset reads as a clean lap-rhythm marker. Slice 5's scrubber can assume
+    this.
+  - Draw order is `ribbon → trail (head segment included) → start/finish → corner
+    badges → car markers`, pinned by a test on the recorded call order. The head
+    segment belongs with the rest of the trail: drawn after the chrome it would paint
+    over badges every other trail segment passes under, and at 20 cars each car's head
+    would paint over its neighbours'. Car positions are computed once per frame into a
+    `Float64Array` allocated at measure time, so splitting the passes stays free.
+- **Amendment (this slice):** corner labels are offset off the racing line via a new pure
+  `geometry.labelDirection` — the local track normal, sign-disambiguated by the lap's
+  centroid. Drawn at their own coordinates (as the prototype does) they sit on top of the
+  trail, which is the one thing on the canvas worth looking at. The offset is applied in
+  SCREEN pixels after the transform, so a badge stays a constant distance clear at any
+  zoom. Start/finish uses the schema's own `track.startFinish.angle` through
+  `rotateHeading` — the same world-vs-screen correction 4a added for the heading tick.
+- **Amendment (this slice):** the bootstrap error does **not** live in the transport store
+  (rule 1: discrete transport state only). `src/data/bootstrap.ts` returns a result
+  instead of throwing, `main.tsx` passes it to `App` as a prop, and
+  `components/ReplayError.tsx` renders `ReplayValidationError.message` **verbatim** in a
+  `<pre>` — the message is newline-structured and its `→ at cars[0].samples[3].speed`
+  lines are the whole point, so it is shown, not summarised.
+- **Amendment (this slice):** reduced motion is read once at store-construction time
+  (`src/store/motion.ts`), turning AUTOPLAY off rather than the feature — play/pause and
+  seek keep working. Re-reading it live would yank playback from someone who had just
+  pressed play. `matchMedia` is guarded because jsdom has none and the store would
+  otherwise throw at import, taking every test with it.
 - **Verify:** trail paints by speed; corners + start/finish render correctly; reduced-motion
   starts paused; a deliberately broken fixture shows the error state instead of a blank canvas.
 
@@ -151,6 +197,14 @@ built **into** the slice that introduces them — never deferred to a late audit
 ### [ ] Slice 9 — Multi-car render + driver selection + gaps
 - Render iterates the existing `cars[]` (already an array — no count branching). Driver
   show/highlight selection; relative gaps in the HUD.
+- **Design constraint (decided in Slice 4b, not open for re-debate):** the full thermal
+  trail is a property of the **selected car only**. Unselected cars get at most a short
+  fading tail in team colour. Twenty full-lap speed trails on near-identical racing lines
+  is visual mud — the trails overlap, the thermal ramp stops encoding anything legible,
+  and the signature of the app becomes noise. Settled here so Slice 9 inherits it as a
+  constraint rather than rediscovering it. `TrailPainter` already supports this: trail
+  length is whatever range of segments gets appended, so a short tail is a bounded
+  `syncTo` window, not a different mechanism.
 - **Verify:** multi-car replay shows all cars at the same instant; **≥50fps with 20
   cars** on a mid-tier laptop; selecting/highlighting drivers works by keyboard.
 
