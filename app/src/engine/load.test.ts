@@ -16,7 +16,7 @@
 import { describe, it, expect } from "vitest";
 import sampleLap from "./__fixtures__/sample-lap.json";
 import { parseReplay, ReplayValidationError } from "./load";
-import { SCHEMA_VERSION } from "./schema";
+import { GRID_TOLERANCE_S, SCHEMA_VERSION } from "./schema";
 
 /** A mutable deep copy of the fixture, typed loosely so tests can break it on purpose. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mutations are deliberately invalid; that is the point of these tests
@@ -198,5 +198,132 @@ describe("parseReplay — rejection", () => {
     const err = expectRejection(bad);
     expect(err.message).toMatch(/^Invalid replay data: /);
     expect(err.source).toBeUndefined();
+  });
+});
+
+describe("parseReplay — uniform-grid guard", () => {
+  // interpolate.ts looks samples up with `index = t * sampleRateHz` and never reads
+  // `t` again (architecture rule 3). Strictly-increasing `t` is not enough to make
+  // that safe — it admits arbitrary spacing — so the grid itself is part of the
+  // contract, and a pipeline emitting irregular timestamps must fail here rather than
+  // draw the car in the wrong place.
+  it("accepts the fixture, which sits exactly on its 10 Hz grid", () => {
+    const { meta, cars } = parseReplay(sampleLap);
+    for (const [k, s] of cars[0].samples.entries()) {
+      expect(Math.abs(s.t - k / meta.sampleRateHz)).toBeLessThanOrEqual(
+        GRID_TOLERANCE_S,
+      );
+    }
+  });
+
+  it("rejects a sample nudged off the grid, naming the index", () => {
+    const bad = clone();
+    bad.cars[0].samples[300].t = bad.cars[0].samples[300].t + 0.05;
+
+    const err = expectRejection(bad, "sample-lap.json");
+    expect(err.message).toContain("uniform 10 Hz grid");
+    expect(err.message).toContain("cars[0].samples[300].t");
+    expect(err.issues[0].path).toEqual(["cars", 0, "samples", 300, "t"]);
+  });
+
+  it("tolerates the pipeline's 3-decimal rounding of t", () => {
+    const ok = clone();
+    // +1 ms: real rounding drift, not irregular sampling.
+    ok.cars[0].samples[4].t = ok.cars[0].samples[4].t + 0.001;
+    expect(() => parseReplay(ok)).not.toThrow();
+
+    const bad = clone();
+    bad.cars[0].samples[4].t = bad.cars[0].samples[4].t + 0.003;
+    expect(() => parseReplay(bad)).toThrow(ReplayValidationError);
+  });
+
+  it("reports one grid violation per car, not one per sample", () => {
+    const bad = clone();
+    // Shift the whole tail of the lap: hundreds of samples are now off-grid.
+    for (let k = 100; k < bad.cars[0].samples.length; k++) {
+      bad.cars[0].samples[k].t = bad.cars[0].samples[k].t + 0.5;
+    }
+
+    const err = expectRejection(bad);
+    const gridIssues = err.issues.filter((i) =>
+      i.message.includes("uniform 10 Hz grid"),
+    );
+    expect(gridIssues).toHaveLength(1);
+    expect(gridIssues[0].path).toEqual(["cars", 0, "samples", 100, "t"]);
+  });
+});
+
+describe("parseReplay — span agreement", () => {
+  // Three spans have to stay interchangeable: meta.duration (what the transport
+  // wraps on), samples.length / sampleRateHz (what interpolate.ts wraps on), and
+  // every OTHER car's span (what v2 needs for all drivers to show the same instant).
+  // Left unchecked, a mismatch is not a crash — it is a slow desync between the car
+  // and the scrubber that grows a little every lap. Locking them together here makes
+  // it a load-time failure instead.
+  const spanIssues = (err: ReplayValidationError) =>
+    err.issues.filter((i) =>
+      i.message.includes("must cover the replay's duration"),
+    );
+
+  it("accepts the fixture, whose car spans exactly meta.duration", () => {
+    const { meta, cars } = parseReplay(sampleLap);
+    expect(cars[0].samples.length / meta.sampleRateHz).toBe(meta.duration);
+  });
+
+  it("rejects a car whose samples were truncated, naming the car index", () => {
+    const bad = clone();
+    bad.cars[0].samples.length -= 5; // 580 samples = 58.0s against a 58.5s duration
+
+    const err = expectRejection(bad, "sample-lap.json");
+    expect(spanIssues(err)).toHaveLength(1);
+    expect(err.issues[0].path).toEqual(["cars", 0, "samples"]);
+    expect(err.message).toContain("spans 58s");
+    expect(err.message).toContain("meta.duration is 58.5s");
+  });
+
+  it("tolerates the pipeline being one grid step short, but not two", () => {
+    const oneShort = clone();
+    oneShort.cars[0].samples.length -= 1; // floor(duration * rate) rounding
+    expect(() => parseReplay(oneShort)).not.toThrow();
+
+    const twoShort = clone();
+    twoShort.cars[0].samples.length -= 2;
+    expect(() => parseReplay(twoShort)).toThrow(ReplayValidationError);
+  });
+
+  it("rejects a duration that disagrees with the samples it describes", () => {
+    const bad = clone();
+    bad.meta.duration = 120;
+
+    const err = expectRejection(bad);
+    expect(spanIssues(err)).toHaveLength(1);
+  });
+
+  it("rejects multi-car desync — drivers carrying different sample counts", () => {
+    // The v2 failure this exists to prevent: cars on different-length grids cannot
+    // all be showing the same instant, and Slice 9 must never see such a replay.
+    const bad = clone();
+    const second = structuredClone(bad.cars[0]);
+    second.driver = "LEC";
+    second.samples.length -= 30;
+    bad.cars.push(second);
+
+    const err = expectRejection(bad);
+    const issues = spanIssues(err);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].path).toEqual(["cars", 1, "samples"]);
+    expect(err.message).toContain("car LEC spans");
+  });
+
+  it("accepts a multi-car replay where every car shares the grid", () => {
+    const ok = clone();
+    const second = structuredClone(ok.cars[0]);
+    second.driver = "LEC";
+    second.color = "#F91536";
+    ok.cars.push(second);
+
+    const replay = parseReplay(ok);
+    expect(replay.cars).toHaveLength(2);
+    expect(replay.cars[1].samples).toHaveLength(replay.cars[0].samples.length);
   });
 });

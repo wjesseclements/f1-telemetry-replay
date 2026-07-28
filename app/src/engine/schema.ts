@@ -113,15 +113,73 @@ const CarSchema = z
     }
   });
 
-export const ReplaySchema = z.object({
-  meta: MetaSchema,
-  track: TrackSchema,
-  // Always an array — v1 emits one car, v2 emits twenty, and nothing branches on
-  // the count. (CLAUDE.md architecture rule 2.)
-  cars: z.array(CarSchema).min(1, {
-    error: "replay.cars must contain at least one car",
-  }),
-});
+/**
+ * Tolerance, in seconds, for a sample's `t` against its ideal grid position.
+ *
+ * The pipeline rounds `t` to 3 decimal places, so 2 ms leaves comfortable headroom
+ * for that rounding plus float error while still catching real irregularity.
+ */
+export const GRID_TOLERANCE_S = 0.002;
+
+export const ReplaySchema = z
+  .object({
+    meta: MetaSchema,
+    track: TrackSchema,
+    // Always an array — v1 emits one car, v2 emits twenty, and nothing branches on
+    // the count. (CLAUDE.md architecture rule 2.)
+    cars: z.array(CarSchema).min(1, {
+      error: "replay.cars must contain at least one car",
+    }),
+  })
+  .superRefine((replay, ctx) => {
+    // Uniform-grid guard. `interpolate.ts` looks samples up with `index = t *
+    // sampleRateHz` and never reads `t` again (CLAUDE.md architecture rule 3), so
+    // irregular spacing would silently place the car in the wrong spot rather than
+    // fail. Strictly-increasing `t` (checked per car above) is not enough: it admits
+    // arbitrary gaps. This is the load-time guard for that assumption.
+    //
+    // It lives here rather than on CarSchema because it needs `meta.sampleRateHz`,
+    // which a car cannot see.
+    const { sampleRateHz, duration } = replay.meta;
+    // The span comparison is done in SAMPLE COUNTS, not seconds: comparing seconds
+    // means subtracting nearby doubles, and |58.4 - 58.5| evaluates to
+    // 0.10000000000000142 — over a 0.1 s tolerance that should have passed. Counts
+    // are integers, so "within one grid step" is exact.
+    const expectedSamples = Math.round(duration * sampleRateHz);
+
+    replay.cars.forEach((car, c) => {
+      // Span agreement. `interpolate.ts` wraps the clock on the car's OWN grid
+      // (`samples.length / sampleRateHz`) because that is the array being indexed,
+      // while the transport wraps its clock on `meta.duration`. Those are two
+      // different numbers, and if they ever drift apart the car and the scrubber
+      // disagree a little more with every lap — a slow desync with no error.
+      //
+      // Pinning every car's span to `meta.duration` here keeps the two definitions
+      // interchangeable by construction, and rejects multi-car replays whose drivers
+      // carry different sample counts (v2 desync) before anything can render them.
+      if (Math.abs(car.samples.length - expectedSamples) > 1) {
+        const span = car.samples.length / sampleRateHz;
+        ctx.addIssue({
+          code: "custom",
+          path: ["cars", c, "samples"],
+          message: `car ${car.driver} spans ${span}s (${car.samples.length} samples at ${sampleRateHz} Hz) but meta.duration is ${duration}s (${expectedSamples} samples); every car must cover the replay's duration to within one grid step`,
+        });
+      }
+
+      for (let k = 0; k < car.samples.length; k++) {
+        const ideal = k / sampleRateHz;
+        const actual = car.samples[k].t;
+        if (Math.abs(actual - ideal) > GRID_TOLERANCE_S) {
+          ctx.addIssue({
+            code: "custom",
+            path: ["cars", c, "samples", k, "t"],
+            message: `samples must lie on a uniform ${sampleRateHz} Hz grid: sample ${k} has t=${actual} but the grid puts it at ${ideal}`,
+          });
+          break; // one issue per car is enough; don't flood the error message
+        }
+      }
+    });
+  });
 
 export type Replay = z.infer<typeof ReplaySchema>;
 export type Meta = Replay["meta"];
