@@ -256,19 +256,67 @@ built **into** the slice that introduces them — never deferred to a late audit
   installs `requirements-dev.txt` only, so FastF1 is not even importable there.
 - **Verify:** `npm run check` green (313 tests, engine coverage 100%); `pytest` green
   (57 tests, `replay_transform` 100% lines+branches); `npm run validate:replay` green on
-  both goldens and exit-1 with named paths on a deliberately broken one. **Outstanding —
-  needs a networked human:** run the pipeline command from CLAUDE.md against a real
-  session and check the render (corner count, lap time, top speed) and in particular
-  `meta.rotation`'s sign, which cannot be verified offline — see the note in Slice 7.
+  both goldens and exit-1 with named paths on a deliberately broken one.
+- **Verified against real data (2026-07-28, 2024 Monza Q VER, 797 samples @ 10 Hz):**
+  the lap renders true — layout recognisably Monza, corner badges on corners,
+  start/finish perpendicular to the track, thermal ramp hot on the straights and cold
+  through the chicanes, DRS pill behaving. **`meta.rotation`'s sign convention is
+  CORRECT as-is** (FastF1 gave 95.0° for Monza; `geometry.rotateWorld` consumes it
+  unchanged). No negation needed — this was the slice's one open question and it is
+  closed. Slice 6 is done.
+
+### [ ] Slice 6b — Arc-length reparameterization (dot velocity agrees with speed)
+
+**Promoted from Backlog, ahead of Slice 7.** Four reasons, recorded so the ordering is
+not re-litigated: it is the single most **user-visible** quality issue in the app; it is
+**fully diagnosed with numbers** (below), so it is scoped work rather than an
+investigation; it is **pipeline-only with one golden refresh**, so the blast radius is
+small and known; and it should land **before any real-data lap becomes someone's demo**
+— the surging dot is the first thing a viewer notices and the hardest to un-see.
+
+- **Symptom:** on a real lap the car marker's apparent velocity surges and eases on the
+  straights, outside any braking zone, visibly disagreeing with the speed the HUD shows.
+- **Measured cause** (`monza_ver.json` + raw FastF1 streams, 2026-07-28). The first
+  hypothesis was piecewise-constant velocity from a low-rate position stream; the
+  numbers refuted the mechanism while confirming the premise:
+  - Position and car telemetry are independent channels, each ~**4.2 Hz** median
+    (240 ms) and **irregularly** spaced (p10 160 ms, p90 400 ms, min 40 ms);
+    `get_telemetry()` merges them to ~7.4 Hz (308 `pos` + 300 `car` + 2 interpolated).
+  - **Not stair-stepping:** in the emitted 10 Hz file the implied velocity changes at
+    **742 of 795** step boundaries (run lengths `[(1,695),(2,40),(3,5),(4,1)]`). Noise,
+    not held segments. `|Δxy|/Δt` vs the speed channel is **r = 0.697**, implied speeds
+    reaching **740 km/h** against a true max of **348**, ratio range 0.28–2.41.
+  - **Inherited, not introduced:** the raw position stream alone scores **r = 0.704**;
+    our 10 Hz resampling nudges it to **0.737**.
+  - **High-frequency jitter:** widening the differencing window from ~240 ms to ~1.3 s
+    takes r from **0.707 → 0.974** and the implied/actual ratio's sd from
+    **0.280 → 0.070**. Real motion survives smoothing; the error averages out.
+- **Well-posed:** path length from the position stream (**5742.6 m**) and ∫speed·dt
+  (**5732.8 m**) agree to **0.17%** — the channels agree on distance and disagree only
+  on timing, which is exactly what makes speed the better parameterization.
+- **Scope:** variable-step resampling driven by **∫speed·dt** — each 10 Hz sample
+  advances the distance the car actually covered, with position supplying the path
+  shape and speed supplying the progress along it. Includes a decision, written down,
+  about which channel wins where they disagree. **Pipeline-only:** `x`/`y` are
+  re-derived before they are written, so `schema.ts`, `src/engine/` and the renderer are
+  untouched; cost is one golden refresh (`python tests/regenerate_golden.py`).
+- **Prior art:** `prototype/TelemetryReplay.jsx:85` `resampleByArcLength(pts, step)`
+  walks a polyline emitting points at **equal** arc-length steps. That is the geometry
+  half only — this needs the variable-step form.
+- **Verify:** post-fix, recompute implied-vs-actual speed correlation at **k = 1** (the
+  single-step window, no smoothing): **target r > 0.97**, matching what the k = 5 window
+  already recovers from the same data — i.e. the fix should make one step as truthful as
+  a 1.3 s average is today. Plus the eyeball check on a real lap: the dot no longer
+  surges on the straights, and marker motion tracks the HUD speed. Pytest covers the new
+  resampling against synthetic frames to the usual ≥90% lines+branches bar.
 
 ### [ ] Slice 7 — v1 acceptance & polish (measure built-in concerns)
-- **Carried in from Slice 6 (needs network, so it could not be settled there):** check a
-  real lap end to end. `meta.rotation` comes from FastF1's `circuit_info.rotation` and is
-  applied by `geometry.rotateWorld` (a standard rotation matrix on canvas' y-down axes);
-  whether the two conventions agree in SIGN is unverified, because no real circuit info
-  exists offline to check against. If a known circuit renders mirrored or on its side,
-  the fix is a negation in the pipeline — decided by looking at the render, then
-  documented. Also confirm corner count, lap time and top speed are plausible.
+- ~~Carried in from Slice 6: verify `meta.rotation`'s sign against a real lap.~~
+  **Settled 2026-07-28 — the convention agrees, no change needed.** FastF1's
+  `circuit_info.rotation` (95.0° for Monza) feeds `geometry.rotateWorld` unchanged and
+  the circuit renders true. Recorded here so nobody re-opens it: the pipeline must pass
+  `ci.rotation` through **as-is**, and a future circuit rendering sideways is a bug in
+  something else, not a missing negation.
 - Responsive layout; final empty/error copy. Measure the numeric acceptance criteria:
   60fps with 1 car, cold-load < 2s on fixture, Lighthouse Perf ≥90 / A11y ≥95 / Best
   Practices ≥95. Fix regressions in the concerns already built (not new late work).
