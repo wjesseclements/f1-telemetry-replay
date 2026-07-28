@@ -7,7 +7,7 @@
  * pass with the clock in `useState`.
  */
 import { Profiler } from "react";
-import { render, cleanup } from "@testing-library/react";
+import { render, cleanup, act } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MAX_FRAME_DT_S } from "../engine/clock";
 import {
@@ -262,14 +262,24 @@ describe("TrackCanvas", () => {
     );
     expect(commits).toBe(1);
 
-    for (let i = 0; i < 60; i++) raf.tick();
+    // Frames and store writes both run inside `act`, so any render they schedule
+    // is flushed and counted before the assertion. Without it this test passes
+    // even when the canvas subscribes to the store — the re-render just lands
+    // too late to be seen.
+    act(() => {
+      for (let i = 0; i < 60; i++) raf.tick();
+    });
     // Transport changes are read by the loop, not subscribed to, so they must not
     // re-render the canvas either.
-    useTransport.getState().pause();
-    useTransport.getState().setSpeedMult(2);
-    useTransport.getState().seek(10);
-    useTransport.getState().play();
-    for (let i = 0; i < 60; i++) raf.tick();
+    act(() => {
+      useTransport.getState().pause();
+      useTransport.getState().setSpeedMult(2);
+      useTransport.getState().seek(10);
+      useTransport.getState().play();
+    });
+    act(() => {
+      for (let i = 0; i < 60; i++) raf.tick();
+    });
 
     expect(commits).toBe(1);
     // 120 frames painted, one React commit total.

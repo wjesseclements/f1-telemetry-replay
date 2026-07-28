@@ -68,7 +68,7 @@ built **into** the slice that introduces them — never deferred to a late audit
 - **Verify:** `npm run test -- --run` green with coverage ≥90% on engine modules present
   as of this slice; still zero React/DOM imports anywhere in `src/engine/`.
 
-### [ ] Slice 4a — Store + single rAF loop + bare car on track
+### [x] Slice 4a — Store + single rAF loop + bare car on track
 - `src/store/` (Zustand): **discrete transport only** — `isPlaying`, `speedMult`,
   `seekTarget`, loaded `replay`. **No clock in the store.**
 - `src/render/`: canvas component + one `requestAnimationFrame` loop owning a
@@ -77,6 +77,20 @@ built **into** the slice that introduces them — never deferred to a late audit
 - Draw the faint full track ribbon + a single car marker moving along the fixture lap.
   No trail/corners/start-finish yet.
 - App loads + `parseReplay`s the committed fixture on startup (schema validation at load).
+- **Amendment (this slice):** the clock's advance rule moved into the engine as
+  `src/engine/clock.ts` (`frameDelta`, `advanceClock`, `MAX_FRAME_DT_S`) instead of
+  living inside the rAF callback. The loop keeps the clock ref; the engine owns the
+  arithmetic, so the discipline is unit-tested and under the `perFile` coverage gate:
+  scaled deltas accumulate (never derived from an absolute timestamp, so a speed
+  change cannot rescale elapsed time), `dt` is clamped to 100 ms (a backgrounded tab
+  resumes without teleporting), and wrapping goes through the existing `wrapClock`
+  rather than a second implementation.
+- **Amendment (this slice):** `geometry.rotateHeading(headingRad, rotationDeg)` was
+  added to fix a world-vs-screen mismatch found in review. Positions are rotated by
+  `meta.rotation` before drawing, but `sampleCarAt` returns a WORLD-space heading, so
+  anything that points — the marker's heading tick now, the car body later — was off
+  by exactly the rotation. Invisible in the car's position, which is why the pin test
+  measures the drawn tick against successive *screen-space* marker positions.
 - **Verify:** `npm run dev` shows the car animating the fixture lap; the clock lives in
   `clockRef` (not React/store state); no per-frame `setState`; one car, no count
   special-casing; smooth 60fps.
