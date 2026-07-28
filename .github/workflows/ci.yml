@@ -37,5 +37,7 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
-      - run: npm run test -- --run
+      # --coverage enforces the src/engine/** thresholds in vite.config.ts. Without
+      # it the bar would only hold on a developer's machine.
+      - run: npm run test -- --run --coverage
       - run: npm run build

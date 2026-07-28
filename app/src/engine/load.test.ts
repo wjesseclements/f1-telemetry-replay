@@ -16,7 +16,7 @@
 import { describe, it, expect } from "vitest";
 import sampleLap from "./__fixtures__/sample-lap.json";
 import { parseReplay, ReplayValidationError } from "./load";
-import { SCHEMA_VERSION } from "./schema";
+import { GRID_TOLERANCE_S, SCHEMA_VERSION } from "./schema";
 
 /** A mutable deep copy of the fixture, typed loosely so tests can break it on purpose. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mutations are deliberately invalid; that is the point of these tests
@@ -198,5 +198,57 @@ describe("parseReplay — rejection", () => {
     const err = expectRejection(bad);
     expect(err.message).toMatch(/^Invalid replay data: /);
     expect(err.source).toBeUndefined();
+  });
+});
+
+describe("parseReplay — uniform-grid guard", () => {
+  // interpolate.ts looks samples up with `index = t * sampleRateHz` and never reads
+  // `t` again (architecture rule 3). Strictly-increasing `t` is not enough to make
+  // that safe — it admits arbitrary spacing — so the grid itself is part of the
+  // contract, and a pipeline emitting irregular timestamps must fail here rather than
+  // draw the car in the wrong place.
+  it("accepts the fixture, which sits exactly on its 10 Hz grid", () => {
+    const { meta, cars } = parseReplay(sampleLap);
+    for (const [k, s] of cars[0].samples.entries()) {
+      expect(Math.abs(s.t - k / meta.sampleRateHz)).toBeLessThanOrEqual(
+        GRID_TOLERANCE_S,
+      );
+    }
+  });
+
+  it("rejects a sample nudged off the grid, naming the index", () => {
+    const bad = clone();
+    bad.cars[0].samples[300].t = bad.cars[0].samples[300].t + 0.05;
+
+    const err = expectRejection(bad, "sample-lap.json");
+    expect(err.message).toContain("uniform 10 Hz grid");
+    expect(err.message).toContain("cars[0].samples[300].t");
+    expect(err.issues[0].path).toEqual(["cars", 0, "samples", 300, "t"]);
+  });
+
+  it("tolerates the pipeline's 3-decimal rounding of t", () => {
+    const ok = clone();
+    // +1 ms: real rounding drift, not irregular sampling.
+    ok.cars[0].samples[4].t = ok.cars[0].samples[4].t + 0.001;
+    expect(() => parseReplay(ok)).not.toThrow();
+
+    const bad = clone();
+    bad.cars[0].samples[4].t = bad.cars[0].samples[4].t + 0.003;
+    expect(() => parseReplay(bad)).toThrow(ReplayValidationError);
+  });
+
+  it("reports one grid violation per car, not one per sample", () => {
+    const bad = clone();
+    // Shift the whole tail of the lap: hundreds of samples are now off-grid.
+    for (let k = 100; k < bad.cars[0].samples.length; k++) {
+      bad.cars[0].samples[k].t = bad.cars[0].samples[k].t + 0.5;
+    }
+
+    const err = expectRejection(bad);
+    const gridIssues = err.issues.filter((i) =>
+      i.message.includes("uniform 10 Hz grid"),
+    );
+    expect(gridIssues).toHaveLength(1);
+    expect(gridIssues[0].path).toEqual(["cars", 0, "samples", 100, "t"]);
   });
 });

@@ -52,7 +52,11 @@ from FastF1 data. PRD.md holds the detail; this file holds the law.
 
 ## Testing
 
-- Every `src/engine/` module has Vitest unit tests. Target ≥90% line coverage there.
+- Every `src/engine/` module has Vitest unit tests. **≥90% lines/branches/functions is
+  enforced, not aspirational** — a `perFile` vitest coverage threshold on
+  `src/engine/**` in `app/vite.config.ts`, run by `npm run check` and by CI. Per file,
+  not aggregate: a new untested module scores 0% and fails on its own rather than
+  hiding behind the average. Tests ship with the module, not in a later cleanup.
 - Cover: O(1) lookup correctness, interpolation at boundaries/wrap, rotation/fit math,
   speed→color stops, schema acceptance + rejection, (v2) session-time alignment.
 - Tests use the committed `src/engine/__fixtures__/sample-lap.json` — **never the
@@ -73,6 +77,8 @@ from FastF1 data. PRD.md holds the detail; this file holds the law.
   (`.claude/commands/review.md`) and reporting its checklist results.
 - If a direction is wrong, stop and say so rather than absorbing a bad instruction.
 - **Flag consequences** of an instruction instead of silently complying.
+- Auto-merge (squash) may be enabled without asking on PRs whose full content was
+  pre-approved in-session; any PR containing an undiscussed decision sits for review.
 
 ## Branching & release (trunk-based CD)
 
