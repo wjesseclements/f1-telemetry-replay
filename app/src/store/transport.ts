@@ -13,6 +13,7 @@
  */
 import { create } from "zustand";
 import type { Replay } from "../engine/schema";
+import { prefersReducedMotion } from "./motion";
 
 export interface TransportState {
   /** The validated replay, or `null` before bootstrap has loaded one. */
@@ -41,8 +42,15 @@ export interface TransportState {
 
 export const useTransport = create<TransportState>((set) => ({
   replay: null,
-  // Autoplay by default. Slice 4b makes this conditional on prefers-reduced-motion.
-  isPlaying: true,
+  /**
+   * Autoplay, unless the user has asked for reduced motion.
+   *
+   * Read once, when the store module is first imported — deliberately. Re-reading it
+   * live would let an OS setting change yank playback away from someone who had just
+   * pressed play, so the preference decides where the replay STARTS and the human
+   * decides everything after that.
+   */
+  isPlaying: !prefersReducedMotion(),
   speedMult: 1,
   seekTarget: null,
 

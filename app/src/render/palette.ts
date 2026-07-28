@@ -17,6 +17,12 @@ const TOKENS = {
   bg: ["--c-bg", "#0a0d12"],
   line: ["--c-line", "#232a34"],
   trackFill: ["--c-track-fill", "#0e1218"],
+  /** The corner badge's disc. */
+  panel2: ["--c-panel2", "#161b24"],
+  /** Corner numbers and the S/F label. */
+  dim: ["--c-dim", "#8a94a6"],
+  /** The start/finish line itself — the one bright mark on the track. */
+  txt: ["--c-txt", "#e6eaf0"],
 } as const;
 
 export type ChromeColors = { [K in keyof typeof TOKENS]: string };
@@ -41,5 +47,8 @@ export function readChromeColors(): ChromeColors {
     bg: resolve(...TOKENS.bg),
     line: resolve(...TOKENS.line),
     trackFill: resolve(...TOKENS.trackFill),
+    panel2: resolve(...TOKENS.panel2),
+    dim: resolve(...TOKENS.dim),
+    txt: resolve(...TOKENS.txt),
   };
 }

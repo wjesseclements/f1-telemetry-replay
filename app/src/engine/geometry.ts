@@ -32,6 +32,23 @@ export interface FitTransform {
 const DEG_TO_RAD = Math.PI / 180;
 
 /**
+ * Rotate one point about the world origin by `rotationDeg`.
+ *
+ * The single-point form exists for the render loop: sampling gives one position per
+ * car per frame, and going through `rotateWorld` for it would allocate an array
+ * every frame to hold `cars.length` points. Same maths, one definition.
+ */
+export function rotatePoint(p: Point, rotationDeg: number): Point {
+  const rad = rotationDeg * DEG_TO_RAD;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  return {
+    x: p.x * cos - p.y * sin,
+    y: p.x * sin + p.y * cos,
+  };
+}
+
+/**
  * Rotate points about the world origin by `rotationDeg` (as `meta.rotation` gives it).
  *
  * The circuit rotation FastF1 publishes is what makes a track read the way it does on
@@ -42,13 +59,91 @@ export function rotateWorld(
   pts: readonly Point[],
   rotationDeg: number,
 ): Point[] {
-  const rad = rotationDeg * DEG_TO_RAD;
-  const cos = Math.cos(rad);
-  const sin = Math.sin(rad);
-  return pts.map((p) => ({
-    x: p.x * cos - p.y * sin,
-    y: p.x * sin + p.y * cos,
-  }));
+  return pts.map((p) => rotatePoint(p, rotationDeg));
+}
+
+/**
+ * Arithmetic mean of `pts` — a stand-in for "the middle of the track".
+ *
+ * Only ever used to decide which side of the racing line is *outside*, so the
+ * centre of mass of the sample points is precise enough; nothing depends on it
+ * being the true centroid of the enclosed area.
+ *
+ * @throws {RangeError} on an empty array, for the same reason `computeBounds` does.
+ */
+export function centroid(pts: readonly Point[]): Point {
+  if (pts.length === 0) {
+    throw new RangeError("centroid needs at least one point");
+  }
+  let sx = 0;
+  let sy = 0;
+  for (const p of pts) {
+    sx += p.x;
+    sy += p.y;
+  }
+  return { x: sx / pts.length, y: sy / pts.length };
+}
+
+/**
+ * Unit vector to offset a label along so it sits OFF the track, not on it.
+ *
+ * Corner numbers drawn at their own coordinates land on the racing line, which is
+ * exactly where the speed trail is — the one thing on the canvas worth looking at.
+ * So the label is pushed along the local outward normal instead.
+ *
+ * "Outward" is the track's normal at the nearest ribbon sample, sign-disambiguated
+ * by `centre`. Using the tangent rather than simply `at - centre` is what makes this
+ * hold on a circuit that folds back on itself: on an inner section the radial
+ * direction points across the track, while the normal is still perpendicular to it.
+ *
+ * Degenerate inputs fall back rather than returning `NaN`: a zero-length tangent
+ * (duplicate ribbon points) falls back to the radial direction, and a point sitting
+ * exactly on `centre` falls back to straight up.
+ *
+ * @throws {RangeError} if `ribbon` is empty — there is no track to be outside of.
+ */
+export function labelDirection(
+  at: Point,
+  ribbon: readonly Point[],
+  centre: Point,
+): Point {
+  if (ribbon.length === 0) {
+    throw new RangeError("labelDirection needs a non-empty ribbon");
+  }
+
+  // Nearest sample by squared distance — no `sqrt` needed to compare.
+  let nearest = 0;
+  let best = Infinity;
+  for (let i = 0; i < ribbon.length; i++) {
+    const dx = ribbon[i].x - at.x;
+    const dy = ribbon[i].y - at.y;
+    const d2 = dx * dx + dy * dy;
+    if (d2 < best) {
+      best = d2;
+      nearest = i;
+    }
+  }
+
+  // A lap is a closed loop, so the neighbours wrap: a corner at sample 0 still has
+  // a tangent rather than a one-sided difference.
+  const n = ribbon.length;
+  const prev = ribbon[(nearest - 1 + n) % n];
+  const next = ribbon[(nearest + 1) % n];
+  const tx = next.x - prev.x;
+  const ty = next.y - prev.y;
+
+  // Perpendicular to the tangent; radial if the tangent has no direction.
+  const radialX = at.x - centre.x;
+  const radialY = at.y - centre.y;
+  const [cx, cy] = tx !== 0 || ty !== 0 ? [-ty, tx] : [radialX, radialY];
+
+  const len = Math.hypot(cx, cy);
+  if (len === 0) return { x: 0, y: -1 };
+
+  // Point it away from the middle of the track. A zero dot product means the label
+  // is on the centre line itself, where neither side is "out" — either is fine.
+  const sign = cx * radialX + cy * radialY < 0 ? -1 : 1;
+  return { x: (sign * cx) / len, y: (sign * cy) / len };
 }
 
 /**

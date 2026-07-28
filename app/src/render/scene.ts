@@ -2,19 +2,25 @@
  * scene.ts — canvas drawing, split into what is computed once and what is painted
  * every frame.
  *
- * `buildScene` runs once per replay: rotating a lap's worth of points and measuring
- * their bounds is O(samples) and the result never changes, so it must not happen in
- * the animation loop. `drawFrame` runs 60 times a second and does only per-car work.
+ * `buildScene` runs once per replay: rotating a lap's worth of points, measuring their
+ * bounds and bucketing every sample's speed is O(samples) and the result never changes,
+ * so it must not happen in the animation loop. `buildScenePaths` (see `paths.ts`) then
+ * projects that into screen space once per resize. `drawFrame` runs 60 times a second
+ * and does only per-car work — and allocates nothing.
  *
  * Everything geometric here delegates to `src/engine/geometry.ts`; this module owns
  * the canvas calls and nothing else (CLAUDE.md architecture rule 4 keeps the maths
  * out of the renderer, and the renderer out of the engine).
  */
+import { bucketOf } from "../engine/color";
 import type { CarSnapshot } from "../engine/interpolate";
 import {
   applyTransform,
+  centroid,
   computeBounds,
+  labelDirection,
   rotateHeading,
+  rotatePoint,
   rotateWorld,
   type Bounds,
   type FitTransform,
@@ -22,17 +28,37 @@ import {
 } from "../engine/geometry";
 import type { Replay } from "../engine/schema";
 import type { ChromeColors } from "./palette";
+import type { ScenePaths } from "./paths";
+
+/** A corner marker in rotated world space, with the way its label should lean. */
+export interface SceneCorner {
+  at: Point;
+  /** Unit vector pointing away from the track — see `geometry.labelDirection`. */
+  dir: Point;
+  text: string;
+}
 
 /** Everything about a replay that can be computed before the clock starts. */
 export interface Scene {
   /** The track ribbon, in rotated world coordinates. */
   ribbon: readonly Point[];
+  /** Every car's rotated path, in `replay.cars` order. */
+  carPaths: readonly (readonly Point[])[];
+  /**
+   * Per car, the speed bucket of the segment leaving each sample.
+   *
+   * `Uint8Array` because there are 9 buckets and one entry per sample: a plain array
+   * would box 585 numbers per car for data that never changes after load.
+   */
+  carBuckets: readonly Uint8Array[];
   /** Bounds of every car's rotated path — what the viewport is fitted to. */
   bounds: Bounds;
   /** `meta.rotation`, needed per frame to bring car headings into screen space. */
   rotationDeg: number;
   /** Car colours, in `replay.cars` order — parallel to the snapshot array. */
   carColors: readonly string[];
+  corners: readonly SceneCorner[];
+  startFinish: { at: Point; angle: number; dir: Point };
 }
 
 /** Where the scene is being drawn, recomputed on resize only. */
@@ -44,11 +70,17 @@ export interface Viewport {
   fit: FitTransform;
 }
 
-const TRACK_EDGE_WIDTH = 13;
+/** Exported so a test can pick the ribbon's stroke out of a recording by width. */
+export const TRACK_EDGE_WIDTH = 13;
 const TRACK_FILL_WIDTH = 9;
 const CAR_GLOW_RADIUS = 6.5;
 const CAR_CORE_RADIUS = 3;
 const CAR_HEADING_LENGTH = 12;
+/** Exported so a test can pick a badge out of a recording by its radius. */
+export const CORNER_BADGE_RADIUS = 9;
+const MARK_WIDTH = 2.5;
+const HAIRLINE_WIDTH = 1;
+const LABEL_FONT = "600 11px ui-monospace, Menlo, monospace";
 
 const toPoints = (samples: Replay["cars"][number]["samples"]): Point[] =>
   samples.map((s) => ({ x: s.x, y: s.y }));
@@ -63,23 +95,67 @@ const toPoints = (samples: Replay["cars"][number]["samples"]): Point[] =>
  */
 export function buildScene(replay: Replay): Scene {
   const { rotation } = replay.meta;
-  const ribbon = rotateWorld(toPoints(replay.cars[0].samples), rotation);
-  const allPoints = replay.cars.flatMap((car) =>
+  const carPaths = replay.cars.map((car) =>
     rotateWorld(toPoints(car.samples), rotation),
   );
+  const ribbon = carPaths[0];
+  const centre = centroid(ribbon);
 
   return {
     ribbon,
-    bounds: computeBounds(allPoints),
+    carPaths,
+    // The bucket of the segment LEAVING sample k, so index k is the trail segment
+    // k → k+1. The last entry is only ever used by the head segment.
+    carBuckets: replay.cars.map(
+      (car) => Uint8Array.from(car.samples, (s) => bucketOf(s.speed)),
+    ),
+    bounds: computeBounds(carPaths.flat()),
     rotationDeg: rotation,
     carColors: replay.cars.map((car) => car.color),
+    corners: replay.track.corners.map((corner) => {
+      const at = rotatePoint({ x: corner.x, y: corner.y }, rotation);
+      return {
+        at,
+        dir: labelDirection(at, ribbon, centre),
+        // `letter` is "" for a plain numbered corner and "A"/"B" for a named
+        // complex, so concatenating covers both without branching.
+        text: `${corner.number}${corner.letter}`,
+      };
+    }),
+    startFinish: startFinishOf(replay, rotation, ribbon, centre),
   };
 }
 
-/** Paint one frame: clear, track ribbon, then one marker per car. */
+function startFinishOf(
+  replay: Replay,
+  rotation: number,
+  ribbon: readonly Point[],
+  centre: Point,
+): Scene["startFinish"] {
+  const { x, y, angle } = replay.track.startFinish;
+  const at = rotatePoint({ x, y }, rotation);
+  return {
+    at,
+    // The schema stores a WORLD-space angle, and the track is drawn rotated, so it
+    // needs the same correction the car's heading tick does — otherwise the line
+    // sits across the track at `rotation` degrees off square. See `rotateHeading`.
+    angle: rotateHeading(angle, rotation),
+    dir: labelDirection(at, ribbon, centre),
+  };
+}
+
+/**
+ * Paint one frame, back to front: track outline, trail, start/finish, corner badges,
+ * then the cars on top.
+ *
+ * Allocates nothing per car except the two small points the transform returns. The
+ * ribbon and the trail are retained `Path2D`s built at measure time, so lap length
+ * costs nothing here.
+ */
 export function drawFrame(
   ctx: CanvasRenderingContext2D,
   scene: Scene,
+  paths: ScenePaths,
   view: Viewport,
   snapshots: readonly CarSnapshot[],
   colors: ChromeColors,
@@ -88,17 +164,43 @@ export function drawFrame(
   ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
   ctx.clearRect(0, 0, view.width, view.height);
 
-  drawRibbon(ctx, scene.ribbon, view.fit, colors);
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
 
-  // Rotate every car's position in one call, then pair by index: `sampleAt`
-  // returns snapshots in `replay.cars` order, which is `scene.carColors` order.
-  // Rotation is linear, so rotating the interpolated position is identical to
-  // interpolating between rotated positions.
-  const rotated = rotateWorld(snapshots, scene.rotationDeg);
-  rotated.forEach((p, i) => {
+  drawRibbon(ctx, paths.ribbon, colors);
+
+  // Car positions are needed twice — by the trail's head segment here, and by the
+  // marker after the chrome — so they are computed once into a scratch buffer that
+  // was allocated at measure time. Recomputing them in the second pass would be
+  // cheap; allocating a point array per frame to carry them would not.
+  const at = paths.carPositions;
+  for (let i = 0; i < snapshots.length; i++) {
+    const snapshot = snapshots[i];
+    // Rotation is linear, so rotating the interpolated position is identical to
+    // interpolating between rotated positions.
+    const p = applyTransform(rotatePoint(snapshot, scene.rotationDeg), view.fit);
+    at[i * 2] = p.x;
+    at[i * 2 + 1] = p.y;
+
+    const trail = paths.trails[i];
+    trail.syncTo(snapshot.index);
+    trail.stroke(ctx);
+    // The trail's last whole segment ends at sample `index`; the car is up to one
+    // grid step past it. This closes that gap — and it belongs in THIS pass, with
+    // the rest of the trail: drawn later it would paint over the corner badges that
+    // every other trail segment passes under, and with twenty cars each car's head
+    // would paint over its neighbours' chrome.
+    trail.strokeHead(ctx, snapshot.index, p.x, p.y);
+  }
+
+  drawStartFinish(ctx, paths, colors);
+  drawCorners(ctx, paths, colors);
+
+  for (let i = 0; i < snapshots.length; i++) {
     drawCar(
       ctx,
-      applyTransform(p, view.fit),
+      at[i * 2],
+      at[i * 2 + 1],
       // The heading arrives in WORLD space; the points around it were rotated.
       // Without this the marker points `rotationDeg` off the direction it is
       // visibly travelling — see `rotateHeading`.
@@ -106,43 +208,83 @@ export function drawFrame(
       scene.carColors[i],
       colors,
     );
-  });
+  }
 }
 
 /** The faint closed loop of the circuit: a light edge with a darker fill on top. */
 function drawRibbon(
   ctx: CanvasRenderingContext2D,
-  ribbon: readonly Point[],
-  fit: FitTransform,
+  ribbon: Path2D,
   colors: ChromeColors,
 ): void {
-  if (ribbon.length === 0) return;
-
-  ctx.lineJoin = "round";
-  ctx.lineCap = "round";
-  ctx.beginPath();
-  const first = applyTransform(ribbon[0], fit);
-  ctx.moveTo(first.x, first.y);
-  for (let i = 1; i < ribbon.length; i++) {
-    const p = applyTransform(ribbon[i], fit);
-    ctx.lineTo(p.x, p.y);
-  }
-  // A lap ends where it starts, so the ribbon is closed rather than left with a
-  // gap across the start/finish line.
-  ctx.closePath();
-
   ctx.strokeStyle = colors.line;
   ctx.lineWidth = TRACK_EDGE_WIDTH;
-  ctx.stroke();
+  ctx.stroke(ribbon);
   ctx.strokeStyle = colors.trackFill;
   ctx.lineWidth = TRACK_FILL_WIDTH;
+  ctx.stroke(ribbon);
+}
+
+/** The line across the track where the lap begins and ends. */
+function drawStartFinish(
+  ctx: CanvasRenderingContext2D,
+  paths: ScenePaths,
+  colors: ChromeColors,
+): void {
+  const { from, to, label } = paths.startFinish;
+  ctx.strokeStyle = colors.txt;
+  ctx.lineWidth = MARK_WIDTH;
+  ctx.beginPath();
+  ctx.moveTo(from.x, from.y);
+  ctx.lineTo(to.x, to.y);
   ctx.stroke();
+
+  ctx.font = LABEL_FONT;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = colors.dim;
+  ctx.fillText("S/F", label.x, label.y);
+}
+
+/**
+ * Corner numbers, drawn OFF the racing line with a leader back to the corner.
+ *
+ * On the line they would sit on top of the trail, which is the one thing on the
+ * canvas worth looking at — see `geometry.labelDirection`.
+ */
+function drawCorners(
+  ctx: CanvasRenderingContext2D,
+  paths: ScenePaths,
+  colors: ChromeColors,
+): void {
+  ctx.font = LABEL_FONT;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  for (const corner of paths.corners) {
+    ctx.strokeStyle = colors.line;
+    ctx.lineWidth = HAIRLINE_WIDTH;
+    ctx.beginPath();
+    ctx.moveTo(corner.on.x, corner.on.y);
+    ctx.lineTo(corner.badge.x, corner.badge.y);
+    ctx.stroke();
+
+    ctx.fillStyle = colors.panel2;
+    ctx.beginPath();
+    ctx.arc(corner.badge.x, corner.badge.y, CORNER_BADGE_RADIUS, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = colors.dim;
+    ctx.fillText(corner.text, corner.badge.x, corner.badge.y);
+  }
 }
 
 /** One car: a glowing dot in the car's colour with a tick for its heading. */
 function drawCar(
   ctx: CanvasRenderingContext2D,
-  at: Point,
+  x: number,
+  y: number,
   headingRad: number,
   carColor: string,
   colors: ChromeColors,
@@ -151,22 +293,22 @@ function drawCar(
   ctx.shadowBlur = 18;
   ctx.fillStyle = carColor;
   ctx.beginPath();
-  ctx.arc(at.x, at.y, CAR_GLOW_RADIUS, 0, Math.PI * 2);
+  ctx.arc(x, y, CAR_GLOW_RADIUS, 0, Math.PI * 2);
   ctx.fill();
   ctx.shadowBlur = 0;
 
   ctx.fillStyle = colors.bg;
   ctx.beginPath();
-  ctx.arc(at.x, at.y, CAR_CORE_RADIUS, 0, Math.PI * 2);
+  ctx.arc(x, y, CAR_CORE_RADIUS, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.strokeStyle = carColor;
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.moveTo(at.x, at.y);
+  ctx.moveTo(x, y);
   ctx.lineTo(
-    at.x + Math.cos(headingRad) * CAR_HEADING_LENGTH,
-    at.y + Math.sin(headingRad) * CAR_HEADING_LENGTH,
+    x + Math.cos(headingRad) * CAR_HEADING_LENGTH,
+    y + Math.sin(headingRad) * CAR_HEADING_LENGTH,
   );
   ctx.stroke();
 }

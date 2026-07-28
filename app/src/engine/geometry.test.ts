@@ -10,9 +10,12 @@ import sampleLap from "./__fixtures__/sample-lap.json";
 import { parseReplay } from "./load";
 import {
   applyTransform,
+  centroid,
   computeBounds,
   fitTransform,
+  labelDirection,
   rotateHeading,
+  rotatePoint,
   rotateWorld,
   type Point,
 } from "./geometry";
@@ -22,6 +25,7 @@ const lapPoints: Point[] = replay.cars[0].samples.map((s) => ({
   x: s.x,
   y: s.y,
 }));
+const rotation = replay.meta.rotation;
 
 describe("rotateWorld", () => {
   it("is the identity at 0 degrees", () => {
@@ -259,6 +263,141 @@ describe("rotateHeading", () => {
       // And the unadjusted world heading does NOT match — i.e. this test would
       // have caught the bug rather than passing either way.
       expect(Math.abs(worldHeading - drawnHeading)).toBeGreaterThan(0.2);
+    }
+  });
+});
+
+describe("rotatePoint", () => {
+  it("agrees with rotateWorld point for point", () => {
+    const pts = replay.cars[0].samples
+      .slice(0, 50)
+      .map((s) => ({ x: s.x, y: s.y }));
+    const batch = rotateWorld(pts, rotation);
+    pts.forEach((p, i) => {
+      const one = rotatePoint(p, rotation);
+      expect(one.x).toBeCloseTo(batch[i].x, 12);
+      expect(one.y).toBeCloseTo(batch[i].y, 12);
+    });
+  });
+
+  it("turns +x into +y at 90 degrees", () => {
+    const p = rotatePoint({ x: 1, y: 0 }, 90);
+    expect(p.x).toBeCloseTo(0, 12);
+    expect(p.y).toBeCloseTo(1, 12);
+  });
+});
+
+describe("centroid", () => {
+  it("is the arithmetic mean of the points", () => {
+    expect(
+      centroid([
+        { x: 0, y: 0 },
+        { x: 4, y: 0 },
+        { x: 2, y: 6 },
+      ]),
+    ).toEqual({ x: 2, y: 2 });
+  });
+
+  it("throws on an empty array rather than returning NaN", () => {
+    expect(() => centroid([])).toThrow(RangeError);
+  });
+});
+
+describe("labelDirection", () => {
+  /** A closed circular ribbon of radius `r` about the origin. */
+  const circle = (r: number, n = 64): Point[] =>
+    Array.from({ length: n }, (_, i) => {
+      const a = (i / n) * Math.PI * 2;
+      return { x: Math.cos(a) * r, y: Math.sin(a) * r };
+    });
+
+  const ORIGIN = { x: 0, y: 0 };
+
+  it("points radially outward on a circular track", () => {
+    const dir = labelDirection({ x: 100, y: 0 }, circle(100), ORIGIN);
+    expect(dir.x).toBeCloseTo(1, 6);
+    expect(dir.y).toBeCloseTo(0, 6);
+  });
+
+  it("still points outward for a corner marked just inside the line", () => {
+    const dir = labelDirection({ x: 90, y: 0 }, circle(100), ORIGIN);
+    expect(dir.x).toBeCloseTo(1, 6);
+    expect(dir.y).toBeCloseTo(0, 6);
+  });
+
+  it("wraps the tangent at the seam instead of taking a one-sided difference", () => {
+    const ribbon = circle(100);
+    // ribbon[0] is (100, 0): its neighbours are the LAST and the second sample.
+    const dir = labelDirection(ribbon[0], ribbon, ORIGIN);
+    expect(dir.x).toBeCloseTo(1, 6);
+    expect(dir.y).toBeCloseTo(0, 6);
+  });
+
+  it("uses the track normal, not the radial direction, on an inner section", () => {
+    // A straight run of track along the x-axis with the middle of the circuit off
+    // to one side: radial and normal disagree, and the normal is the right answer.
+    const ribbon: Point[] = [
+      { x: -2, y: 0 },
+      { x: -1, y: 0 },
+      { x: 0, y: 0 },
+      { x: 1, y: 0 },
+      { x: 2, y: 0 },
+    ];
+    const dir = labelDirection({ x: 0, y: 0 }, ribbon, { x: 100, y: 50 });
+    // Perpendicular to the track and on the far side from the centre.
+    expect(dir.x).toBeCloseTo(0, 12);
+    expect(dir.y).toBeCloseTo(-1, 12);
+    // The radial direction would have been roughly (-0.89, -0.45) — pinned so the
+    // cheaper "away from the centroid" implementation cannot pass this test.
+    expect(dir.x).not.toBeCloseTo(-0.894, 2);
+  });
+
+  it("falls back to the radial direction when the tangent has no direction", () => {
+    const stuck = [ORIGIN, ORIGIN, ORIGIN];
+    const dir = labelDirection({ x: 3, y: 4 }, stuck, ORIGIN);
+    expect(dir.x).toBeCloseTo(0.6, 12);
+    expect(dir.y).toBeCloseTo(0.8, 12);
+  });
+
+  it("falls back to straight up when there is no direction at all", () => {
+    const stuck = [ORIGIN, ORIGIN];
+    expect(labelDirection(ORIGIN, stuck, ORIGIN)).toEqual({ x: 0, y: -1 });
+  });
+
+  it("throws on an empty ribbon", () => {
+    expect(() => labelDirection(ORIGIN, [], ORIGIN)).toThrow(RangeError);
+  });
+
+  it("returns a unit vector perpendicular to the track at every fixture corner", () => {
+    const ribbon = rotateWorld(lapPoints, rotation);
+    const centre = centroid(ribbon);
+    expect(replay.track.corners.length).toBeGreaterThan(0);
+
+    for (const corner of replay.track.corners) {
+      const at = rotatePoint({ x: corner.x, y: corner.y }, rotation);
+      const dir = labelDirection(at, ribbon, centre);
+      expect(Math.hypot(dir.x, dir.y), `corner ${corner.number}`).toBeCloseTo(
+        1,
+        12,
+      );
+
+      // Perpendicular to the local tangent — the defining property.
+      let nearest = 0;
+      let best = Infinity;
+      ribbon.forEach((p, i) => {
+        const d2 = (p.x - at.x) ** 2 + (p.y - at.y) ** 2;
+        if (d2 < best) {
+          best = d2;
+          nearest = i;
+        }
+      });
+      const n = ribbon.length;
+      const prev = ribbon[(nearest - 1 + n) % n];
+      const next = ribbon[(nearest + 1) % n];
+      const tangent = { x: next.x - prev.x, y: next.y - prev.y };
+      const len = Math.hypot(tangent.x, tangent.y);
+      const dot = (dir.x * tangent.x + dir.y * tangent.y) / len;
+      expect(dot, `corner ${corner.number} tangent`).toBeCloseTo(0, 10);
     }
   });
 });
