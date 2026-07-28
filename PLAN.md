@@ -265,7 +265,7 @@ built **into** the slice that introduces them — never deferred to a late audit
   unchanged). No negation needed — this was the slice's one open question and it is
   closed. Slice 6 is done.
 
-### [ ] Slice 6b — Arc-length reparameterization (dot velocity agrees with speed)
+### [x] Slice 6b — Arc-length reparameterization (dot velocity agrees with speed)
 
 **Promoted from Backlog, ahead of Slice 7.** Four reasons, recorded so the ordering is
 not re-litigated: it is the single most **user-visible** quality issue in the app; it is
@@ -309,6 +309,69 @@ small and known; and it should land **before any real-data lap becomes someone's
   a 1.3 s average is today. Plus the eyeball check on a real lap: the dot no longer
   surges on the straights, and marker motion tracks the HUD speed. Pytest covers the new
   resampling against synthetic frames to the usual ≥90% lines+branches bar.
+- **Amendment (this slice):** `replay_transform.resample_positions_by_travel` replaces
+  the two `interp_continuous` calls that produced `x`/`y`. Position supplies the path
+  shape (`cumulative_arclength` over the recorded polyline), speed supplies the progress
+  along it (`cumulative_travel`, trapezoid). Nothing else in the pipeline moved, and
+  `schema.ts`, `src/engine/**` and the renderer were not touched — confirmed by the
+  golden diff, in which the ONLY sample fields that changed are `x` and `y`.
+  - The travel integral runs over the **raw** speed samples and is then interpolated
+    onto the grid, not built by integrating the already-resampled `gspeed`. It uses the
+    source samples that fall *between* grid points, which is where a braking zone keeps
+    its detail; and integrating `gspeed` would make the k = 1 verification metric
+    exactly constant by construction, measuring nothing.
+- **Amendment (this slice) — the scale decision, settled.** Progress is normalised onto
+  path length as a **fraction** (`s_k = d_k / d_total * s_total`), not carried across as
+  a raw metric distance. Recorded so it is not re-litigated:
+  - **It makes the transform unit-agnostic.** FastF1's X/Y are in 1/10 m and Speed in
+    km/h, both undocumented. A raw metric mapping would need a hard-coded `0.1` and
+    `1/3.6` in `replay_transform.py`; wrong by either factor — or right until FastF1
+    changes one — and every sample lands at a wildly wrong arc position. A
+    dimensionless ratio cancels both, and a test pins it (`Speed` in mph emits
+    identical positions).
+  - **The lap provably closes,** so total distance was never the question — only its
+    distribution in time, which is the one thing speed is being trusted for.
+  - **It is free on the metric and buys the boundary.** r and the ratio's sd are
+    scale-invariant, so normalising cannot flatter the result. What it buys: a raw
+    mapping leaves the last sample ~9.8 m short of the path end and dumps that
+    shortfall into the wrap step at the start/finish line, where the natural step is
+    ~7 m. Measured after the fix the wrap chord is **6.17 m** against 6.27 m before —
+    unchanged, no lurch at the line.
+  - The 0.17% path-vs-speed disagreement is not resolved by this, it is **distributed**:
+    0.17% spread over every step, finer than the 1 dp `x`/`y` are emitted at.
+- **Amendment (this slice):** degenerate inputs. A **partially** zero speed channel is
+  ordinary data and needs no special case — the travel integral goes flat, the car holds
+  position, motion resumes. **Duplicate position fixes** are dropped before the lookup
+  (zero-length segments carry no direction and would otherwise leave the interpolation
+  leaning on numpy's undocumented NaN fallback for a zero-width interval). An
+  **entirely** zero speed channel, or a path covering no distance, raises
+  `TelemetryShapeError` — falling back to time interpolation would silently reship the
+  exact bug this slice removes, and the module's standing rule is that impossible data
+  fails loudly (the same reason `clamp_throttle` does not clamp speed).
+- **Verified against real data (2026-07-28, 2024 Monza Q VER, 797 samples @ 10 Hz),**
+  k = 1, implied `|Δxy|/Δt` vs the speed channel, true max 348 km/h:
+
+  | | r | ratio mean | ratio sd | ratio range | implied max |
+  |---|---|---|---|---|---|
+  | before | 0.6983 | 1.0018 | 0.2717 | 0.28–2.41 | 740 km/h |
+  | after | **0.9998** | 1.0026 | **0.0070** | 0.96–1.06 | 349 km/h |
+
+  Target r > 0.97 met with room to spare, and the ratio's sd — the metric the diagnosis
+  used — is 39× tighter. **Nothing else moved:** `meta`, corners and every non-position
+  sample field are byte-identical, so lap time, HUD, gears and trail colours are
+  untouched; the emitted polyline's length is unchanged at 5754.8 m, i.e. the samples
+  moved *along* the path, not off it. Mean position shift 3.7 m, max 18.4 m, sample 0
+  exactly 0.
+- **Known artifact this does NOT fix, flagged for Slice 7:** `meta.duration = n/rate`
+  rounds the lap up to a whole grid step (Monza: 79.7 s against a real 79.667 s), so the
+  wrap step traverses ~6.2 m of ground over a full 0.1 s — one slow step per lap, at the
+  line. It is inherited from the grid, not introduced here (the wrap chord is the same
+  before and after), and fixing it means touching `duration` and the schema's
+  span-agreement refinement.
+- **Unrelated pre-existing wart, noticed while regenerating:** `fastf1.plotting` is not
+  bound by a bare `import fastf1` in 3.8.3, so `build_replay.py`'s team-colour lookup
+  always fails and every real lap gets `DEFAULT_COLOR` with an empty team. Present in
+  the pre-fix file too. One import line, but undiscussed, so not touched here.
 
 ### [ ] Slice 7 — v1 acceptance & polish (measure built-in concerns)
 - ~~Carried in from Slice 6: verify `meta.rotation`'s sign against a real lap.~~

@@ -25,6 +25,21 @@ below exists because the Zod schema enforces it at load:
   It carries the RAW FastF1 code — `app/src/engine/drs.ts` owns the undocumented
   10/12/14 mapping, and decoding here as well would duplicate that guess across two
   languages (CLAUDE.md rule 8).
+
+WHY POSITIONS ARE NOT INTERPOLATED IN TIME
+------------------------------------------
+Position and car telemetry are independent FastF1 channels, each around 4.2 Hz and
+IRREGULARLY spaced (p10 160 ms, p90 400 ms). The position channel's shape is good and
+its timestamps are not: interpolating x/y against time therefore placed each 10 Hz
+sample at the wrong distance along an otherwise correct path, and the car marker
+surged and eased on the straights, disagreeing with the speed the HUD showed. Measured
+on 2024 Monza Q VER, the implied velocity `|dxy|/dt` correlated with the speed channel
+at only r = 0.70, reaching 740 km/h against a true maximum of 348.
+
+So the two channels are used for what each is good at: POSITION SUPPLIES THE PATH
+SHAPE, SPEED SUPPLIES THE PROGRESS ALONG IT. `resample_positions_by_travel` places
+grid sample k at the point on the recorded polyline that the cumulative speed integral
+says the car had reached. See `PLAN.md` §Slice 6b for the full diagnosis.
 """
 
 from __future__ import annotations
@@ -190,6 +205,125 @@ def forward_fill(grid: np.ndarray, t: np.ndarray, values: Any) -> np.ndarray:
     return np.asarray(values)[idx]
 
 
+# --- arc-length reparameterization ------------------------------------------------
+
+
+def cumulative_arclength(x: Any, y: Any) -> np.ndarray:
+    """
+    Distance along the recorded polyline at each of its points. `s[0]` is 0 and the
+    result is non-decreasing, so it can be used as `xp` for an interpolation.
+
+    Chordal length: the straight-line distance between consecutive position fixes.
+    It slightly under-reads a curve, which is a rounding-order effect at 4 Hz through
+    a corner and is in any case absorbed by the normalisation in
+    `resample_positions_by_travel`.
+    """
+    px = np.asarray(x, dtype=float)
+    py = np.asarray(y, dtype=float)
+    return np.concatenate(([0.0], np.cumsum(np.hypot(np.diff(px), np.diff(py)))))
+
+
+def cumulative_travel(t: Any, speed: Any) -> np.ndarray:
+    """
+    Cumulative distance travelled by time — the integral of speed, by trapezoid.
+
+    Integrated over the RAW samples rather than over the emitted grid on purpose: it
+    uses every source sample, including those falling between two grid points, which
+    is exactly where a braking zone hides its detail.
+
+    The result is in whatever unit `speed` multiplied by `t` happens to be. Nothing
+    downstream cares, because only the RATIO to the total is ever used — see
+    `resample_positions_by_travel`.
+    """
+    times = np.asarray(t, dtype=float)
+    v = np.asarray(speed, dtype=float)
+    steps = 0.5 * (v[:-1] + v[1:]) * np.diff(times)
+    return np.concatenate(([0.0], np.cumsum(steps)))
+
+
+def resample_positions_by_travel(
+    grid: np.ndarray, t: np.ndarray, x: Any, y: Any, speed: Any
+) -> "tuple[np.ndarray, np.ndarray]":
+    """
+    Place each grid sample at the point along the recorded path where the speed
+    integral says the car had got to.
+
+    Three steps: measure the path (`cumulative_arclength`), measure the progress
+    (`cumulative_travel`), then read the path at that progress.
+
+    NORMALISATION — the decision this function turns on
+    ---------------------------------------------------
+    Progress is scaled onto the path as a FRACTION, `s_k = (d_k / d_total) * s_total`,
+    not carried across as a raw metric distance. On real data the two disagree by
+    about 0.17% (Monza: a 5742.6 m path against a 5732.8 m speed integral), and this
+    is how that disagreement is settled:
+
+    * It makes the transform unit-agnostic, which is the difference between correct
+      and silently broken. FastF1's X/Y are in 1/10 m and Speed is in km/h — both
+      undocumented conventions this module otherwise never has to know. A raw metric
+      mapping would need a hard-coded 0.1 and 1/3.6 baked in here; get either wrong,
+      or have FastF1 change one, and every sample lands at a wildly wrong arc
+      position. A dimensionless ratio cancels both.
+    * The lap provably closes. The recorded path IS the lap and the car demonstrably
+      traversed all of it, so the total distance is not in question — only its
+      distribution in time, which is the one thing speed is being trusted for.
+    * It costs nothing and it fixes the boundary. Correlation and the implied/actual
+      ratio's spread are both scale-invariant, so normalising cannot flatter the
+      quality metric. What it does buy is the endpoint: a raw mapping leaves the last
+      sample ~9.8 m short of the path end, and that shortfall lands entirely in the
+      wrap step at the start/finish line, where the natural step is ~7 m. Trading a
+      0.17% global bias for a ~230% local one at the most-watched point on the
+      circuit is a bad trade.
+    * It cannot overrun. A speed channel reading a few percent high would run off the
+      end of the path under a raw mapping and pancake the final samples onto the line.
+
+    The 0.17% is not resolved by this, it is DISTRIBUTED — 0.17% spread across every
+    step, which is finer than the precision x/y are emitted at.
+
+    BOUNDARY
+    --------
+    `uniform_grid` stops at the last grid point at or before the lap end, so
+    `d_grid[-1] <= d[-1]` and the last sample lands at or just short of the path end,
+    never past it. Short by exactly the travel in the sub-step residual — which is
+    what it should be, because the app wraps the last sample round to the first across
+    one full grid step, so the last sample belongs about one step of travel before the
+    line, not on it. The clip guards float drift, not the algorithm.
+    """
+    s = cumulative_arclength(x, y)
+    d = cumulative_travel(t, speed)
+
+    # Both are failures of the source data rather than dirt to be tidied: a lap that
+    # covers no ground, or one whose speed channel reads zero throughout, cannot be
+    # placed along a path at all. Falling back to time interpolation here would ship
+    # the exact bug this function exists to remove, silently.
+    if s[-1] <= 0.0:
+        raise TelemetryShapeError(
+            "position channel covers no distance; every X/Y fix is the same point"
+        )
+    if d[-1] <= 0.0:
+        raise TelemetryShapeError(
+            "speed channel integrates to zero distance over the lap; positions "
+            "cannot be placed along the path by travelled distance"
+        )
+
+    # A stationary car or a repeated position fix leaves a zero-length segment, whose
+    # two endpoints share an arc length. Dropping them keeps `s` STRICTLY increasing
+    # for the lookup below; left in, it would evaluate a zero-width interval and
+    # depend on numpy's undocumented NaN fallback to survive doing so. They carry no
+    # information either way — both endpoints are the same point.
+    moved = np.concatenate(([True], np.diff(s) > 0.0))
+
+    travelled = interp_continuous(grid, t, d)
+    target = np.clip(travelled / d[-1] * s[-1], 0.0, s[-1])
+
+    px = np.asarray(x, dtype=float)[moved]
+    py = np.asarray(y, dtype=float)[moved]
+    return (
+        interp_continuous(target, s[moved], px),
+        interp_continuous(target, s[moved], py),
+    )
+
+
 # --- assembly ---------------------------------------------------------------------
 
 
@@ -292,8 +426,11 @@ def build_replay_dict(
 
     grid = uniform_grid(float(t[-1]), rate)
 
-    gx = interp_continuous(grid, t, telemetry["X"])
-    gy = interp_continuous(grid, t, telemetry["Y"])
+    # x/y come from the path, parameterised by travelled distance rather than by time
+    # (see the module docstring); every other channel is a plain resample.
+    gx, gy = resample_positions_by_travel(
+        grid, t, telemetry["X"], telemetry["Y"], telemetry["Speed"]
+    )
     gspeed = interp_continuous(grid, t, telemetry["Speed"])
     gthrottle = clamp_throttle(interp_continuous(grid, t, telemetry["Throttle"]))
     gbrake = forward_fill(grid, t, normalise_brake(telemetry["Brake"]))
