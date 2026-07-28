@@ -55,10 +55,16 @@ built **into** the slice that introduces them — never deferred to a late audit
   threshold on `src/engine/**` (lines/branches/functions) in `vite.config.ts`, wired
   into `npm run check` and `ci.yml`. Slice 8's `align.ts` is now gated automatically;
   no re-assertion needed.
-- **Amendment (this slice):** `schema.ts` gained a uniform-grid refinement — every
-  sample's `t` must sit within 2 ms of `k / sampleRateHz`. The O(1) lookup never reads
-  `t`, so irregular spacing had to become a load-time failure rather than a silently
-  misplaced car.
+- **Amendment (this slice):** `schema.ts` gained two replay-level refinements, both
+  load-time guards for assumptions the engine makes and cannot check itself:
+  - **uniform grid** — every sample's `t` within 2 ms of `k / sampleRateHz`. The O(1)
+    lookup never reads `t`, so irregular spacing had to fail loudly rather than
+    silently misplace the car.
+  - **span agreement** — every car's `samples.length / sampleRateHz` within one grid
+    step of `meta.duration`. The engine wraps on the car's own grid and the transport
+    wraps on `meta.duration`; pinning them together turns a slow car-vs-scrubber
+    desync into a load failure, and rejects v2 multi-car replays whose drivers carry
+    different sample counts before Slice 9 can meet one.
 - **Verify:** `npm run test -- --run` green with coverage ≥90% on engine modules present
   as of this slice; still zero React/DOM imports anywhere in `src/engine/`.
 

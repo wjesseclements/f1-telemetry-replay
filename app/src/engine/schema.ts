@@ -140,8 +140,32 @@ export const ReplaySchema = z
     //
     // It lives here rather than on CarSchema because it needs `meta.sampleRateHz`,
     // which a car cannot see.
-    const { sampleRateHz } = replay.meta;
+    const { sampleRateHz, duration } = replay.meta;
+    // The span comparison is done in SAMPLE COUNTS, not seconds: comparing seconds
+    // means subtracting nearby doubles, and |58.4 - 58.5| evaluates to
+    // 0.10000000000000142 — over a 0.1 s tolerance that should have passed. Counts
+    // are integers, so "within one grid step" is exact.
+    const expectedSamples = Math.round(duration * sampleRateHz);
+
     replay.cars.forEach((car, c) => {
+      // Span agreement. `interpolate.ts` wraps the clock on the car's OWN grid
+      // (`samples.length / sampleRateHz`) because that is the array being indexed,
+      // while the transport wraps its clock on `meta.duration`. Those are two
+      // different numbers, and if they ever drift apart the car and the scrubber
+      // disagree a little more with every lap — a slow desync with no error.
+      //
+      // Pinning every car's span to `meta.duration` here keeps the two definitions
+      // interchangeable by construction, and rejects multi-car replays whose drivers
+      // carry different sample counts (v2 desync) before anything can render them.
+      if (Math.abs(car.samples.length - expectedSamples) > 1) {
+        const span = car.samples.length / sampleRateHz;
+        ctx.addIssue({
+          code: "custom",
+          path: ["cars", c, "samples"],
+          message: `car ${car.driver} spans ${span}s (${car.samples.length} samples at ${sampleRateHz} Hz) but meta.duration is ${duration}s (${expectedSamples} samples); every car must cover the replay's duration to within one grid step`,
+        });
+      }
+
       for (let k = 0; k < car.samples.length; k++) {
         const ideal = k / sampleRateHz;
         const actual = car.samples[k].t;

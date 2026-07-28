@@ -252,3 +252,78 @@ describe("parseReplay — uniform-grid guard", () => {
     expect(gridIssues[0].path).toEqual(["cars", 0, "samples", 100, "t"]);
   });
 });
+
+describe("parseReplay — span agreement", () => {
+  // Three spans have to stay interchangeable: meta.duration (what the transport
+  // wraps on), samples.length / sampleRateHz (what interpolate.ts wraps on), and
+  // every OTHER car's span (what v2 needs for all drivers to show the same instant).
+  // Left unchecked, a mismatch is not a crash — it is a slow desync between the car
+  // and the scrubber that grows a little every lap. Locking them together here makes
+  // it a load-time failure instead.
+  const spanIssues = (err: ReplayValidationError) =>
+    err.issues.filter((i) =>
+      i.message.includes("must cover the replay's duration"),
+    );
+
+  it("accepts the fixture, whose car spans exactly meta.duration", () => {
+    const { meta, cars } = parseReplay(sampleLap);
+    expect(cars[0].samples.length / meta.sampleRateHz).toBe(meta.duration);
+  });
+
+  it("rejects a car whose samples were truncated, naming the car index", () => {
+    const bad = clone();
+    bad.cars[0].samples.length -= 5; // 580 samples = 58.0s against a 58.5s duration
+
+    const err = expectRejection(bad, "sample-lap.json");
+    expect(spanIssues(err)).toHaveLength(1);
+    expect(err.issues[0].path).toEqual(["cars", 0, "samples"]);
+    expect(err.message).toContain("spans 58s");
+    expect(err.message).toContain("meta.duration is 58.5s");
+  });
+
+  it("tolerates the pipeline being one grid step short, but not two", () => {
+    const oneShort = clone();
+    oneShort.cars[0].samples.length -= 1; // floor(duration * rate) rounding
+    expect(() => parseReplay(oneShort)).not.toThrow();
+
+    const twoShort = clone();
+    twoShort.cars[0].samples.length -= 2;
+    expect(() => parseReplay(twoShort)).toThrow(ReplayValidationError);
+  });
+
+  it("rejects a duration that disagrees with the samples it describes", () => {
+    const bad = clone();
+    bad.meta.duration = 120;
+
+    const err = expectRejection(bad);
+    expect(spanIssues(err)).toHaveLength(1);
+  });
+
+  it("rejects multi-car desync — drivers carrying different sample counts", () => {
+    // The v2 failure this exists to prevent: cars on different-length grids cannot
+    // all be showing the same instant, and Slice 9 must never see such a replay.
+    const bad = clone();
+    const second = structuredClone(bad.cars[0]);
+    second.driver = "LEC";
+    second.samples.length -= 30;
+    bad.cars.push(second);
+
+    const err = expectRejection(bad);
+    const issues = spanIssues(err);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].path).toEqual(["cars", 1, "samples"]);
+    expect(err.message).toContain("car LEC spans");
+  });
+
+  it("accepts a multi-car replay where every car shares the grid", () => {
+    const ok = clone();
+    const second = structuredClone(ok.cars[0]);
+    second.driver = "LEC";
+    second.color = "#F91536";
+    ok.cars.push(second);
+
+    const replay = parseReplay(ok);
+    expect(replay.cars).toHaveLength(2);
+    expect(replay.cars[1].samples).toHaveLength(replay.cars[0].samples.length);
+  });
+});
