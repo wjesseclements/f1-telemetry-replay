@@ -34,6 +34,54 @@ export const LARGE_STEP_S = 5;
 /** Elements that handle arrow/Home/End themselves. */
 const SELF_STEPPING = new Set(["INPUT", "SELECT", "TEXTAREA"]);
 
+/**
+ * Input types the platform ACTIVATES on Space. Deliberately a type list and not the
+ * `INPUT` tag: `<input type="range">` — the Scrubber — does not activate on Space in
+ * any browser, so exempting the whole tag would silently remove play/pause from the
+ * control most likely to hold focus during playback.
+ */
+const SPACE_ACTIVATED_INPUT_TYPES = new Set([
+  "button",
+  "submit",
+  "reset",
+  "checkbox",
+  "radio",
+  "file",
+  "image",
+  "color",
+]);
+
+/**
+ * Does the platform already do something with Space on this element?
+ *
+ * The file's native-first rule, generalised. It used to be `tag === "BUTTON"`, which
+ * was true of every control that existed at the time; the file picker
+ * (`<input type="file">`) is the first control that activates on Space without being
+ * a button, and it would otherwise open the file dialog AND toggle playback on one
+ * keypress.
+ *
+ * `a[href]` is in the list for consistency with the rule's intent even though links
+ * activate on Enter rather than Space — there is no double-activation to prevent
+ * there, so its only effect is to leave Space alone while a link has focus.
+ */
+function nativelyActivatable(target: EventTarget | null): boolean {
+  // The listener is on `window`, so an unfocused keypress arrives with `window`
+  // itself as the target — not an element, and not something to ask about tag names.
+  if (!(target instanceof Element)) return false;
+  const el = target;
+  switch (el.tagName) {
+    case "BUTTON":
+    case "SUMMARY":
+      return true;
+    case "A":
+      return el.hasAttribute("href");
+    case "INPUT":
+      return SPACE_ACTIVATED_INPUT_TYPES.has((el as HTMLInputElement).type);
+    default:
+      return el.getAttribute("role") === "button";
+  }
+}
+
 const NAVIGATION_KEYS = new Set([
   "ArrowLeft",
   "ArrowRight",
@@ -82,9 +130,10 @@ export function useTransportKeys(replay: Replay | null): void {
       const tag = target?.tagName ?? "";
 
       if (event.key === " " || event.code === "Space") {
-        // A focused button activates on Space natively; handling it here as well would
-        // both toggle playback and press the button.
-        if (tag === "BUTTON") return;
+        // A focused button — or file picker, or checkbox — activates on Space
+        // natively; handling it here as well would both toggle playback and press
+        // the control. See `nativelyActivatable`.
+        if (nativelyActivatable(event.target)) return;
         event.preventDefault(); // stop the page scrolling
         useTransport.getState().togglePlay();
         return;

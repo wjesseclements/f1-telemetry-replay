@@ -190,8 +190,12 @@ Trunk-based development with everything-as-code:
 - **Clean history:** squash-merge only; the Conventional-Commit PR title becomes the
   commit. Merged branches auto-delete; auto-merge can land a PR the moment `verify` is
   green.
-- **Fast pipeline:** typecheck + lint + test + build, dependency-cached, with
-  in-progress runs cancelled on new pushes. Least-privilege `permissions:` (read-only).
+- **Fast pipeline:** typecheck + lint + format + test + build, then `pytest` on Python
+  3.10 and 3.12 — all inside the one `verify` job, because that is the name the ruleset
+  requires and a second job would not block a merge. Dependency-cached, with in-progress
+  runs cancelled on new pushes. Least-privilege `permissions:` (read-only). CI installs
+  `requirements-dev.txt` only, so FastF1 is not importable there and the gate stays
+  network-free.
 - **Deps & rollback:** Dependabot opens weekly grouped PRs (which flow through the same
   gate); rollback is a revert of the merge commit, which Vercel restores instantly.
 
@@ -228,8 +232,11 @@ f1-telemetry-replay/
 │     ├─ render/                         # canvas draw + rAF loop (reads engine)
 │     └─ components/                     # Header, HUD, Transport
 └─ pipeline/                             # Python FastF1 → JSON
-   ├─ build_replay.py                    # single lap (exists — refactor in)
-   └─ requirements.txt
+   ├─ build_replay.py                    # fetch + CLI (the only networked module)
+   ├─ replay_transform.py                # PURE resample/clamp/assemble (numpy only)
+   ├─ tests/                             # pytest + committed goldens (no network)
+   ├─ requirements.txt                   # fastf1/pandas — human's machine
+   └─ requirements-dev.txt               # pytest/numpy — what CI installs
 ```
 
 The existing `TelemetryReplay.jsx` prototype and `build_replay.py` are starting

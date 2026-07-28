@@ -27,6 +27,10 @@ function Harness() {
     <>
       <button type="button">a button</button>
       <input type="range" aria-label="slider" />
+      <input type="file" aria-label="picker" />
+      <div role="button" tabIndex={0}>
+        a div pretending
+      </div>
     </>
   );
 }
@@ -86,6 +90,34 @@ describe("play/pause", () => {
     fireEvent.keyDown(button, { key: " ", code: "Space" });
     // Untouched: the browser will click the button instead.
     expect(useTransport.getState().isPlaying).toBe(true);
+  });
+
+  it("stands down when the FILE PICKER has focus", () => {
+    // The picker is the first control in the app that activates on Space without
+    // being a `<button>`. Before the exemption was widened, one keypress would have
+    // opened the file dialog AND toggled playback.
+    const { getByLabelText } = render(<Harness />);
+    fireEvent.keyDown(getByLabelText("picker"), { key: " ", code: "Space" });
+    expect(useTransport.getState().isPlaying).toBe(true);
+  });
+
+  it("stands down when a [role=button] has focus", () => {
+    const { getByText } = render(<Harness />);
+    fireEvent.keyDown(getByText("a div pretending"), {
+      key: " ",
+      code: "Space",
+    });
+    expect(useTransport.getState().isPlaying).toBe(true);
+  });
+
+  it("still toggles when the RANGE scrubber has focus", () => {
+    // The carve-out, pinned. A range input does NOT activate on Space, so exempting
+    // every `INPUT` would silently remove play/pause from the control most likely to
+    // hold focus during playback. If someone ever simplifies the predicate to
+    // `tagName === "INPUT"`, this fails.
+    const { getByLabelText } = render(<Harness />);
+    fireEvent.keyDown(getByLabelText("slider"), { key: " ", code: "Space" });
+    expect(useTransport.getState().isPlaying).toBe(false);
   });
 });
 

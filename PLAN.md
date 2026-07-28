@@ -190,7 +190,7 @@ built **into** the slice that introduces them — never deferred to a late audit
 - **Verify:** every control is keyboard-operable with visible focus; HUD + playhead
   track the clock; DRS pill absent on a `drs`-less fixture; no per-frame `setState`.
 
-### [ ] Slice 6 — Wire real data via pipeline (offline app stays on fixture)
+### [x] Slice 6 — Wire real data via pipeline (offline app stays on fixture)
 - Refactor `pipeline/build_replay.py` so output conforms **exactly** to `schema.ts`
   (continuous interp; discrete forward-fill; **omit `drs` when all-zero/2026+**).
   **Inherited from Slice 2** (decided there, not optional here): emit
@@ -204,11 +204,71 @@ built **into** the slice that introduces them — never deferred to a late audit
   and let the app optionally load it; the committed fixture stays the default so app +
   tests + CI run fully offline. Pipeline needs network → **human runs it locally**,
   never in CI/sandbox.
-- **Verify:** run the pipeline command from CLAUDE.md locally; app loads the JSON and
-  validates clean; visuals checked against a known lap (corner count, lap time, top
-  speed plausible). CI remains network-free and green.
+- **Amendment (this slice):** the pipeline split along the seam that made it untestable.
+  `pipeline/replay_transform.py` is **pure** — numpy and the stdlib only, no FastF1, no
+  pandas, no I/O — and holds every resampling/clamping/assembly decision;
+  `build_replay.py` is the only module that touches the network. This is the Python
+  mirror of rule 4, and it is what lets pytest run in CI with no network at all.
+  `pytest.ini` gates `replay_transform.py` at **≥90% lines AND branches**
+  (`--cov-branch --cov-fail-under=90`), the same bar `vite.config.ts` holds the engine
+  to. Currently 100%/100% over 57 tests.
+- **Amendment (this slice):** the schema is enforced against pipeline output in **two**
+  places, because each is blind to the other's failure mode:
+  - `app/scripts/validate-replay.ts` (`npm run validate:replay -- <file>`, via
+    `vite-node`) runs the app's **real `parseReplay`** over a file. `build_replay.py`
+    invokes it on what it just wrote and exits non-zero on failure — a missing
+    toolchain is a hard error with instructions, not a silent skip, and `--no-validate`
+    is the explicit escape hatch. This catches *this* file, on the human's machine.
+  - `pipeline/tests/golden/lap-{drs,nodrs}.golden.json` are committed real pipeline
+    output, validated through `parseReplay` by `src/data/pipelineContract.test.ts` in
+    CI. This catches *future* files — a pipeline edit nobody ran, or a schema
+    tightening that invalidates existing output.
+  - `pipeline/tests/test_golden.py` keeps the goldens honest about the pipeline
+    (regenerate + compare), so the vitest half cannot be fooled by a stale file.
+    Its equality is **structural** (`json.loads`), never bytes: byte equality would be
+    hostage to key order and float repr. The files are nonetheless *written* through
+    one canonical `dump_json` (sorted keys, indent 2) so a refreshed golden diffs line
+    by line — formatting for review, structure for the assertion.
+- **Amendment (this slice):** real data reaches the app through a **file picker**
+  (`ReplayFilePicker` + `data/loadReplayFile.ts`), not a fetch. `app/public/data/` is
+  gitignored, so a `fetch("/data/…")` path would work in `npm run dev` and 404 on the
+  deployed site; the picker works identically in dev and production with zero network,
+  on a file that by policy cannot be committed. A failed pick keeps the replay already
+  on screen and renders the validation message **verbatim** (the Slice 4b rule).
+  `TrackCanvas` zeroes its clock ref when the replay's *identity* changes — the ref
+  deliberately outlives a resize, and a picked lap must start at the line, not most of
+  the way round someone else's circuit.
+- **Amendment (this slice):** the picker forced the keyboard handler's native-first rule
+  to generalise. It exempted Space for `tagName === "BUTTON"` only, which was every
+  control that existed at the time; `<input type="file">` is the first control that
+  activates on Space without being a button, so one keypress would have opened the file
+  dialog **and** toggled playback. `nativelyActivatable()` now covers
+  BUTTON/SUMMARY/`[role=button]`/`a[href]`/Space-activating input **types**. It is a
+  type list rather than the `INPUT` tag on purpose: `<input type="range">` — the
+  Scrubber — does *not* activate on Space, so exempting the tag would have silently
+  removed play/pause from the control most likely to hold focus during playback. Pinned
+  by a test in both directions.
+- **Amendment (this slice):** `verify` now runs `format:check` (Slice 5 recorded this as
+  done; it was only in `npm run check`, never in CI) and the Python suite on **3.10 and
+  3.12** as step pairs *inside* `verify` — not a separate job, because
+  `.github/ruleset.json` names `verify` as the required check by that exact string and a
+  separate job would not block a merge until a human edited branch protection. CI
+  installs `requirements-dev.txt` only, so FastF1 is not even importable there.
+- **Verify:** `npm run check` green (313 tests, engine coverage 100%); `pytest` green
+  (57 tests, `replay_transform` 100% lines+branches); `npm run validate:replay` green on
+  both goldens and exit-1 with named paths on a deliberately broken one. **Outstanding —
+  needs a networked human:** run the pipeline command from CLAUDE.md against a real
+  session and check the render (corner count, lap time, top speed) and in particular
+  `meta.rotation`'s sign, which cannot be verified offline — see the note in Slice 7.
 
 ### [ ] Slice 7 — v1 acceptance & polish (measure built-in concerns)
+- **Carried in from Slice 6 (needs network, so it could not be settled there):** check a
+  real lap end to end. `meta.rotation` comes from FastF1's `circuit_info.rotation` and is
+  applied by `geometry.rotateWorld` (a standard rotation matrix on canvas' y-down axes);
+  whether the two conventions agree in SIGN is unverified, because no real circuit info
+  exists offline to check against. If a known circuit renders mirrored or on its side,
+  the fix is a negation in the pipeline — decided by looking at the render, then
+  documented. Also confirm corner count, lap time and top speed are plausible.
 - Responsive layout; final empty/error copy. Measure the numeric acceptance criteria:
   60fps with 1 car, cold-load < 2s on fixture, Lighthouse Perf ≥90 / A11y ≥95 / Best
   Practices ≥95. Fix regressions in the concerns already built (not new late work).

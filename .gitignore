@@ -14,6 +14,11 @@ app/public/data/
 pipeline/.venv/
 __pycache__/
 *.py[cod]
+# pytest/coverage artefacts (the committed goldens live in pipeline/tests/golden/)
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
 
 # --- FastF1 cache (can be hundreds of MB per session) ---
 .f1cache/

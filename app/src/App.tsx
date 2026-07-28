@@ -1,5 +1,6 @@
 import { Hud } from "./components/Hud";
 import { ReplayError } from "./components/ReplayError";
+import { ReplayFilePicker } from "./components/ReplayFilePicker";
 import { SpeedLegend } from "./components/SpeedLegend";
 import { TransportBar } from "./components/TransportBar";
 import { useTransportKeys } from "./keyboard/useTransportKeys";
@@ -36,6 +37,9 @@ export default function App({ bootstrapError = null }: AppProps) {
             {replay.cars.map((car) => car.driver).join(" ")}
           </p>
         )}
+        {/* The way a real lap from the pipeline gets in. The committed fixture stays
+            the default, so the app still boots with zero network. */}
+        <ReplayFilePicker />
       </header>
 
       {bootstrapError !== null ? (

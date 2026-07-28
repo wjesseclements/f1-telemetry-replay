@@ -32,6 +32,15 @@ export default tseslint.config(
     },
   },
   {
+    // scripts/ runs under node (vite-node), not in a browser. Without this the
+    // validator's `process`/`console` would lint as undefined globals — and a lint
+    // error there is exactly the kind of thing that silently stops being checked.
+    files: ["scripts/**/*.{ts,tsx}"],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
+  {
     // CLAUDE.md rule 4: src/engine/ is pure and headless — no React/DOM/canvas.
     // Enforce the React/react-dom ban here (DOM/canvas are globals, not imports).
     files: ["src/engine/**/*.{ts,tsx}"],
