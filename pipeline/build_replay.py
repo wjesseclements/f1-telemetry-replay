@@ -41,6 +41,11 @@ from pathlib import Path
 
 import fastf1
 
+# Imported explicitly: a bare `import fastf1` does NOT bind the `plotting` submodule,
+# so `fastf1.plotting.get_team_color` raised AttributeError on every run and the
+# `except` below quietly handed every real lap the fallback colour.
+import fastf1.plotting
+
 from replay_transform import (
     OPTIONAL_COLUMNS,
     REQUIRED_COLUMNS,
