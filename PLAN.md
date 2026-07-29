@@ -431,6 +431,34 @@ small and known; and it should land **before any real-data lap becomes someone's
 - **Verify:** `npm run check` green; `npm audit` clean (or only dev-only residual, stated
   explicitly); a **real Vercel preview build** succeeds — not an "Ignored Build Step" skip.
 
+### [ ] Slice 11 — Make the pipeline's colour fallback honest
+
+Two halves of one idea, filed together from PR #31 and **not** done there — that PR was
+deliberately one import. **A default that impersonates a plausible answer is the same
+species of quiet wrongness PR #31 removed**, which is why this is a chore rather than a
+nicety.
+
+- **`DEFAULT_COLOR` currently impersonates a real answer.** It is `#3671C6` — the hex
+  widely published as Red Bull's brand blue — so a failed team-colour lookup renders as
+  a plausible Red Bull lap instead of an obvious default. That is precisely why the
+  always-failing `fastf1.plotting` lookup survived a whole slice unnoticed: the wrong
+  output looked right. Change it to an obviously-wrong neutral (e.g. `#888888`) so a
+  failed lookup *looks* failed.
+- **Decide whether the `except` around the colour lookup should warn loudly.** Broad and
+  non-fatal was the right original call — a colour is not worth failing a fetch over —
+  but now that the guaranteed failure is gone, that path has effectively never been
+  exercised. If it fires again it is a NEW condition worth looking at, not background
+  noise, and it currently prints one line into the middle of FastF1's own log output.
+- **Touches the golden ratchet:** `DEFAULT_COLOR` lives in `replay_transform.py`, so
+  expect a golden refresh alongside. Both goldens pass an explicit `#3671C6`, so the
+  emitted colour may not move at all — check rather than assume.
+- **One small PR**, single-purpose, same protocol as PRs #23 and #31.
+- **Verify:** `pytest` green with `replay_transform.py` still at 100% lines+branches
+  (`test_normalise_color` parameterises `DEFAULT_COLOR` and will need its expectations
+  re-read, not just re-run); `npm run check` green; and a real lap built for a driver
+  whose team colour cannot be confused with the new fallback — **not VER**, whose blue
+  is what made the original bug invisible.
+
 ## Backlog (ideas — not committed)
 - WebGL/3D escalation **only** if measured 20-car perf demands it (documented path).
 - Track-surface niceties: kerbs, sector coloring, mini-map.
