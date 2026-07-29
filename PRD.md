@@ -87,6 +87,16 @@ whatever isn't defended — defend these.
    linearly interpolated; discrete channels (nGear, DRS, Brake) are forward-filled.
    (Source [2].) **Throttle counts as continuous** and is interpolated — settled in
    Slice 3; the prototype carried it forward, which made the HUD bar step.
+   - **Refined in Slice 6b: X/Y interpolate against DISTANCE, not time.** Position and
+     car telemetry are independent FastF1 channels; the position channel's shape is
+     trustworthy and its ~4.2 Hz timestamps are not, so interpolating X/Y against time
+     placed each sample at the wrong distance along a correct path and the car marker
+     surged on the straights (implied vs actual speed correlated at only r = 0.70).
+     The pipeline now parameterises the recorded polyline by arc length and advances
+     along it by the cumulative speed integral — position supplies the path shape,
+     speed supplies the progress. They remain continuous, linearly interpolated
+     channels; only the parameter changed. This is a **pipeline** concern: the app
+     receives x/y and never re-derives them.
 
 ## Data model — the replay schema
 

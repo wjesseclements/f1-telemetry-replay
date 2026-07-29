@@ -31,11 +31,14 @@ from replay_transform import (
     build_samples,
     check_columns,
     clamp_throttle,
+    cumulative_arclength,
+    cumulative_travel,
     dump_json,
     forward_fill,
     interp_continuous,
     normalise_brake,
     normalise_color,
+    resample_positions_by_travel,
     uniform_grid,
 )
 
@@ -179,6 +182,366 @@ def test_forward_fill_clamps_before_the_first_sample():
     """A grid point before the first source sample carries the first value."""
     t = np.array([0.5, 1.5])
     assert list(forward_fill(np.array([0.0, 0.25]), t, np.array([3, 4]))) == [3, 3]
+
+
+# --- arc-length reparameterization ------------------------------------------------
+#
+# Positions are placed by TRAVELLED DISTANCE, not by time: the position channel's
+# shape is trustworthy and its timestamps are not. Everything below works on paths
+# with a closed-form answer, so the assertions are exact values rather than
+# descriptions of whatever the code happens to do.
+
+
+def test_cumulative_arclength_measures_a_known_polyline():
+    """A 3-4 leg and a 3 back: 0, 3, 7, 10."""
+    s = cumulative_arclength([0.0, 3.0, 3.0, 0.0], [0.0, 0.0, 4.0, 4.0])
+    assert list(s) == [0.0, 3.0, 7.0, 10.0]
+
+
+def test_cumulative_arclength_starts_at_zero_and_never_decreases():
+    """It is used as `xp` for an interpolation, which requires exactly this."""
+    s = cumulative_arclength([0.0, 1.0, 1.0, -5.0], [0.0, 0.0, 0.0, 2.0])
+    assert s[0] == 0.0
+    assert all(b >= a for a, b in zip(s, s[1:]))
+
+
+def test_cumulative_travel_of_a_constant_speed_is_a_linear_ramp():
+    d = cumulative_travel([0.0, 1.0, 2.0, 3.0], [10.0, 10.0, 10.0, 10.0])
+    assert list(d) == [0.0, 10.0, 20.0, 30.0]
+
+
+def test_cumulative_travel_is_exact_under_constant_acceleration():
+    """
+    The trapezoid rule is EXACT on a linear integrand, so `v = a*t` integrates to
+    `a*t^2/2` with no error to hide behind a tolerance. With a = 2 that is t^2.
+    """
+    t = np.array([0.0, 1.0, 2.0, 3.0])
+    d = cumulative_travel(t, 2.0 * t)
+    assert list(d) == list(t**2)
+
+
+def test_positions_are_evenly_spaced_at_constant_speed_on_a_straight():
+    """The defining case: equal time steps at one speed must cover equal ground."""
+    t = np.array([0.0, 1.0, 2.0])
+    x = np.array([0.0, 50.0, 100.0])
+    y = np.zeros(3)
+    grid = uniform_grid(2.0, 10)
+
+    gx, gy = resample_positions_by_travel(grid, t, x, y, np.full(3, 40.0))
+
+    assert gx == pytest.approx(np.arange(21) * 5.0)
+    assert gy == pytest.approx(np.zeros(21))
+
+
+def test_a_jittered_position_clock_no_longer_moves_the_car_unevenly():
+    """
+    THE BUG, pinned. The recorded positions here are correct in SHAPE and wrong in
+    TIMING — the middle fix is timestamped as if the car had covered a tenth of the
+    straight in half the lap, which is what an independent ~4 Hz position channel
+    looks like. Time interpolation faithfully reproduces the lie and the car crawls
+    then leaps; travelled distance ignores the position clock entirely and reads the
+    truthful, constant speed channel instead.
+    """
+    t = np.array([0.0, 1.0, 2.0])
+    x = np.array([0.0, 10.0, 100.0])
+    y = np.zeros(3)
+    grid = uniform_grid(2.0, 10)
+
+    gx, _ = resample_positions_by_travel(grid, t, x, y, np.full(3, 40.0))
+    steps = np.diff(gx)
+    assert steps == pytest.approx(np.full(20, 5.0))
+
+    # The negative control: what the pipeline used to emit from the same frame.
+    old = np.diff(interp_continuous(grid, t, x))
+    assert old.max() / old.min() == pytest.approx(9.0)
+
+
+def test_positions_follow_a_known_acceleration_profile():
+    """
+    `v = a*t` on a straight line puts sample k at `(t_k/T)^2` of the way along, and
+    the recorded vertices are deliberately spaced EVENLY — proof that the emitted
+    position comes from the speed integral and not from where the fixes happen to sit.
+    """
+    t = np.arange(21) / 10.0
+    x = np.linspace(0.0, 100.0, 21)
+    grid = uniform_grid(2.0, 10)
+
+    gx, _ = resample_positions_by_travel(grid, t, x, np.zeros(21), 5.0 * t)
+
+    assert gx == pytest.approx(100.0 * (t / 2.0) ** 2)
+
+
+def test_positions_do_not_depend_on_the_unit_speed_is_measured_in():
+    """
+    The whole reason progress is normalised onto path length rather than carried
+    across as a metric distance. FastF1's X/Y are in 1/10 m and Speed in km/h, both
+    undocumented; scaling one must not be able to move the car.
+    """
+    t = np.arange(11) / 10.0
+    x = np.linspace(0.0, 300.0, 11)
+    y = np.linspace(0.0, 40.0, 11)
+    speed = 100.0 + 30.0 * np.sin(t)
+    grid = uniform_grid(1.0, 10)
+
+    kmh = resample_positions_by_travel(grid, t, x, y, speed)
+    mph = resample_positions_by_travel(grid, t, x, y, speed / 1.609344)
+
+    # Tight on purpose: the unit factor cancels algebraically, so all that should
+    # survive is the last-bit noise of dividing and re-multiplying by it.
+    assert kmh[0] == pytest.approx(mph[0], rel=1e-12, abs=1e-12)
+    assert kmh[1] == pytest.approx(mph[1], rel=1e-12, abs=1e-12)
+
+
+def test_a_stopped_car_holds_its_position():
+    """
+    Zero speed over part of the lap is ordinary data (a red flag, a pit box), not a
+    degenerate case: the travel integral goes flat, so the car stays put and then
+    moves off again. Only an ENTIRELY zero channel is unusable.
+    """
+    t = np.arange(31) / 10.0
+    speed = np.full(31, 10.0)
+    speed[11:20] = 0.0  # stationary from t=1.1 to t=1.9 inclusive
+    grid = uniform_grid(3.0, 10)
+
+    gx, _ = resample_positions_by_travel(
+        grid, t, np.linspace(0.0, 100.0, 31), np.zeros(31), speed
+    )
+
+    stopped = gx[11:20]
+    assert stopped == pytest.approx(np.full(9, stopped[0]))
+    assert gx[10] < stopped[0] < gx[20]
+
+
+def test_a_repeated_position_fix_changes_nothing():
+    """
+    A duplicated point is a zero-length segment with no direction of its own. It is
+    dropped before the lookup, so the emitted path is identical to the one recorded
+    without it — rather than the lookup landing on a zero-width interval.
+    """
+    grid = uniform_grid(3.0, 10)
+    speed = np.full(4, 20.0)
+    plain = resample_positions_by_travel(
+        grid,
+        np.array([0.0, 1.0, 2.0, 3.0]),
+        np.array([0.0, 1.0, 2.0, 3.0]),
+        np.array([0.0, 0.0, 5.0, 5.0]),
+        speed,
+    )
+    # The same lap, with the fix at (1, 0) reported twice on the same timestamp.
+    doubled = resample_positions_by_travel(
+        grid,
+        np.array([0.0, 1.0, 1.0, 2.0, 3.0]),
+        np.array([0.0, 1.0, 1.0, 2.0, 3.0]),
+        np.array([0.0, 0.0, 0.0, 5.0, 5.0]),
+        np.full(5, 20.0),
+    )
+
+    assert np.array_equal(plain[0], doubled[0])
+    assert np.array_equal(plain[1], doubled[1])
+    assert not np.any(np.isnan(doubled[0]))
+
+
+def test_a_speed_channel_that_never_leaves_zero_is_rejected():
+    """
+    Unusable, and quietly falling back to time interpolation would ship exactly the
+    bug this module removes. The pipeline's standing rule applies: impossible data
+    fails loudly rather than being hidden (compare `clamp_throttle`, which does not
+    clamp speed for the same reason).
+    """
+    grid = uniform_grid(2.0, 10)
+    with pytest.raises(TelemetryShapeError, match="integrates to zero"):
+        resample_positions_by_travel(
+            grid,
+            np.array([0.0, 1.0, 2.0]),
+            np.array([0.0, 50.0, 100.0]),
+            np.zeros(3),
+            np.zeros(3),
+        )
+
+
+def test_a_path_that_covers_no_distance_is_rejected():
+    grid = uniform_grid(2.0, 10)
+    with pytest.raises(TelemetryShapeError, match="covers no distance"):
+        resample_positions_by_travel(
+            grid,
+            np.array([0.0, 1.0, 2.0]),
+            np.full(3, 7.0),
+            np.full(3, 9.0),
+            np.full(3, 200.0),
+        )
+
+
+def test_the_last_sample_lands_at_the_path_end_when_the_grid_covers_the_lap():
+    t = np.arange(21) / 10.0
+    x = 100.0 * np.cos(t)
+    y = 100.0 * np.sin(t)
+    gx, gy = resample_positions_by_travel(
+        uniform_grid(2.0, 10), t, x, y, 150.0 + 20.0 * t
+    )
+    assert (gx[0], gy[0]) == pytest.approx((x[0], y[0]))
+    assert (gx[-1], gy[-1]) == pytest.approx((x[-1], y[-1]))
+
+
+def test_the_last_sample_stops_short_of_the_path_end_and_never_overruns():
+    """
+    The grid ends at the last point at or BEFORE the lap end, so the final sample is
+    short by the travel in that sub-step residual. That is the wanted behaviour, not
+    a rounding accident: the app wraps the last sample round to the first across one
+    full grid step, so the last sample belongs about one step of travel before the
+    line rather than on it.
+    """
+    t = np.arange(22) / 10.0  # lap runs to 2.1 s; the 10 Hz grid stops at 2.0
+    x = np.linspace(0.0, 210.0, 22)
+    grid = uniform_grid(float(t[-1]), 10)
+
+    gx, _ = resample_positions_by_travel(grid, t, x, np.zeros(22), np.full(22, 100.0))
+
+    assert len(grid) == 22 and grid[-1] == pytest.approx(2.1)
+    assert gx[-1] <= x[-1]
+    # One grid step's worth of travel is 10 units here; the residual is zero, so it
+    # reaches the end. Trim the lap and it falls short by exactly the travel lost.
+    short_grid = uniform_grid(2.05, 10)
+    short_gx, _ = resample_positions_by_travel(
+        short_grid, t, x, np.zeros(22), np.full(22, 100.0)
+    )
+    assert short_gx[-1] == pytest.approx(200.0)
+    assert short_gx[-1] < x[-1]
+
+
+def _true_position(t: np.ndarray, period: float) -> np.ndarray:
+    """Position of a car whose speed is `100 + 50*sin(2*pi*t/period)`, from t=0."""
+    w = 2.0 * math.pi / period
+    return 100.0 * t + (50.0 / w) * (1.0 - np.cos(w * t))
+
+
+def _jittered_frame() -> "dict[str, np.ndarray]":
+    """
+    A straight-line lap sampled the way FastF1 delivers one: position and speed are
+    independent channels, so the position fixes carry a timing error the speed
+    channel does not share. No RNG — the jitter is a closed-form function of the
+    index, because `test_golden.py` needs this module to be deterministic.
+    """
+    t = np.arange(0.0, 8.0001, 0.25)
+    jitter = 0.09 * np.sin(4.0 * np.arange(len(t)))
+    return {
+        "t": t,
+        # Recorded WHERE the car was at `t + jitter`, but labelled `t`.
+        "x": _true_position(t + jitter, 8.0),
+        "y": np.zeros(len(t)),
+        "speed": 100.0 + 50.0 * np.sin(2.0 * math.pi * t / 8.0),
+    }
+
+
+def _implied_vs_actual(gx, gy, speed_on_grid, rate) -> "tuple[float, float]":
+    """
+    Single-step implied velocity against the speed channel: (correlation, the sd of
+    the implied/actual ratio). The same two numbers PLAN.md §Slice 6b measures on the
+    real lap, so the unit test and the acceptance check are the same metric.
+    """
+    implied = np.hypot(np.diff(gx), np.diff(gy)) * rate
+    actual = 0.5 * (speed_on_grid[:-1] + speed_on_grid[1:])
+    return float(np.corrcoef(implied, actual)[0, 1]), float((implied / actual).std())
+
+
+def test_single_step_motion_agrees_with_the_speed_channel():
+    """
+    The slice's acceptance bar, at unit scale: implied velocity over ONE grid step —
+    no smoothing window — must correlate with the speed channel at r > 0.97. The
+    negative control is the same frame through the old time interpolation, which is
+    where the surging came from.
+    """
+    frame = _jittered_frame()
+    grid = uniform_grid(float(frame["t"][-1]), SAMPLE_RATE_HZ)
+    speed_on_grid = interp_continuous(grid, frame["t"], frame["speed"])
+
+    gx, gy = resample_positions_by_travel(
+        grid, frame["t"], frame["x"], frame["y"], frame["speed"]
+    )
+    fixed_r, fixed_sd = _implied_vs_actual(gx, gy, speed_on_grid, SAMPLE_RATE_HZ)
+
+    old_x = interp_continuous(grid, frame["t"], frame["x"])
+    old_r, old_sd = _implied_vs_actual(
+        old_x, np.zeros_like(old_x), speed_on_grid, SAMPLE_RATE_HZ
+    )
+
+    assert fixed_r > 0.97
+    assert fixed_sd < 0.05
+    assert old_r < 0.70
+    assert old_sd > 0.25
+
+
+def _project_onto_polyline(px, py, xs, ys) -> "tuple[float, float]":
+    """
+    Project one point onto a polyline: (distance to it, arc length at the foot).
+
+    Deliberately a brute-force scan of every segment, unrelated to the production
+    lookup — a test that reimplemented the transform's own indexing would agree with
+    it by construction and prove nothing.
+    """
+    xs = np.asarray(xs, dtype=float)
+    ys = np.asarray(ys, dtype=float)
+    ax, ay = xs[:-1], ys[:-1]
+    dx, dy = np.diff(xs), np.diff(ys)
+    length_sq = dx**2 + dy**2
+    safe = np.where(length_sq > 0.0, length_sq, 1.0)
+    f = np.where(
+        length_sq > 0.0,
+        np.clip(((px - ax) * dx + (py - ay) * dy) / safe, 0.0, 1.0),
+        0.0,
+    )
+    dist = np.hypot(px - (ax + f * dx), py - (ay + f * dy))
+    j = int(np.argmin(dist))
+    return float(dist[j]), float(
+        cumulative_arclength(xs, ys)[j] + f[j] * math.sqrt(length_sq[j])
+    )
+
+
+def test_every_emitted_point_lies_on_the_recorded_path():
+    """
+    Reparameterisation moves samples ALONG the path; it must not move them off it.
+    The ribbon, the trail and the corner geometry all depend on this — the circuit
+    the app draws is still the circuit the position channel recorded.
+    """
+    channels = synthetic.telemetry()
+    samples = build_replay_dict(channels, synthetic.META)["cars"][0]["samples"]
+
+    for sample in samples:
+        distance, _ = _project_onto_polyline(
+            sample["x"], sample["y"], channels["X"], channels["Y"]
+        )
+        # The tolerance is the schema's own 1 dp rounding on x/y, not slack.
+        assert distance < 0.15
+
+
+def test_emitted_samples_advance_monotonically_along_the_path():
+    """The car never reverses: travelled distance never decreases, so nor does arc."""
+    channels = synthetic.telemetry()
+    samples = build_replay_dict(channels, synthetic.META)["cars"][0]["samples"]
+
+    arcs = [
+        _project_onto_polyline(s["x"], s["y"], channels["X"], channels["Y"])[1]
+        for s in samples
+    ]
+    # The last sample is excluded because the synthetic lap CLOSES — its final
+    # recorded fix is its first — so the projection reports the same point as arc 0
+    # rather than as arc `total`, and a lap counter is not what is under test here.
+    total = cumulative_arclength(channels["X"], channels["Y"])[-1]
+    assert arcs[-1] == pytest.approx(0.0, abs=0.5)
+    assert total > 0.0
+    assert all(b >= a - 0.01 for a, b in zip(arcs[:-1], arcs[1:-1]))
+
+
+def test_the_first_emitted_sample_is_still_the_start_finish_point():
+    """
+    Arc zero is the first recorded fix, so sample 0 is unmoved by this change — which
+    is what keeps `track.startFinish` (built from sample 0) pointing at the line.
+    """
+    channels = synthetic.telemetry()
+    replay = build_replay_dict(channels, synthetic.META)
+    first = replay["cars"][0]["samples"][0]
+    assert first["x"] == round(float(channels["X"][0]), 1)
+    assert first["y"] == round(float(channels["Y"][0]), 1)
+    assert replay["track"]["startFinish"]["x"] == first["x"]
 
 
 # --- samples ----------------------------------------------------------------------
