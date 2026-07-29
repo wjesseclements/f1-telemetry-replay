@@ -97,6 +97,16 @@ whatever isn't defended — defend these.
      speed supplies the progress. They remain continuous, linearly interpolated
      channels; only the parameter changed. This is a **pipeline** concern: the app
      receives x/y and never re-derives them.
+   - **Refined in Slice 7: the lap the pipeline resamples is the CLOSED lap, laid over
+     the whole grid.** `meta.duration` is `n / sampleRateHz`, and the app closes the
+     loop by wrapping the last sample back to the first across one full grid step, so
+     that step has to carry a full step of travel. Two things stopped it doing so, and
+     both are corrected before x/y are written: samples are emitted at `k / rate` but
+     READ at `k · lap / n` (`source_times`), and `lap` includes the time to cover the
+     chord from the last recorded fix back to the first (`closing_time`) — real laps
+     stop a metre or two short of closing. Cost: a uniform time base stretch of
+     `duration / lap`, ≤0.125% on an ~80 s lap at 10 Hz, printed on every pipeline run.
+     Still pipeline-only — no schema, engine or renderer change.
 
 ## Data model — the replay schema
 

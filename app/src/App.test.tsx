@@ -317,28 +317,33 @@ describe("App transport integration", () => {
       screen.getByRole("group", { name: "Playback speed" }),
     ).toBeInTheDocument();
     for (const rate of SPEED_OPTIONS) {
-      expect(
-        screen.getByRole("button", { name: `${rate}x speed` }),
-      ).toBeInTheDocument();
+      const button = screen.getByRole("button", { name: `${rate}× speed` });
+      expect(button).toBeInTheDocument();
+      // WCAG 2.5.3 Label in Name: the accessible name must CONTAIN the visible text,
+      // so voice control can act on what a user can read. The visible `×` is a
+      // multiplication sign, and a name spelt with the letter `x` fails that even
+      // though it reads identically. Asserted against the DOM's own text rather than
+      // a second literal, so the two cannot drift apart again (Slice 7).
+      expect(button.getAttribute("aria-label")).toContain(button.textContent);
     }
   });
 
   it("marks the active speed with aria-pressed", () => {
     render(<App />);
-    expect(screen.getByRole("button", { name: "1x speed" })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "1× speed" })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
 
     act(() => {
-      fireEvent.click(screen.getByRole("button", { name: "4x speed" }));
+      fireEvent.click(screen.getByRole("button", { name: "4× speed" }));
     });
     expect(useTransport.getState().speedMult).toBe(4);
-    expect(screen.getByRole("button", { name: "4x speed" })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "4× speed" })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
-    expect(screen.getByRole("button", { name: "1x speed" })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "1× speed" })).toHaveAttribute(
       "aria-pressed",
       "false",
     );

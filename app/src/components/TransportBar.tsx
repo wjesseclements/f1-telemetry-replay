@@ -36,7 +36,7 @@ export function TransportBar({ replay }: TransportBarProps) {
   return (
     <section
       aria-label="Playback controls"
-      className="flex items-center gap-3 border-t border-line bg-panel px-4 py-2"
+      className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-line bg-panel px-4 py-2"
     >
       <button
         type="button"
@@ -63,12 +63,18 @@ export function TransportBar({ replay }: TransportBarProps) {
         {formatLapTime(clock)}
       </output>
 
-      <Scrubber
-        clock={clock}
-        duration={duration}
-        sampleRateHz={sampleRateHz}
-        onSeek={seek}
-      />
+      {/* The scrubber is the one control that needs length rather than room. It takes
+          the leftover width on a wide bar and a full row of its own once the bar
+          wraps — `order-last` keeps it below the buttons there rather than splitting
+          them. */}
+      <div className="order-last w-full min-w-0 sm:order-none sm:w-auto sm:flex-1">
+        <Scrubber
+          clock={clock}
+          duration={duration}
+          sampleRateHz={sampleRateHz}
+          onSeek={seek}
+        />
+      </div>
 
       <span className="font-mono text-xs tabular-nums text-dim">
         {formatLapTime(duration)}

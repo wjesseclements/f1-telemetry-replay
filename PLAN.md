@@ -373,7 +373,7 @@ small and known; and it should land **before any real-data lap becomes someone's
   always fails and every real lap gets `DEFAULT_COLOR` with an empty team. Present in
   the pre-fix file too. One import line, but undiscussed, so not touched here.
 
-### [ ] Slice 7 — v1 acceptance & polish (measure built-in concerns)
+### [x] Slice 7 — v1 acceptance & polish (measure built-in concerns)
 - ~~Carried in from Slice 6: verify `meta.rotation`'s sign against a real lap.~~
   **Settled 2026-07-28 — the convention agrees, no change needed.** FastF1's
   `circuit_info.rotation` (95.0° for Monza) feeds `geometry.rotateWorld` unchanged and
@@ -385,6 +385,93 @@ small and known; and it should land **before any real-data lap becomes someone's
   Practices ≥95. Fix regressions in the concerns already built (not new late work).
 - **Verify:** Lighthouse + an fps check meet PRD thresholds; full keyboard pass; runs
   with zero network.
+
+- **Amendment (this slice) — the wrap-step artifact is FIXED, not documented.** The
+  decision Slice 6b deferred here, argued on the merits and settled:
+  - **The severity is a lottery, and 6b's eyeball check drew a good ticket.** Let
+    `r = lap·rate − floor(lap·rate)`, the fractional part of the lap in grid steps —
+    uniform on [0, 1). The wrap step plays `r/rate` seconds of travel over `1/rate`
+    seconds, so the car crosses the line at **`r` × its true speed**, every lap.
+    `monza_ver` drew r = 0.70 and that is what "I watched for it and couldn't see it"
+    was measured on. `E[r] = 0.5`; one lap in five draws `r < 0.2`; `r → 0` parks the
+    car at the line for a tenth of a second. The synthetic test lap draws exactly 0.
+  - **6b's own recorded principle decides it.** 6b rejected a raw metric mapping for
+    "trading a 0.17% global bias for a ~230% local one at the most-watched point on
+    the circuit". This is that trade again, same answer.
+  - **No contract line moves** — the premise in 6b's flag ("fixing it means touching
+    `duration` and the span-agreement refinement") was wrong. `t`, `meta.duration`,
+    both schema refinements and all of `src/engine/**` are untouched; the golden diff
+    shows `meta` byte-identical, sample counts identical, every `t` identical.
+- **Amendment (this slice) — the fix is two halves, because the defect had two terms.**
+  The second was found by measuring the first, which fixed VER and made LEC *worse*.
+  - `replay_transform.source_times` — samples are EMITTED at `k/rate` (what the schema
+    requires) but READ at `k·lap/n`, laying the whole lap over the whole grid so every
+    step, wrap included, covers `lap/n` seconds of real motion. Cost: a uniform time
+    base stretch of `duration/lap`, **≤0.125%** for an ~80 s lap at 10 Hz.
+  - `replay_transform.closing_time` — a lap's recorded fixes stop **short of the fix
+    they started from** (Monza Q: **0.67 m** VER, **2.12 m** LEC, both cleanly in the
+    direction of travel), yet the app loops sample n−1 straight back to sample 0. That
+    ground is inside the wrap step too, so the lap the grid covers is the recorded time
+    **plus** the time to cover it. Signed along the direction of travel, so telemetry
+    cut *late* shortens the lap instead. Unit-safe by the same travel/path ratio 6b
+    established — no hard-coded 0.1 or 1/3.6.
+  - Without the second half the wrap step overshoots by exactly the shortfall: VER
+    0.696× → 1.078×, but **LEC 0.849× → 1.241×**, a bigger error than the one removed.
+- **Amendment (this slice):** the stretch is **printed, not implied**. `build_replay.py`
+  ends every run with `lap 79.662s recorded + 7ms to close the loop · time base
+  stretched 1.00038x onto the grid`. A justified, negligible bias should still be
+  impossible to be surprised by.
+- **Verified against real data (2026-07-28, 2024 Monza Q, both drivers regenerated
+  from the warm cache):**
+
+  | | wrap chord ÷ previous step | implied at the line | speed channel | stretch |
+  |---|---|---|---|---|
+  | VER before | 6.17 / 8.87 = **0.696×** | 222 km/h | 319 | — |
+  | VER after | 8.88 / 8.86 = **1.003×** | 320 km/h | 319 | 1.00038× (+7 ms) |
+  | LEC before | 7.56 / 8.90 = **0.849×** | 272 km/h | 321 | — |
+  | LEC after | 8.91 / 8.90 = **1.001×** | 321 km/h | 321 | 1.00019× (+24 ms) |
+
+  **6b's metrics are undisturbed:** r = 0.9998 on both laps before and after; ratio sd
+  0.0070 → 0.0069 (VER) and 0.0062 → 0.0064 (LEC); implied max unchanged at 349/351
+  against true 348/351. Sample shift mean 1.13 m / max 2.71 m (VER) and 0.57 m /
+  1.36 m (LEC) — smaller than 6b's own 3.7 m / 18.4 m — with sample 0 at exactly 0.00 m.
+- **Amendment (this slice) — responsive layout.** The track and the HUD sit side by
+  side above `md` and stack below it; the HUD's readout becomes a row, the transport
+  bar wraps with the scrubber taking a full row of its own (`order-last`), and
+  `h-screen` became `h-dvh` — `100vh` on mobile excludes the retracting address bar, so
+  the transport bar sat under it. Verified by real 412×823 and 1350×940 renders
+  (`docs/screenshots/slice-7-responsive-*.png`), not by class inspection.
+- **Amendment (this slice) — Lighthouse found four real defects, all in concerns
+  already built, all fixed rather than banked.** The first run already cleared every
+  PRD threshold (Perf 100 / A11y 95 / BP 96), which is exactly when it is tempting to
+  stop reading:
+  - `errors-in-console` — no icon, so every load 404'd on `/favicon.ico`. Added
+    `app/public/favicon.svg` (the THERMAL ramp as a painted corner) and an explicit
+    `<link rel="icon">`. It is the one place a palette value is duplicated: the file is
+    served before any script runs, so it can reach neither the CSS vars nor the engine.
+  - `aria-allowed-role` + `definition-list` — `role="meter"` on a `<dd>` stops it
+    counting as a `<dd>`, which is invalid on the element AND breaks the enclosing
+    `<dl>`; a loose `<span>km/h</span>` broke it a second way. The meter moved to an
+    inner `<div>` and the unit moved inside the `<dd>`, where it also reads better
+    ("192 km/h", not "192").
+  - `label-content-name-mismatch` — the speed buttons showed `0.5×` (multiplication
+    sign) and were named `0.5x speed` (letter x), so voice control could not act on
+    what a user can read (WCAG 2.5.3). The test now asserts the name contains the
+    element's own `textContent`, so the two cannot drift apart again.
+- **Measured (2026-07-28), `vite preview` on the production build:**
+  - **Lighthouse 12.8.2 — mobile 100 / 100 / 100, desktop 100 / 100 / 100**
+    (Performance / Accessibility / Best Practices), against thresholds of 90 / 95 / 95.
+    Zero failing audits of any kind.
+  - **Cold load:** FCP = LCP = TTI **0.3 s** desktop, **1.4 s** mobile (throttled), CLS
+    0, TBT 0 ms — against a < 2 s bar.
+  - **Zero network:** exactly three requests, all same-origin — document, JS, CSS. No
+    data fetch, no external host.
+  - `npm run check` green with **0 warnings** (313 tests, engine coverage 100%);
+    `pytest` green (**88 tests**, `replay_transform.py` 100% lines + branches);
+    `validate:replay` green on both regenerated real laps and both refreshed goldens.
+  - **Not measured by me: sustained fps.** The rAF sampler needs a foreground window
+    (`document.visibilityState` was `hidden`, which throttles rAF to nothing), so the
+    60fps check is the human pass's first item, not a claim made here.
 
 ## Phase v2 — multi-car race replay (engine & schema unchanged)
 

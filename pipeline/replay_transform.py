@@ -40,6 +40,36 @@ So the two channels are used for what each is good at: POSITION SUPPLIES THE PAT
 SHAPE, SPEED SUPPLIES THE PROGRESS ALONG IT. `resample_positions_by_travel` places
 grid sample k at the point on the recorded polyline that the cumulative speed integral
 says the car had reached. See `PLAN.md` §Slice 6b for the full diagnosis.
+
+WHY THE EMITTED GRID IS NOT THE SOURCE GRID
+-------------------------------------------
+`meta.duration` is `n / rate`, which rounds the lap UP to a whole grid step, and the
+app closes the loop by wrapping the last sample round to the first across one full
+step. Reading every channel at `k / rate` therefore left that wrap step covering only
+the sub-step REMAINDER of real travel — the car crossed the start/finish line at
+`r x` its true speed for a tenth of a second, where `r` is the fractional part of the
+lap in grid steps and is uniform on [0, 1). Measured before the fix: Monza VER drew
+r = 0.70 (6.17 m of chord where its neighbours are 8.8 m, 222 km/h against a true
+319) and Monza LEC drew r = 0.85. A lap that draws r near 0 parks the car at the line.
+
+The fix has two halves, because the wrap step was short for two independent reasons.
+
+`source_times` is the first: emit `t = k / rate` exactly as the schema requires, but
+READ each sample from source instant `k * lap / n`. The whole lap is then laid down
+over the whole grid, so every step — the wrap step included — covers the same
+`lap / n` seconds of real motion. The cost is a uniform time base stretch of
+`duration / lap`, under 0.125% for a ~80 s lap at 10 Hz (Monza VER: 1.00039x), which
+`build_replay.py` prints on every run so it is never a surprise.
+
+`closing_time` is the second, and was found by measuring the first: a lap's recorded
+fixes stop a metre or two SHORT of the fix they started from (Monza Q: 0.67 m for VER,
+2.12 m for LEC), yet the app loops the last sample straight back to the first. That
+ground is inside the wrap step too, so `lap` above is the recorded time PLUS the time
+to cover it — otherwise the wrap step overshoots by exactly the shortfall, which on
+LEC was a bigger error than the one being fixed.
+
+Nothing about the CONTRACT moves: `t`, `meta.duration`, both schema refinements and
+the whole of `app/src/engine/` are untouched. See `PLAN.md` §Slice 7.
 """
 
 from __future__ import annotations
@@ -156,12 +186,16 @@ def normalise_brake(values: Any) -> np.ndarray:
 
 def uniform_grid(lap_time: float, rate: int = SAMPLE_RATE_HZ) -> np.ndarray:
     """
-    The sample times of the replay: exactly `k / rate` for k in 0..n-1.
+    The EMITTED sample times of the replay: exactly `k / rate` for k in 0..n-1.
 
     `n = floor(lap_time * rate) + 1` covers the lap from 0 up to the last grid point
     at or before its end. Because the step is exactly `1 / rate`, `meta.duration =
     n / rate` satisfies `round(duration * rate) == n` with no slack at all, which is
     what the schema's span-agreement refinement compares.
+
+    This is the PLAYBACK clock, not the source clock: the instants each sample is
+    actually read from are `source_times(grid, lap_time, rate)`, which lays the whole
+    lap over the whole grid so the app's wrap step is as long as every other step.
 
     The epsilon absorbs binary float error in the multiply — a 58.5 s lap at 10 Hz
     can evaluate to 584.9999999999999, and flooring that would drop a whole sample.
@@ -177,6 +211,51 @@ def uniform_grid(lap_time: float, rate: int = SAMPLE_RATE_HZ) -> np.ndarray:
             "needs at least 2 to interpolate between"
         )
     return np.arange(n, dtype=float) / rate
+
+
+def time_base_stretch(
+    n_samples: int, lap_time: float, rate: int = SAMPLE_RATE_HZ
+) -> float:
+    """
+    `meta.duration / lap_time` — how much the emitted time base stretches the lap.
+
+    Always >= 1, and never more than `1 + 1 / (rate * lap_time)`: the grid rounds the
+    lap up by less than one step, so an 80 s lap at 10 Hz stretches by at most 0.125%.
+    A three-second test lap stretches by 3.3%, which is why this is a named,
+    printed number rather than an implementation detail — the bias is negligible on
+    real data and only stays negligible on real data.
+
+    `build_replay.py` prints it on every run. See the module docstring for why the
+    stretch is worth having at all.
+    """
+    if lap_time <= 0:
+        raise TelemetryShapeError(f"lap_time must be positive, got {lap_time}")
+    return (n_samples / rate) / lap_time
+
+
+def source_times(
+    grid: np.ndarray, lap_time: float, rate: int = SAMPLE_RATE_HZ
+) -> np.ndarray:
+    """
+    The SOURCE instants that the emitted grid samples are read from: `k * lap / n`.
+
+    Every channel is resampled at these times while `build_samples` emits `k / rate`,
+    which is the whole of the wrap-step fix. Two properties do the work:
+
+    * the spacing is `lap / n`, so the n-th step — the one the app takes wrapping the
+      last sample round to the first — covers exactly as much real time, and
+      therefore as much ground, as the n-1 steps before it;
+    * the last value is `lap * (n-1) / n`, strictly inside the source data, so
+      nothing here ever extrapolates past the final telemetry row.
+
+    Applied to EVERY channel, not just position: the alternative leaves x/y reading
+    one instant and speed reading another, which is the class of bug Slice 6b existed
+    to remove. A uniform stretch keeps the channels mutually consistent, and the app
+    has no clock outside the file to disagree with.
+    """
+    return np.asarray(grid, dtype=float) / time_base_stretch(
+        len(grid), lap_time, rate
+    )
 
 
 def interp_continuous(grid: np.ndarray, t: np.ndarray, values: Any) -> np.ndarray:
@@ -241,12 +320,56 @@ def cumulative_travel(t: Any, speed: Any) -> np.ndarray:
     return np.concatenate(([0.0], np.cumsum(steps)))
 
 
+def closing_time(t: Any, x: Any, y: Any, speed: Any) -> float:
+    """
+    Seconds the car needs to get from the LAST recorded fix back to the first.
+
+    A lap's telemetry does not quite close. On 2024 Monza Q the recorded fixes stop
+    0.67 m (VER) and 2.12 m (LEC) short of the fix they started from — 7 ms and 24 ms
+    at 320 km/h. The app nevertheless loops sample n-1 straight back to sample 0, so
+    that shortfall is real ground the car has to cover inside the wrap step, and a lap
+    time that excludes it makes the wrap step overshoot by exactly the shortfall. It
+    is the second half of the wrap-step fix; `source_times` is the first.
+
+    SIGNED along the direction of travel at the end, so telemetry that stops SHORT of
+    the line lengthens the lap while telemetry that runs PAST it shortens it. Both
+    laps above stop short, but the sign is a property of how FastF1 cut the lap and
+    is not ours to assume.
+
+    UNIT-SAFE, by the same bridge `resample_positions_by_travel` already relies on:
+    the total travel integral and the total path length measure the same distance in
+    different units, so their ratio converts position units into travel units without
+    anyone here knowing that FastF1 stores 1/10 m and km/h. Dividing by the speed at
+    the line then gives seconds.
+
+    Degenerate input returns 0.0 rather than raising: a lap that covers no ground has
+    nothing to close, and `resample_positions_by_travel` is where that data gets its
+    proper, named error.
+    """
+    px = np.asarray(x, dtype=float)
+    py = np.asarray(y, dtype=float)
+    v = np.asarray(speed, dtype=float)
+
+    ux, uy = px[-1] - px[-2], py[-1] - py[-2]
+    last_step = math.hypot(ux, uy)
+    v_line = 0.5 * (v[0] + v[-1])
+    path = cumulative_arclength(px, py)[-1]
+    travel = cumulative_travel(t, v)[-1]
+    if last_step <= 0.0 or v_line <= 0.0 or path <= 0.0 or travel <= 0.0:
+        return 0.0
+
+    gap = ((px[0] - px[-1]) * ux + (py[0] - py[-1]) * uy) / last_step
+    return (travel * gap / path) / v_line
+
+
 def resample_positions_by_travel(
-    grid: np.ndarray, t: np.ndarray, x: Any, y: Any, speed: Any
+    times: np.ndarray, t: np.ndarray, x: Any, y: Any, speed: Any
 ) -> "tuple[np.ndarray, np.ndarray]":
     """
-    Place each grid sample at the point along the recorded path where the speed
-    integral says the car had got to.
+    Place each sample at the point along the recorded path where the speed integral
+    says the car had got to.
+
+    `times` are SOURCE instants (see `source_times`), not the emitted `t` values.
 
     Three steps: measure the path (`cumulative_arclength`), measure the progress
     (`cumulative_travel`), then read the path at that progress.
@@ -282,12 +405,22 @@ def resample_positions_by_travel(
 
     BOUNDARY
     --------
-    `uniform_grid` stops at the last grid point at or before the lap end, so
-    `d_grid[-1] <= d[-1]` and the last sample lands at or just short of the path end,
-    never past it. Short by exactly the travel in the sub-step residual — which is
-    what it should be, because the app wraps the last sample round to the first across
-    one full grid step, so the last sample belongs about one step of travel before the
-    line, not on it. The clip guards float drift, not the algorithm.
+    The app wraps the last sample round to the first across one full grid step, so the
+    last sample belongs exactly ONE step of travel before the line, not on it. That is
+    what `source_times` delivers: its last instant is `lap * (n-1) / n`, leaving the
+    final `lap / n` seconds of travel — a full step's worth — for the wrap.
+
+    Reading at `k / rate` instead left the last sample short by only the sub-step
+    remainder of the lap, so the wrap step covered a fraction of a step's ground while
+    the clock spent a whole step crossing it, and the car slowed at the start/finish
+    line every lap. See the module docstring.
+
+    The clip is a float-drift guard, and the backstop for the one case that could
+    otherwise walk off the end: telemetry cut so far short of the line that closing it
+    costs more than a whole grid step. `np.interp` holds the last value there, so the
+    final samples repeat the last fix — a visible stall rather than a silent
+    misplacement, and nothing measured on real data comes close (Monza's worst
+    shortfall is 24 ms against a 100 ms step).
     """
     s = cumulative_arclength(x, y)
     d = cumulative_travel(t, speed)
@@ -313,7 +446,7 @@ def resample_positions_by_travel(
     # information either way — both endpoints are the same point.
     moved = np.concatenate(([True], np.diff(s) > 0.0))
 
-    travelled = interp_continuous(grid, t, d)
+    travelled = interp_continuous(times, t, d)
     target = np.clip(travelled / d[-1] * s[-1], 0.0, s[-1])
 
     px = np.asarray(x, dtype=float)[moved]
@@ -424,23 +557,33 @@ def build_replay_dict(
             "telemetry Time must be non-decreasing; the source rows are out of order"
         )
 
-    grid = uniform_grid(float(t[-1]), rate)
+    # The lap the app LOOPS is the recorded path plus the chord back to its start, so
+    # that is the lap the grid has to cover. See `closing_time`.
+    lap_time = float(t[-1]) + closing_time(
+        t, telemetry["X"], telemetry["Y"], telemetry["Speed"]
+    )
+    grid = uniform_grid(lap_time, rate)
+    # Sample times are EMITTED as `grid` (k / rate, what the schema requires) but READ
+    # at `src` (k * lap / n), which lays the whole lap over the whole grid so the app's
+    # wrap step is as long as every other step. Every channel uses the same `src`, so
+    # they stay mutually consistent. See the module docstring and `source_times`.
+    src = source_times(grid, lap_time, rate)
 
     # x/y come from the path, parameterised by travelled distance rather than by time
     # (see the module docstring); every other channel is a plain resample.
     gx, gy = resample_positions_by_travel(
-        grid, t, telemetry["X"], telemetry["Y"], telemetry["Speed"]
+        src, t, telemetry["X"], telemetry["Y"], telemetry["Speed"]
     )
-    gspeed = interp_continuous(grid, t, telemetry["Speed"])
-    gthrottle = clamp_throttle(interp_continuous(grid, t, telemetry["Throttle"]))
-    gbrake = forward_fill(grid, t, normalise_brake(telemetry["Brake"]))
-    ggear = forward_fill(grid, t, np.asarray(telemetry["nGear"]).astype(int))
+    gspeed = interp_continuous(src, t, telemetry["Speed"])
+    gthrottle = clamp_throttle(interp_continuous(src, t, telemetry["Throttle"]))
+    gbrake = forward_fill(src, t, normalise_brake(telemetry["Brake"]))
+    ggear = forward_fill(src, t, np.asarray(telemetry["nGear"]).astype(int))
 
     raw_drs = telemetry.get("DRS")
     gdrs = (
         None
         if raw_drs is None
-        else forward_fill(grid, t, np.asarray(raw_drs).astype(int))
+        else forward_fill(src, t, np.asarray(raw_drs).astype(int))
     )
 
     samples = build_samples(grid, gx, gy, gspeed, gthrottle, gbrake, ggear, gdrs)

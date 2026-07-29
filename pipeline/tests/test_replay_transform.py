@@ -31,6 +31,7 @@ from replay_transform import (
     build_samples,
     check_columns,
     clamp_throttle,
+    closing_time,
     cumulative_arclength,
     cumulative_travel,
     dump_json,
@@ -39,6 +40,8 @@ from replay_transform import (
     normalise_brake,
     normalise_color,
     resample_positions_by_travel,
+    source_times,
+    time_base_stretch,
     uniform_grid,
 )
 
@@ -149,6 +152,64 @@ def test_uniform_grid_rejects_a_lap_too_short_to_interpolate():
     """The schema needs >= 2 samples per car to have a segment to interpolate."""
     with pytest.raises(TelemetryShapeError, match="at least 2"):
         uniform_grid(0.05, 10)
+
+
+# --- the time base ----------------------------------------------------------------
+
+
+def test_time_base_stretch_is_duration_over_lap_time():
+    """The number `build_replay.py` prints: how much longer the replay is than the lap."""
+    grid = uniform_grid(79.67, SAMPLE_RATE_HZ)
+    assert len(grid) == 797
+    assert time_base_stretch(len(grid), 79.67, SAMPLE_RATE_HZ) == pytest.approx(
+        79.7 / 79.67
+    )
+
+
+def test_time_base_stretch_stays_under_one_grid_step_of_the_lap():
+    """
+    It is bounded by `1 + 1/(rate*lap)`, so it shrinks as laps get longer: negligible
+    on a real 80 s lap (< 0.13%), noticeable on a 3 s synthetic one. The bound is the
+    reason the bias is acceptable, so it is pinned rather than assumed.
+    """
+    for lap_time in (3.0, 58.5, 79.67, 87.42):
+        n = len(uniform_grid(lap_time, SAMPLE_RATE_HZ))
+        stretch = time_base_stretch(n, lap_time, SAMPLE_RATE_HZ)
+        assert 1.0 <= stretch <= 1.0 + 1.0 / (SAMPLE_RATE_HZ * lap_time) + 1e-12
+    assert time_base_stretch(797, 79.67, SAMPLE_RATE_HZ) < 1.0013
+
+
+@pytest.mark.parametrize("lap_time", [0.0, -1.0])
+def test_time_base_stretch_rejects_a_non_positive_lap_time(lap_time):
+    with pytest.raises(TelemetryShapeError):
+        time_base_stretch(10, lap_time, SAMPLE_RATE_HZ)
+
+
+def test_source_times_are_evenly_spaced_and_close_the_lap():
+    """
+    The whole wrap-step fix in two assertions: the source instants are spaced
+    `lap / n`, and the last one is exactly one such step short of the lap end — so the
+    step the app takes wrapping the last sample round to the first covers the same
+    span of real time as every step before it.
+    """
+    lap_time = 2.05
+    grid = uniform_grid(lap_time, 10)  # 21 points, 0.0 .. 2.0; duration 2.1
+    src = source_times(grid, lap_time, 10)
+
+    step = lap_time / len(grid)
+    assert np.allclose(np.diff(src), step)
+    assert src[0] == 0.0
+    assert src[-1] == pytest.approx(lap_time - step)
+    # Reading at the emitted grid instead is what left the wrap short: the last
+    # sample sat 0.05 s from the lap end where the wrap step is 0.1 s long.
+    assert grid[-1] == pytest.approx(lap_time - 0.05)
+
+
+def test_source_times_never_reach_past_the_last_telemetry_row():
+    """No extrapolation: `src[-1] < lap_time` strictly, for any lap length."""
+    for lap_time in (0.35, 3.0, 58.5, 79.67):
+        grid = uniform_grid(lap_time, SAMPLE_RATE_HZ)
+        assert source_times(grid, lap_time, SAMPLE_RATE_HZ)[-1] < lap_time
 
 
 # --- resampling -------------------------------------------------------------------
@@ -382,30 +443,45 @@ def test_the_last_sample_lands_at_the_path_end_when_the_grid_covers_the_lap():
     assert (gx[-1], gy[-1]) == pytest.approx((x[-1], y[-1]))
 
 
-def test_the_last_sample_stops_short_of_the_path_end_and_never_overruns():
+def test_the_last_sample_stops_exactly_one_step_short_however_the_lap_divides():
     """
-    The grid ends at the last point at or BEFORE the lap end, so the final sample is
-    short by the travel in that sub-step residual. That is the wanted behaviour, not
-    a rounding accident: the app wraps the last sample round to the first across one
-    full grid step, so the last sample belongs about one step of travel before the
-    line rather than on it.
+    The app wraps the last sample round to the first across one full grid step, so the
+    last sample belongs exactly one step of travel before the line. Through
+    `source_times` that holds for ANY lap length; reading at the emitted grid instead
+    left it short by only the sub-step remainder, which is what made the car slow at
+    the start/finish line. Both laps below are the same 210-unit path at constant
+    speed, so one step of travel is 10 units.
     """
-    t = np.arange(22) / 10.0  # lap runs to 2.1 s; the 10 Hz grid stops at 2.0
-    x = np.linspace(0.0, 210.0, 22)
-    grid = uniform_grid(float(t[-1]), 10)
+    def straight_lap(lap_time: float):
+        """A 100-unit/s straight line, sampled to exactly `lap_time`."""
+        t = np.append(np.arange(0.0, lap_time - 1e-9, 0.1), lap_time)
+        return t, t * 100.0
 
-    gx, _ = resample_positions_by_travel(grid, t, x, np.zeros(22), np.full(22, 100.0))
+    # 2.1 divides the grid exactly; 2.05 and 2.01 leave a remainder of most and
+    # almost none of a step. Before the fix these three behaved completely
+    # differently at the line; the point of the fix is that they no longer do.
+    for lap_time in (2.1, 2.05, 2.01):
+        t, x = straight_lap(lap_time)
+        grid = uniform_grid(lap_time, 10)
+        src = source_times(grid, lap_time, 10)
+        gx, _ = resample_positions_by_travel(
+            src, t, x, np.zeros_like(t), np.full(len(t), 100.0)
+        )
+        path = float(x[-1])
+        step = path / len(grid)
+        assert gx[0] == pytest.approx(0.0)
+        assert gx[-1] == pytest.approx(path - step)
+        assert gx[-1] < path
 
-    assert len(grid) == 22 and grid[-1] == pytest.approx(2.1)
-    assert gx[-1] <= x[-1]
-    # One grid step's worth of travel is 10 units here; the residual is zero, so it
-    # reaches the end. Trim the lap and it falls short by exactly the travel lost.
-    short_grid = uniform_grid(2.05, 10)
-    short_gx, _ = resample_positions_by_travel(
-        short_grid, t, x, np.zeros(22), np.full(22, 100.0)
-    )
-    assert short_gx[-1] == pytest.approx(200.0)
-    assert short_gx[-1] < x[-1]
+    # The negative control: reading at the EMITTED grid, the same three laps leave
+    # the wrap step anywhere between a full step of ground and none at all.
+    for lap_time, expected_wrap in ((2.1, 0.0), (2.05, 5.0), (2.01, 1.0)):
+        t, x = straight_lap(lap_time)
+        grid = uniform_grid(lap_time, 10)
+        gx, _ = resample_positions_by_travel(
+            grid, t, x, np.zeros_like(t), np.full(len(t), 100.0)
+        )
+        assert float(x[-1]) - gx[-1] == pytest.approx(expected_wrap, abs=1e-6)
 
 
 def _true_position(t: np.ndarray, period: float) -> np.ndarray:
@@ -522,13 +598,153 @@ def test_emitted_samples_advance_monotonically_along_the_path():
         _project_onto_polyline(s["x"], s["y"], channels["X"], channels["Y"])[1]
         for s in samples
     ]
-    # The last sample is excluded because the synthetic lap CLOSES — its final
-    # recorded fix is its first — so the projection reports the same point as arc 0
-    # rather than as arc `total`, and a lap counter is not what is under test here.
     total = cumulative_arclength(channels["X"], channels["Y"])[-1]
-    assert arcs[-1] == pytest.approx(0.0, abs=0.5)
     assert total > 0.0
-    assert all(b >= a - 0.01 for a, b in zip(arcs[:-1], arcs[1:-1]))
+    assert all(b >= a - 0.01 for a, b in zip(arcs, arcs[1:]))
+    # Every sample lies strictly inside the path: the last one is a step short of the
+    # end, which is the room the app's wrap step needs. Before the fix it landed ON
+    # the end (this lap divides the grid exactly), so the wrap covered no ground.
+    assert 0.0 <= arcs[-1] < total
+
+
+def _loop_frame(shortfall: float = 0.01, duration_s: float = 3.0, rows: int = 64):
+    """
+    A circular lap at constant speed whose telemetry stops `shortfall` of a turn short
+    of closing — the shape of a real lap, whose recorded fixes end a metre or two
+    before the fix they started from. Constant speed makes every step the same length,
+    so the wrap step has an exact expectation rather than a tolerance band.
+    """
+    span = 2.0 * math.pi * (1.0 - shortfall)
+    angle = np.linspace(0.0, span, rows)
+    radius = 500.0
+    return {
+        "Time": np.linspace(0.0, duration_s, rows),
+        "X": radius * np.cos(angle),
+        "Y": radius * np.sin(angle),
+        "Speed": np.full(rows, 100.0),
+        "Throttle": np.full(rows, 50.0),
+        "Brake": np.zeros(rows, dtype=int),
+        "nGear": np.full(rows, 6, dtype=int),
+    }
+
+
+def test_closing_time_is_zero_for_a_lap_that_already_closes():
+    """The synthetic oval ends on the fix it started from, so there is nothing to add."""
+    channels = synthetic.telemetry()
+    assert closing_time(
+        channels["Time"], channels["X"], channels["Y"], channels["Speed"]
+    ) == pytest.approx(0.0, abs=1e-9)
+
+
+def test_closing_time_measures_the_gap_the_telemetry_leaves():
+    """
+    A hundredth of a turn missing from a 3 s lap is a hundredth of a lap of travel, so
+    at constant speed it is 30 ms of driving. Real laps leave a comparable slice —
+    Monza's worst is 24 ms of 79.5 s — and the arithmetic is the same one.
+    """
+    frame = _loop_frame(shortfall=0.01)
+    seconds = closing_time(frame["Time"], frame["X"], frame["Y"], frame["Speed"])
+    assert seconds == pytest.approx(0.03, rel=0.01)
+
+
+def test_closing_time_is_negative_when_the_telemetry_runs_past_the_line():
+    """
+    Signed along the direction of travel: a lap cut slightly LATE has already covered
+    the ground the wrap step would otherwise be given, so it shortens the lap. Both
+    real laps measured stop short, but the sign is FastF1's choice, not ours.
+    """
+    frame = _loop_frame(shortfall=-0.05)
+    assert closing_time(frame["Time"], frame["X"], frame["Y"], frame["Speed"]) < 0.0
+
+
+@pytest.mark.parametrize(
+    "channel, value",
+    [("Speed", 0.0), ("X", 7.0)],
+)
+def test_closing_time_returns_zero_for_data_with_nothing_to_close(channel, value):
+    """
+    A stationary car, or a path that covers no ground, has no closing chord. This
+    returns 0.0 rather than raising because `resample_positions_by_travel` is where
+    that data gets its named error — two error messages for one fault helps nobody.
+    """
+    frame = _loop_frame()
+    frame[channel] = np.full(len(frame["Time"]), value)
+    if channel == "X":
+        frame["Y"] = np.full(len(frame["Time"]), value)
+    assert closing_time(
+        frame["Time"], frame["X"], frame["Y"], frame["Speed"]
+    ) == pytest.approx(0.0)
+
+
+def _chords(samples) -> "list[float]":
+    """Ground covered per grid step, with the WRAP step (last -> first) appended."""
+    points = [(s["x"], s["y"]) for s in samples]
+    steps = [
+        math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(points, points[1:])
+    ]
+    steps.append(math.hypot(points[0][0] - points[-1][0], points[0][1] - points[-1][1]))
+    return steps
+
+
+def test_the_wrap_step_covers_as_much_ground_as_the_steps_around_it():
+    """
+    The Slice 7 regression test, and the reason `source_times` exists.
+
+    `meta.duration` is `n / rate`, so the app closes the lap by wrapping the last
+    sample round to the first across one full grid step. That step therefore has to
+    carry one full step of travel. Before the fix it carried only the sub-step
+    remainder of the lap — on this synthetic lap, which divides the 10 Hz grid
+    exactly, that remainder is ZERO and the car stood still at the start/finish line
+    for a tenth of a second on every lap.
+    """
+    channels = synthetic.telemetry()
+    samples = build_replay_dict(channels, synthetic.META)["cars"][0]["samples"]
+
+    steps = _chords(samples)
+    wrap, previous = steps[-1], steps[-2]
+    # The synthetic car is accelerating out of the last corner, so the wrap step is
+    # legitimately a little longer than the one before it — but the same order, not a
+    # different one.
+    assert wrap == pytest.approx(previous, rel=0.1)
+    assert wrap > 0.5 * max(steps)
+
+    # The negative control: the same lap with every channel read at the EMITTED grid,
+    # which is what the pipeline did before this slice.
+    lap_time = float(channels["Time"][-1])
+    grid = uniform_grid(lap_time, SAMPLE_RATE_HZ)
+    ox, oy = resample_positions_by_travel(
+        grid, channels["Time"], channels["X"], channels["Y"], channels["Speed"]
+    )
+    old = _chords([{"x": x, "y": y} for x, y in zip(ox, oy)])
+    assert old[-1] == pytest.approx(0.0, abs=0.01)
+
+
+def test_the_wrap_step_is_right_on_a_lap_whose_telemetry_stops_short():
+    """
+    The real-data case, and the reason `closing_time` exists. The recorded fixes end
+    before the fix they started from, so the wrap step has to carry that shortfall as
+    well as its own step of travel. Constant speed on a circle means every step is the
+    same length, so the wrap step has an exact target rather than a range.
+    """
+    frame = _loop_frame(shortfall=0.01)
+    samples = build_replay_dict(frame, synthetic.META)["cars"][0]["samples"]
+    steps = _chords(samples)
+    assert steps[-1] == pytest.approx(steps[-2], rel=0.01)
+    assert max(steps) / min(steps) < 1.02
+
+    # The negative control: the same lap with the closing chord ignored, which is what
+    # `source_times` alone produced. The wrap step overshoots by the whole shortfall.
+    lap_time = float(frame["Time"][-1])
+    grid = uniform_grid(lap_time, SAMPLE_RATE_HZ)
+    ox, oy = resample_positions_by_travel(
+        source_times(grid, lap_time, SAMPLE_RATE_HZ),
+        frame["Time"],
+        frame["X"],
+        frame["Y"],
+        frame["Speed"],
+    )
+    open_steps = _chords([{"x": x, "y": y} for x, y in zip(ox, oy)])
+    assert open_steps[-1] > 1.25 * open_steps[-2]
 
 
 def test_the_first_emitted_sample_is_still_the_start_finish_point():

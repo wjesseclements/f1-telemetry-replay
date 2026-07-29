@@ -30,7 +30,12 @@ export function SpeedControl({ speedMult, onChange }: SpeedControlProps) {
             type="button"
             onClick={() => onChange(rate)}
             aria-pressed={active}
-            aria-label={`${rate}x speed`}
+            // The visible text is `0.5×` with a MULTIPLICATION SIGN, so the accessible
+            // name has to contain that exact string (WCAG 2.5.3 Label in Name): a name
+            // of "0.5x speed" reads fine but leaves someone using voice control saying
+            // "click zero point five times" and being ignored. Caught by Lighthouse's
+            // `label-content-name-mismatch` in Slice 7.
+            aria-label={`${rate}× speed`}
             className={`rounded border px-2 py-1 font-mono text-xs tabular-nums transition-colors ${FOCUS_RING} ${
               active
                 ? "border-accent text-accent"
