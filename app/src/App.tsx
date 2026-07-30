@@ -26,8 +26,10 @@ export default function App({ bootstrapError = null }: AppProps) {
   useTransportKeys(replay);
 
   return (
-    <main className="flex h-screen flex-col bg-bg text-txt">
-      <header className="flex items-baseline gap-3 px-4 py-3">
+    // `h-dvh`, not `h-screen`: `100vh` on mobile browsers is the viewport WITHOUT the
+    // retracting address bar, so the transport bar sat under it until you scrolled.
+    <main className="flex h-dvh flex-col bg-bg text-txt">
+      <header className="flex flex-wrap items-baseline gap-x-3 gap-y-2 px-4 py-3">
         <h1 className="font-mono text-sm font-bold tracking-[0.2em]">
           TELEMETRY REPLAY
         </h1>
@@ -48,8 +50,12 @@ export default function App({ bootstrapError = null }: AppProps) {
         </div>
       ) : replay !== null ? (
         <>
-          <div className="flex min-h-0 flex-1">
-            <div className="relative min-w-0 flex-1">
+          {/* The track and the numbers sit side by side when there is width for it
+              and stack when there is not. `min-h-0`/`min-w-0` on the canvas cell in
+              BOTH directions: a flex item defaults to its content's minimum size, and
+              the canvas would otherwise refuse to shrink and push the HUD off screen. */}
+          <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+            <div className="relative min-h-0 min-w-0 flex-1">
               <TrackCanvas replay={replay} />
               <SpeedLegend />
             </div>
@@ -58,8 +64,15 @@ export default function App({ bootstrapError = null }: AppProps) {
           <TransportBar replay={replay} />
         </>
       ) : (
-        <div className="flex min-h-0 flex-1 items-center justify-center">
-          <p className="font-mono text-xs text-dim">No replay loaded.</p>
+        // Defensive: `main.tsx` sets either a replay or a bootstrap error before the
+        // first render, so this is the state that should not happen. It still says
+        // what to do rather than just what is missing.
+        <div className="flex min-h-0 flex-1 items-center justify-center px-6">
+          <p className="max-w-sm text-center font-mono text-xs leading-relaxed text-dim">
+            No replay loaded. Open a lap with{" "}
+            <span className="text-txt">Load replay JSON</span> above — any file
+            the pipeline built.
+          </p>
         </div>
       )}
     </main>

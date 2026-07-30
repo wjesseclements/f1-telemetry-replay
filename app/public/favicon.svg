@@ -1,0 +1,32 @@
+<!--
+  favicon.svg — a speed-painted corner, which is what the app draws.
+
+  The gradient is the engine's THERMAL ramp (src/engine/color.ts): cold blue through
+  green to hot orange. Written out as literal stops because this file is a static
+  asset served before any script runs, so it can reach neither the CSS custom
+  properties nor the engine. It is the one place in the app where a palette value is
+  duplicated; if THERMAL is ever retuned, retune these five stops with it.
+
+  It exists at all because the app otherwise served no icon, and the browser's
+  fallback request for /favicon.ico 404'd — a console error, and a failed Lighthouse
+  Best Practices audit (Slice 7).
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <defs>
+    <linearGradient id="thermal" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#1e50ff" />
+      <stop offset="0.25" stop-color="#18c3ff" />
+      <stop offset="0.5" stop-color="#2be08a" />
+      <stop offset="0.75" stop-color="#f4e04d" />
+      <stop offset="1" stop-color="#ff5630" />
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="7" fill="#0a0d12" />
+  <path
+    d="M6 25 C 14 25 9 7 18 7 C 25 7 25 17 26 21"
+    fill="none"
+    stroke="url(#thermal)"
+    stroke-width="4.5"
+    stroke-linecap="round"
+  />
+</svg>

@@ -34,7 +34,9 @@ export function ReplayError({ message }: ReplayErrorProps) {
         </pre>
         <p className="mt-4 text-xs leading-relaxed text-dim">
           The replay data does not match the schema. This is a data problem, not
-          a network one — the app ships with its replay and never fetches.
+          a network one — the app ships with its replay and never fetches. Each
+          line above names the field that failed; rebuild the file with the
+          pipeline, or open a different lap with Load replay JSON.
         </p>
       </div>
     </section>

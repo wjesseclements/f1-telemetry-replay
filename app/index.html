@@ -3,6 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Without an explicit icon the browser asks for /favicon.ico and gets a 404,
+         which is a console error on every load. SVG only: it is 700 bytes, scales,
+         and the app has no need to ship a raster fallback for browsers it does not
+         otherwise support. -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta
+      name="description"
+      content="Replay a Formula 1 lap from real telemetry: a speed-painted trail around the circuit with live speed, gear, throttle, brake and DRS."
+    />
     <title>F1 Telemetry Replay</title>
   </head>
   <body>

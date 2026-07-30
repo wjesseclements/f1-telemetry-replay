@@ -54,7 +54,9 @@ from replay_transform import (
     TelemetryShapeError,
     build_replay_dict,
     check_columns,
+    closing_time,
     dump_json,
+    time_base_stretch,
 )
 
 #: Repo-relative location of the app, resolved from this file so the validator can be
@@ -75,7 +77,15 @@ def _pick_driver_laps(laps, driver: str):
 
 
 def build_lap_replay(year, gp, session_id, driver, cache_dir=".f1cache"):
-    """Fetch one driver's fastest lap and return it as a schema-conforming dict."""
+    """
+    Fetch one driver's fastest lap and return `(replay, recorded_s, closing_s)`.
+
+    The two times come back alongside the replay so `main` can report the time base
+    the transform actually used: what the telemetry recorded, what had to be added to
+    close the loop, and the resulting stretch onto the grid. All three are small and
+    deliberate — see `replay_transform.closing_time` and `time_base_stretch` — and
+    printing them is what keeps them decisions rather than surprises.
+    """
     os.makedirs(cache_dir, exist_ok=True)
     fastf1.Cache.enable_cache(cache_dir)
 
@@ -126,12 +136,21 @@ def build_lap_replay(year, gp, session_id, driver, cache_dir=".f1cache"):
         rotation=float(circuit.rotation),
     )
 
-    return build_replay_dict(
+    replay = build_replay_dict(
         telemetry,
         meta,
         corners=[row for _, row in circuit.corners.iterrows()],
         rate=SAMPLE_RATE_HZ,
     )
+    # Reported so the numbers behind the emitted time base are visible: what the
+    # telemetry recorded, and how much had to be added to close the loop. Both are
+    # what `build_replay_dict` itself resampled against.
+    times = telemetry["Time"]
+    recorded = float(times[-1] - times[0])
+    closing = closing_time(
+        times, telemetry["X"], telemetry["Y"], telemetry["Speed"]
+    )
+    return replay, recorded, closing
 
 
 def validate_output(path: Path) -> None:
@@ -199,7 +218,9 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
 
     try:
-        data = build_lap_replay(args.year, args.gp, args.session, args.driver)
+        data, recorded, closing = build_lap_replay(
+            args.year, args.gp, args.session, args.driver
+        )
     except TelemetryShapeError as err:
         raise SystemExit(f"telemetry cannot produce a valid replay: {err}")
 
@@ -209,11 +230,44 @@ def main(argv=None) -> int:
 
     samples = data["cars"][0]["samples"]
     has_drs = "drs" in samples[0]
+    rate = data["meta"]["sampleRateHz"]
+    stretch = time_base_stretch(len(samples), recorded + closing, rate)
+    # Closing the loop should cost a small FRACTION of a grid step — Monza Q measured
+    # 0.07 and 0.24 of one (0.67 m and 2.12 m against a ~9 m step). Reported as that
+    # fraction rather than as milliseconds because the fraction is the number with a
+    # threshold attached, and because it is scale-free across sample rates and tracks.
+    closing_steps = closing * rate
     print(
         f"wrote {out}: {data['meta']['track']} · {args.driver} · "
         f"{len(samples)} samples · {data['meta']['duration']}s @ "
         f"{data['meta']['sampleRateHz']} Hz · drs {'present' if has_drs else 'omitted'}"
     )
+    # Small, deliberate, and stated out loud rather than buried: the lap the replay
+    # loops is the recorded telemetry plus the chord back to its start, and that lap
+    # is then stretched onto a whole number of grid steps. See replay_transform's
+    # `closing_time` and `time_base_stretch`.
+    print(
+        f"lap {recorded:.3f}s recorded + {closing * 1000:.0f}ms to close the loop "
+        f"({closing_steps:+.2f} of a grid step) · "
+        f"time base stretched {stretch:.5f}x onto the grid"
+    )
+    # The tripwire for the case the synthetic tests can only simulate: telemetry that
+    # leaves more than a whole grid step unrecorded (or runs more than one past the
+    # line). Beyond that the closing chord is no longer a rounding correction — the
+    # last samples pile up on the final fix, and the lap length itself is suspect.
+    # Loud rather than fatal: the output is still schema-valid and still worth looking
+    # at, but nobody should discover this by wondering why the car stalls at the line.
+    if abs(closing_steps) > 1.0:
+        print(
+            f"\nWARNING: closing the loop costs {closing_steps:+.2f} grid steps, more "
+            f"than one whole step of travel.\n"
+            f"  The telemetry for this lap does not run from the line back to the "
+            f"line — it is short (or long) by more than a sample.\n"
+            f"  The emitted lap length is therefore a guess built on that gap, and the "
+            f"samples nearest the line may repeat the final fix.\n"
+            f"  Check the source lap before using this replay; see "
+            f"`replay_transform.closing_time`.\n"
+        )
 
     if args.no_validate:
         print("WARNING: --no-validate: output was NOT checked against the schema.")
