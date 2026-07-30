@@ -402,6 +402,16 @@ small and known; and it should land **before any real-data lap becomes someone's
     `duration` and the span-agreement refinement") was wrong. `t`, `meta.duration`,
     both schema refinements and all of `src/engine/**` are untouched; the golden diff
     shows `meta` byte-identical, sample counts identical, every `t` identical.
+- **Amendment (this slice) — the approved plan was INCOMPLETE, and the measurement is
+  what said so.** Recorded as history rather than smoothed over, because the sequence
+  is the point. The plan approved one mechanism (the time base). Implemented and
+  measured against both real laps, it fixed VER (**0.696× → 1.078×**) and made LEC
+  **worse** (**0.849× → 1.241×**) — an overshoot larger than the undershoot it removed.
+  That result was the diagnosis: an overshoot of exactly the wrong size means a second
+  term, and measuring the raw fixes found it (the lap does not close). With both halves
+  LEC lands at **1.001×**. The loop is 6b's own — measure, diagnose to a mechanism, fix
+  with the numbers written down — run inside a single slice, and a fix that had shipped
+  after the first measurement would have made one of the two real laps worse.
 - **Amendment (this slice) — the fix is two halves, because the defect had two terms.**
   The second was found by measuring the first, which fixed VER and made LEC *worse*.
   - `replay_transform.source_times` — samples are EMITTED at `k/rate` (what the schema
@@ -417,10 +427,19 @@ small and known; and it should land **before any real-data lap becomes someone's
     established — no hard-coded 0.1 or 1/3.6.
   - Without the second half the wrap step overshoots by exactly the shortfall: VER
     0.696× → 1.078×, but **LEC 0.849× → 1.241×**, a bigger error than the one removed.
-- **Amendment (this slice):** the stretch is **printed, not implied**. `build_replay.py`
-  ends every run with `lap 79.662s recorded + 7ms to close the loop · time base
-  stretched 1.00038x onto the grid`. A justified, negligible bias should still be
-  impossible to be surprised by.
+- **Amendment (this slice):** both corrections are **printed, not implied**.
+  `build_replay.py` ends every run with `lap 79.662s recorded + 7ms to close the loop
+  (+0.07 of a grid step) · time base stretched 1.00038x onto the grid`. A justified,
+  negligible bias should still be impossible to be surprised by.
+  - The closing cost is reported as a **fraction of a grid step** because that is the
+    number with a threshold attached, and it is scale-free across sample rates and
+    circuits. Monza Q: **+0.07** (VER) and **+0.24** (LEC) of one step.
+  - **Tripwire:** exceeding **one whole grid step** of travel prints a loud warning.
+    Past that the closing chord stops being a rounding correction — the samples nearest
+    the line pile onto the final fix and the emitted lap length is a guess built on the
+    gap. Loud, not fatal: the output is still schema-valid and still worth looking at.
+    This is the pathological-lap and wrong-sign case that synthetic tests can only
+    simulate; every real lap now announces where it sits against the bound.
 - **Verified against real data (2026-07-28, 2024 Monza Q, both drivers regenerated
   from the warm cache):**
 

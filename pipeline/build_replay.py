@@ -230,9 +230,13 @@ def main(argv=None) -> int:
 
     samples = data["cars"][0]["samples"]
     has_drs = "drs" in samples[0]
-    stretch = time_base_stretch(
-        len(samples), recorded + closing, data["meta"]["sampleRateHz"]
-    )
+    rate = data["meta"]["sampleRateHz"]
+    stretch = time_base_stretch(len(samples), recorded + closing, rate)
+    # Closing the loop should cost a small FRACTION of a grid step — Monza Q measured
+    # 0.07 and 0.24 of one (0.67 m and 2.12 m against a ~9 m step). Reported as that
+    # fraction rather than as milliseconds because the fraction is the number with a
+    # threshold attached, and because it is scale-free across sample rates and tracks.
+    closing_steps = closing * rate
     print(
         f"wrote {out}: {data['meta']['track']} · {args.driver} · "
         f"{len(samples)} samples · {data['meta']['duration']}s @ "
@@ -243,9 +247,27 @@ def main(argv=None) -> int:
     # is then stretched onto a whole number of grid steps. See replay_transform's
     # `closing_time` and `time_base_stretch`.
     print(
-        f"lap {recorded:.3f}s recorded + {closing * 1000:.0f}ms to close the loop · "
+        f"lap {recorded:.3f}s recorded + {closing * 1000:.0f}ms to close the loop "
+        f"({closing_steps:+.2f} of a grid step) · "
         f"time base stretched {stretch:.5f}x onto the grid"
     )
+    # The tripwire for the case the synthetic tests can only simulate: telemetry that
+    # leaves more than a whole grid step unrecorded (or runs more than one past the
+    # line). Beyond that the closing chord is no longer a rounding correction — the
+    # last samples pile up on the final fix, and the lap length itself is suspect.
+    # Loud rather than fatal: the output is still schema-valid and still worth looking
+    # at, but nobody should discover this by wondering why the car stalls at the line.
+    if abs(closing_steps) > 1.0:
+        print(
+            f"\nWARNING: closing the loop costs {closing_steps:+.2f} grid steps, more "
+            f"than one whole step of travel.\n"
+            f"  The telemetry for this lap does not run from the line back to the "
+            f"line — it is short (or long) by more than a sample.\n"
+            f"  The emitted lap length is therefore a guess built on that gap, and the "
+            f"samples nearest the line may repeat the final fix.\n"
+            f"  Check the source lap before using this replay; see "
+            f"`replay_transform.closing_time`.\n"
+        )
 
     if args.no_validate:
         print("WARNING: --no-validate: output was NOT checked against the schema.")
