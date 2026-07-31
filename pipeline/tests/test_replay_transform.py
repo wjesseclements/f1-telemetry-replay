@@ -39,10 +39,23 @@ from replay_transform import (
     interp_continuous,
     normalise_brake,
     normalise_color,
+    parse_lap_range,
     resample_positions_by_travel,
     source_times,
     time_base_stretch,
     uniform_grid,
+    LOOP_CLOSED,
+    LOOP_OPEN,
+    KMH_S_PER_METRE,
+    PARKED_TRAVEL_M,
+    build_window_replay_dict,
+    covers_ground,
+    has_drs,
+    hold_positions,
+    resample_channels,
+    motion_fidelity,
+    window_car_report,
+    window_grid,
 )
 
 
@@ -972,3 +985,620 @@ def test_dump_json_is_canonical_and_round_trips():
     # Sorted keys and an indent are what make a regenerated golden reviewable.
     assert text.startswith("{\n  ")
     assert text.index('"cars"') < text.index('"meta"') < text.index('"track"')
+
+
+# --- covers_ground: parked vs corrupt, and the unit argument ----------------------
+#
+# The predicate that separates "a car sat in its pit box" (ordinary data in a window)
+# from "this lap covers no ground" (impossible data). Its threshold lives on the
+# SPEED channel because that unit is pinned by the schema; the position channel's
+# unit is FastF1's undocumented 1/10 m and is never assumed. These tests pin both
+# halves of that argument.
+
+
+def _straight_line(travel_m: float, *, n: int = 8, rate: float = 4.0):
+    """
+    Telemetry for a car creeping `travel_m` metres in a straight line.
+
+    Speed is derived so the travel integral lands exactly on the requested distance:
+    `sum(v*dt)` is km/h*s, and one metre is `KMH_S_PER_METRE` of them.
+    """
+    t = np.arange(n, dtype=float) / rate
+    duration = t[-1]
+    speed = np.full(n, travel_m * KMH_S_PER_METRE / duration)
+    # Position units are arbitrary on purpose — the predicate must not read a scale
+    # out of them.
+    x = np.linspace(0.0, 137.0, n)
+    return t, x, np.zeros(n), speed
+
+
+def test_covers_ground_calls_one_car_length_of_creep_moving():
+    # Exactly at the bound, which is inclusive: a car that has moved its own length
+    # has moved.
+    t, x, y, speed = _straight_line(PARKED_TRAVEL_M)
+    assert cumulative_travel(t, speed)[-1] == pytest.approx(
+        PARKED_TRAVEL_M * KMH_S_PER_METRE
+    )
+    assert covers_ground(t, x, y, speed) is True
+
+
+def test_covers_ground_calls_just_under_a_car_length_parked():
+    t, x, y, speed = _straight_line(PARKED_TRAVEL_M - 0.1)
+    assert covers_ground(t, x, y, speed) is False
+
+
+def test_covers_ground_calls_pure_gps_jitter_parked():
+    """
+    The case the predicate exists for. The speed channel reads a flat zero while the
+    position fixes wander, so the PATH is long and the TRAVEL is nil. A predicate
+    that tested only the path — the obvious one — would call this car moving and
+    then smear its jitter along an imaginary racing line.
+    """
+    tel = synthetic.parked_telemetry(100.0, 130.0)
+    path = cumulative_arclength(tel["X"], tel["Y"])[-1]
+    assert path > 100.0, "the jitter must be big enough to fool a path-only test"
+    assert covers_ground(tel["Time"], tel["X"], tel["Y"], tel["Speed"]) is False
+
+
+def test_covers_ground_calls_identical_fixes_parked_even_at_speed():
+    """A degenerate path fails dimensionlessly — no threshold, no unit."""
+    t = np.arange(6, dtype=float)
+    x = np.full(6, 42.0)
+    speed = np.full(6, 300.0)
+    assert covers_ground(t, x, x, speed) is False
+
+
+@pytest.mark.parametrize("scale", [0.1, 1.0, 10.0, 1000.0])
+def test_covers_ground_answer_does_not_depend_on_position_units(scale):
+    """
+    The executable form of "no position-unit assumption". FastF1's X/Y convention is
+    undocumented 1/10 m; if the threshold had been written in position units instead,
+    rescaling here would flip the answer and every one of these would disagree.
+    """
+    moving = _straight_line(PARKED_TRAVEL_M * 4)
+    parked = _straight_line(PARKED_TRAVEL_M / 4)
+    for tel, expected in ((moving, True), (parked, False)):
+        t, x, y, speed = tel
+        assert covers_ground(t, x * scale, y * scale, speed) is expected
+
+
+def test_hold_positions_forward_fills_rather_than_interpolating():
+    """
+    A parked car's positions are held, not lerped. Interpolating between two fixes
+    that differ only by noise would animate a stationary car.
+    """
+    t = np.array([0.0, 1.0, 2.0])
+    x = np.array([10.0, 20.0, 30.0])
+    y = np.array([-1.0, -2.0, -3.0])
+    gx, gy = hold_positions(np.array([0.0, 0.5, 1.0, 1.9]), t, x, y)
+    assert list(gx) == [10.0, 10.0, 20.0, 20.0]
+    assert list(gy) == [-1.0, -1.0, -2.0, -2.0]
+
+
+# --- window_grid ------------------------------------------------------------------
+
+
+def test_window_grid_emits_k_over_rate_and_reads_from_the_session_axis():
+    grid, src = window_grid(synthetic.SESSION_T0, synthetic.SESSION_T0 + 3.0, 10)
+    assert grid[0] == 0.0
+    assert grid[1] == pytest.approx(0.1)
+    # The source instants keep the session's own origin — that is the alignment.
+    assert src[0] == pytest.approx(synthetic.SESSION_T0)
+    assert src[-1] == pytest.approx(synthetic.SESSION_T0 + grid[-1])
+
+
+def test_window_grid_applies_no_time_base_stretch():
+    """
+    `source_times` stretches a LAP onto the grid so the app's cyclic wrap step gets a
+    full step of travel. A window is open — the app holds its last sample — so there
+    is no wrap step to feed and the source spacing is exactly the grid spacing.
+    """
+    _, src = window_grid(500.0, 530.0, 10)
+    steps = np.diff(src)
+    assert np.allclose(steps, 0.1)
+
+
+def test_window_grid_duration_exceeds_the_window_by_less_than_one_step():
+    # The surplus is the holding step at the end, not missing data.
+    grid, _ = window_grid(0.0, 3.04, 10)
+    duration = len(grid) / 10
+    assert 3.04 < duration <= 3.04 + 0.1
+
+
+def test_window_grid_rejects_a_window_that_does_not_run_forwards():
+    for t0, t1 in ((10.0, 10.0), (10.0, 9.0)):
+        with pytest.raises(TelemetryShapeError, match="must run forwards"):
+            window_grid(t0, t1)
+
+
+def test_window_grid_rejects_a_window_too_short_to_interpolate_across():
+    with pytest.raises(TelemetryShapeError, match="at least 2"):
+        window_grid(0.0, 0.05, 10)
+
+
+# --- build_window_replay_dict: the v2 shape ---------------------------------------
+
+
+WINDOW_END = synthetic.SESSION_T0 + 12.0
+WINDOW = (synthetic.SESSION_T0, WINDOW_END)
+
+
+def _two_car_window(**kwargs):
+    """Two cars a known interval apart on the same circle, over the same window."""
+    lead = synthetic.window_car(
+        "AAA", synthetic.session_telemetry(*WINDOW, offset_s=0.0, **kwargs)
+    )
+    chase = synthetic.window_car(
+        "BBB", synthetic.session_telemetry(*WINDOW, offset_s=2.0, **kwargs)
+    )
+    return [lead, chase]
+
+
+def test_window_puts_every_car_on_one_shared_grid():
+    replay = build_window_replay_dict(_two_car_window(), synthetic.SESSION_META, WINDOW)
+
+    rate = replay["meta"]["sampleRateHz"]
+    n = round(replay["meta"]["duration"] * rate)
+    assert len(replay["cars"]) == 2
+    for car in replay["cars"]:
+        assert len(car["samples"]) == n
+        assert [s["t"] for s in car["samples"]] == [
+            round(k / rate, 3) for k in range(n)
+        ]
+
+
+def test_window_sample_k_is_the_same_instant_for_every_car():
+    """
+    CLAUDE.md rule 5, stated as an equality rather than a hope: the cars are aligned
+    on SESSION time, so index k means one moment across the whole file.
+    """
+    replay = build_window_replay_dict(_two_car_window(), synthetic.SESSION_META, WINDOW)
+    a, b = (c["samples"] for c in replay["cars"])
+    for k in (0, 17, len(a) - 1):
+        assert a[k]["t"] == b[k]["t"]
+
+
+def test_window_preserves_the_interval_between_two_cars():
+    """
+    The closed-form check. Car BBB is car AAA shifted 2 s along the track, so at any
+    grid index BBB must sit where AAA was 2 s (= 20 grid steps) earlier. If anything
+    rebased a car's clock, this is what breaks.
+    """
+    replay = build_window_replay_dict(_two_car_window(), synthetic.SESSION_META, WINDOW)
+    lead, chase = (c["samples"] for c in replay["cars"])
+    offset_steps = int(2.0 * replay["meta"]["sampleRateHz"])
+
+    for k in range(offset_steps, len(lead)):
+        assert chase[k]["x"] == pytest.approx(lead[k - offset_steps]["x"], abs=0.5)
+        assert chase[k]["y"] == pytest.approx(lead[k - offset_steps]["y"], abs=0.5)
+
+
+def test_window_positions_match_the_closed_form():
+    """Each car's emitted path is the circle it was generated from, not merely
+    self-consistent with another run of the same code."""
+    replay = build_window_replay_dict(_two_car_window(), synthetic.SESSION_META, WINDOW)
+    rate = replay["meta"]["sampleRateHz"]
+    samples = replay["cars"][0]["samples"]
+
+    for k in (0, 5, 33, len(samples) - 1):
+        want_x, want_y = synthetic.session_position(
+            synthetic.SESSION_T0 + k / rate, 0.0
+        )
+        # Tolerance is the chordal sagitta of the source polyline, not slack.
+        assert samples[k]["x"] == pytest.approx(float(want_x), abs=1.0)
+        assert samples[k]["y"] == pytest.approx(float(want_y), abs=1.0)
+
+
+def test_window_never_rebases_a_cars_time_axis():
+    """
+    The single most important line in the v2 shape. `build_replay_dict` does
+    `t = t - t[0]` because a LAP starts at zero; doing that per car here would put
+    every driver at the start of their own data and destroy the alignment.
+
+    Two cars whose telemetry STARTS at different session times must still line up.
+    """
+    early = synthetic.window_car(
+        "AAA", synthetic.session_telemetry(synthetic.SESSION_T0 - 5.0, WINDOW_END)
+    )
+    late = synthetic.window_car(
+        "BBB", synthetic.session_telemetry(synthetic.SESSION_T0 + 3.0, WINDOW_END)
+    )
+    replay = build_window_replay_dict([early, late], synthetic.SESSION_META, WINDOW)
+    a, b = (c["samples"] for c in replay["cars"])
+
+    # Same generator, same offset: once BOTH cars have data, they are in the same
+    # place. A rebase would put B a fixed distance behind A forever.
+    settled = int(4.0 * replay["meta"]["sampleRateHz"])
+    for k in range(settled, len(a)):
+        assert b[k]["x"] == pytest.approx(a[k]["x"], abs=1.0)
+        assert b[k]["y"] == pytest.approx(a[k]["y"], abs=1.0)
+
+
+def test_window_holds_a_car_whose_data_starts_late_rather_than_extrapolating():
+    late = synthetic.window_car(
+        "BBB", synthetic.session_telemetry(synthetic.SESSION_T0 + 3.0, WINDOW_END)
+    )
+    replay = build_window_replay_dict(
+        [synthetic.window_car("AAA", synthetic.session_telemetry(*WINDOW)), late],
+        synthetic.SESSION_META,
+        WINDOW,
+    )
+    samples = replay["cars"][1]["samples"]
+    first_real = int(3.0 * replay["meta"]["sampleRateHz"])
+    held = {(s["x"], s["y"]) for s in samples[:first_real]}
+    assert len(held) == 1, "the car should sit at its first fix, not fly in from off-map"
+
+
+def test_window_holds_a_retired_car_at_its_last_known_place():
+    """
+    A car that stops mid-window needs no special case: the travel integral goes flat,
+    so the arc position stops advancing and the car parks where it stopped. This is
+    6b's partially-zero-speed case, and it is the ordinary way a race ends for
+    somebody.
+    """
+    retired = synthetic.window_car(
+        "BBB",
+        synthetic.session_telemetry(*WINDOW, stopped_from=synthetic.SESSION_T0 + 6.0),
+    )
+    replay = build_window_replay_dict(
+        [synthetic.window_car("AAA", synthetic.session_telemetry(*WINDOW)), retired],
+        synthetic.SESSION_META,
+        WINDOW,
+    )
+    samples = replay["cars"][1]["samples"]
+    rate = replay["meta"]["sampleRateHz"]
+    after = samples[int(8.0 * rate) :]
+
+    assert len({(s["x"], s["y"]) for s in after}) == 1
+    assert all(s["speed"] == 0 for s in after)
+    # and the car that kept going did not stop with it.
+    assert len({(s["x"], s["y"]) for s in replay["cars"][0]["samples"]}) > 10
+
+
+def test_window_tolerates_cars_at_different_source_rates():
+    """Unequal data quality is what a real session serves; the shared grid is the
+    point at which that stops mattering."""
+    coarse = synthetic.window_car(
+        "BBB", synthetic.session_telemetry(*WINDOW, rate=3.0)
+    )
+    replay = build_window_replay_dict(
+        [synthetic.window_car("AAA", synthetic.session_telemetry(*WINDOW, rate=11.0)),
+         coarse],
+        synthetic.SESSION_META,
+        WINDOW,
+    )
+    a, b = replay["cars"]
+    assert len(a["samples"]) == len(b["samples"])
+
+
+def test_window_emits_a_parked_car_without_raising():
+    """
+    A stationary car is CORRUPT data for a lap and ORDINARY data for a window. Same
+    condition, different meaning — which is the whole reason `covers_ground` exists.
+    """
+    replay = build_window_replay_dict(
+        [
+            synthetic.window_car("AAA", synthetic.session_telemetry(*WINDOW)),
+            synthetic.window_car("BBB", synthetic.parked_telemetry(*WINDOW)),
+        ],
+        synthetic.SESSION_META,
+        WINDOW,
+    )
+    parked = replay["cars"][1]["samples"]
+    assert all(s["speed"] == 0 for s in parked)
+    # Held to its recorded fixes: a handful of distinct jitter points, never a lap.
+    span_x = max(s["x"] for s in parked) - min(s["x"] for s in parked)
+    assert span_x < 100.0
+
+
+def test_the_lap_builder_still_raises_on_the_very_same_stationary_car():
+    """The mirror of the test above, and the reason both behaviours can coexist."""
+    parked = synthetic.parked_telemetry(0.0, 12.0)
+    parked["Time"] = parked["Time"] - parked["Time"][0]
+    with pytest.raises(TelemetryShapeError, match="integrates to zero distance"):
+        build_replay_dict(parked, synthetic.META)
+
+
+def test_window_marks_the_replay_open_and_a_lap_closed():
+    window = build_window_replay_dict(
+        _two_car_window(), synthetic.SESSION_META, WINDOW
+    )
+    assert window["meta"]["loop"] == LOOP_OPEN
+    assert build_replay_dict(synthetic.telemetry(), synthetic.META)["meta"]["loop"] == (
+        LOOP_CLOSED
+    )
+
+
+def test_window_takes_start_finish_from_the_reference_car():
+    replay = build_window_replay_dict(_two_car_window(), synthetic.SESSION_META, WINDOW)
+    first = replay["cars"][0]["samples"][0]
+    assert replay["track"]["startFinish"]["x"] == first["x"]
+    assert replay["track"]["startFinish"]["y"] == first["y"]
+
+
+def test_window_rejects_an_empty_car_list():
+    with pytest.raises(TelemetryShapeError, match="at least one car"):
+        build_window_replay_dict([], synthetic.SESSION_META, WINDOW)
+
+
+def test_window_rejects_a_car_missing_a_required_channel():
+    cars = _two_car_window()
+    del cars[1].telemetry["Speed"]
+    with pytest.raises(MissingColumnsError, match="Speed"):
+        build_window_replay_dict(cars, synthetic.SESSION_META, WINDOW)
+
+
+def test_window_rejects_a_car_with_time_running_backwards():
+    cars = _two_car_window()
+    cars[1].telemetry["Time"] = cars[1].telemetry["Time"][::-1].copy()
+    with pytest.raises(TelemetryShapeError, match="BBB: telemetry Time"):
+        build_window_replay_dict(cars, synthetic.SESSION_META, WINDOW)
+
+
+def test_window_rejects_a_car_with_too_few_rows():
+    cars = _two_car_window()
+    for name in list(cars[1].telemetry):
+        cars[1].telemetry[name] = cars[1].telemetry[name][:1]
+    with pytest.raises(TelemetryShapeError, match="BBB: telemetry needs at least 2"):
+        build_window_replay_dict(cars, synthetic.SESSION_META, WINDOW)
+
+
+def test_window_positions_are_unaffected_by_the_speed_channel_s_scale():
+    """
+    6b's unit-agnosticism, carried into the window. Only the RATIO of travel to path
+    is used, so a speed channel in mph must emit identical positions.
+    """
+    kmh = build_window_replay_dict(
+        _two_car_window(), synthetic.SESSION_META, WINDOW
+    )
+    mph_cars = _two_car_window()
+    for car in mph_cars:
+        car.telemetry["Speed"] = car.telemetry["Speed"] / 1.609344
+    mph = build_window_replay_dict(mph_cars, synthetic.SESSION_META, WINDOW)
+
+    for a, b in zip(kmh["cars"], mph["cars"]):
+        assert [(s["x"], s["y"]) for s in a["samples"]] == [
+            (s["x"], s["y"]) for s in b["samples"]
+        ]
+
+
+# --- DRS is decided once per replay, not per car ----------------------------------
+
+
+def test_window_gives_every_car_drs_when_any_car_used_it():
+    """
+    Over a short window a driver who never opened DRS has an all-zero channel and
+    would lose the HUD indicator while their team-mate kept it — two cars in one file
+    disagreeing about whether the season has DRS. The decision is the replay's.
+    """
+    cars = _two_car_window()
+    cars[1].telemetry["DRS"] = np.zeros_like(cars[1].telemetry["DRS"])
+    replay = build_window_replay_dict(cars, synthetic.SESSION_META, WINDOW)
+
+    for car in replay["cars"]:
+        assert all("drs" in s for s in car["samples"])
+    assert all(s["drs"] == 0 for s in replay["cars"][1]["samples"])
+
+
+def test_window_omits_drs_from_every_car_when_no_car_used_it():
+    """A 2026+ session: all-zero everywhere means the key is omitted, as for a lap."""
+    replay = build_window_replay_dict(
+        _two_car_window(drs=False), synthetic.SESSION_META, WINDOW
+    )
+    for car in replay["cars"]:
+        assert all("drs" not in s for s in car["samples"])
+
+
+def test_window_omits_drs_when_one_car_lacks_the_channel_entirely():
+    """
+    Degrades in the SAFE direction: the indicator disappears for everybody rather
+    than the build failing, or — worse — one car silently carrying it.
+    """
+    cars = _two_car_window()
+    del cars[1].telemetry["DRS"]
+    replay = build_window_replay_dict(cars, synthetic.SESSION_META, WINDOW)
+    for car in replay["cars"]:
+        assert all("drs" not in s for s in car["samples"])
+
+
+def test_has_drs_treats_absent_and_all_zero_alike():
+    assert has_drs(None) is False
+    assert has_drs(np.zeros(5, dtype=int)) is False
+    assert has_drs(np.array([0, 0, 12, 0])) is True
+
+
+def test_build_samples_refuses_to_include_drs_a_car_does_not_have():
+    grid = np.arange(3, dtype=float) / 10
+    zeros = np.zeros(3)
+    with pytest.raises(TelemetryShapeError, match="carries no DRS channel"):
+        build_samples(grid, zeros, zeros, zeros, zeros, zeros, zeros, None,
+                      include_drs=True)
+
+
+# --- resample_channels ------------------------------------------------------------
+
+
+def test_resample_channels_leaves_position_to_the_caller():
+    """
+    Position is the ONE channel the two builders treat differently, so it is
+    deliberately absent here rather than hidden behind a flag.
+    """
+    tel = synthetic.telemetry()
+    t = tel["Time"] - tel["Time"][0]
+    channels = resample_channels(np.array([0.0, 0.5, 1.0]), t, tel)
+    assert set(channels) == {"speed", "throttle", "brake", "gear", "drs"}
+
+
+def test_resample_channels_resamples_by_type():
+    """Continuous interpolate, discrete forward-fill (CLAUDE.md rule 6)."""
+    t = np.array([0.0, 1.0])
+    tel = {
+        "Speed": np.array([100.0, 200.0]),
+        "Throttle": np.array([0.0, 100.0]),
+        "Brake": np.array([0, 1]),
+        "nGear": np.array([3, 8]),
+        "DRS": np.array([0, 12]),
+    }
+    ch = resample_channels(np.array([0.5]), t, tel)
+    assert ch["speed"][0] == pytest.approx(150.0)
+    assert ch["throttle"][0] == pytest.approx(50.0)
+    assert ch["brake"][0] == 0  # never 0.5
+    assert ch["gear"][0] == 3  # never 5.5
+    assert ch["drs"][0] == 0
+
+
+# --- the scale-spread diagnostic --------------------------------------------------
+
+
+def test_window_car_report_names_each_car_and_flags_the_parked_one():
+    cars = [
+        synthetic.window_car("AAA", synthetic.session_telemetry(*WINDOW)),
+        synthetic.window_car("BBB", synthetic.parked_telemetry(*WINDOW)),
+    ]
+    report = window_car_report(cars)
+
+    assert [driver for driver, _, _ in report] == ["AAA", "BBB"]
+    assert report[0][1] is True
+    assert report[1][1] is False
+
+
+def test_window_car_report_distance_is_metres_from_the_speed_channel():
+    """
+    Real metres, read off the one channel whose unit the schema pins — never off the
+    position channel, whose scale is exactly the unknown this module refuses to
+    assume. Asserted three ways, because the claim has three parts.
+    """
+    ((_, _, distance),) = window_car_report(_two_car_window()[:1])
+
+    # 1. It is the actual distance the speed profile covers, in metres.
+    analytic = synthetic.session_distance_m(synthetic.SESSION_T0, WINDOW_END)
+    assert distance == pytest.approx(analytic, rel=1e-3)
+
+    # 2. Rescaling the POSITION channel cannot move it.
+    stretched = _two_car_window()[:1]
+    stretched[0].telemetry["X"] = stretched[0].telemetry["X"] * 37.0
+    stretched[0].telemetry["Y"] = stretched[0].telemetry["Y"] * 37.0
+    assert window_car_report(stretched)[0][2] == pytest.approx(distance)
+
+    # 3. Rescaling the SPEED channel moves it exactly in proportion.
+    faster = _two_car_window()[:1]
+    faster[0].telemetry["Speed"] = faster[0].telemetry["Speed"] * 2.0
+    assert window_car_report(faster)[0][2] == pytest.approx(2.0 * distance)
+
+
+# --- motion fidelity: 6b's metric, per car ----------------------------------------
+
+
+def test_motion_fidelity_is_near_perfect_on_arc_length_placed_positions():
+    """
+    6b's acceptance bar (r > 0.97) applied to the window builder's output. Placing
+    samples by travelled distance is what makes the marker's apparent speed agree
+    with the speed channel; this is that claim, measured.
+    """
+    replay = build_window_replay_dict(_two_car_window(), synthetic.SESSION_META, WINDOW)
+    for car in replay["cars"]:
+        corr, spread = motion_fidelity(car["samples"], replay["meta"]["sampleRateHz"])
+        assert corr > 0.97
+        assert spread < 0.05
+
+
+def test_motion_fidelity_is_scale_free_in_both_channels():
+    """
+    The property that lets this module compute it at all: it does not know the
+    conversion between position units and km/h, and a correlation plus a
+    self-normalised spread do not need one.
+    """
+    replay = build_window_replay_dict(_two_car_window(), synthetic.SESSION_META, WINDOW)
+    samples = replay["cars"][0]["samples"]
+    rescaled = [
+        {**s, "x": s["x"] * 7.5, "y": s["y"] * 7.5, "speed": s["speed"] * 0.3}
+        for s in samples
+    ]
+    assert motion_fidelity(samples, 10) == pytest.approx(motion_fidelity(rescaled, 10))
+
+
+def test_motion_fidelity_catches_positions_placed_by_time_instead_of_travel():
+    """
+    The negative half. Bunching the samples in space while leaving the speed channel
+    alone is exactly the defect 6b removed, and the metric has to see it — otherwise
+    it would pass everything and mean nothing.
+    """
+    replay = build_window_replay_dict(_two_car_window(), synthetic.SESSION_META, WINDOW)
+    samples = replay["cars"][0]["samples"]
+    scrambled = [
+        {**s, "x": s["x"] * (1.0 + 0.6 * ((k % 3) - 1))}
+        for k, s in enumerate(samples)
+    ]
+    good_r, _ = motion_fidelity(samples, 10)
+    bad_r, bad_spread = motion_fidelity(scrambled, 10)
+    assert bad_r < good_r
+    assert bad_spread > 0.2
+
+
+def test_motion_fidelity_is_undefined_for_a_car_that_never_moved():
+    """A parked car's ratio has a zero denominator on every step; there is nothing to
+    correlate, and saying so is better than returning a number."""
+    replay = build_window_replay_dict(
+        [
+            synthetic.window_car("AAA", synthetic.session_telemetry(*WINDOW)),
+            synthetic.window_car("BBB", synthetic.parked_telemetry(*WINDOW)),
+        ],
+        synthetic.SESSION_META,
+        WINDOW,
+    )
+    assert motion_fidelity(replay["cars"][1]["samples"], 10) is None
+
+
+def test_motion_fidelity_is_undefined_when_a_channel_never_varies():
+    """Correlation needs variance on both axes; a constant one is not a failure to
+    report as a number."""
+    flat = [{"x": float(k), "y": 0.0, "speed": 100.0} for k in range(10)]
+    assert motion_fidelity(flat, 10) is None
+
+
+# --- the per-car ratio does NOT reach the emitted positions -----------------------
+
+
+def test_one_car_s_speed_scale_changes_nothing_for_it_or_its_neighbours():
+    """
+    The measurement that refuted this slice's own plan, kept as a regression test.
+
+    The plan assumed each car carried a per-car "unit bridge" (path / travel) into
+    its placement, so that cars with different ratios would drift apart along the
+    track — and on 2024 Monza R that spread computed to an alarming 24 m. It is not
+    real: `resample_positions_by_travel` places sample k at a FRACTION of the car's
+    own path, so the ratio cancels completely.
+
+    Multiplying ONE car's speed channel by 1.5 moves its path/travel ratio by 33% and
+    must leave every emitted coordinate — its own and its neighbour's — untouched.
+    Anyone who reintroduces a shared or absolute scale will fail here.
+    """
+    base = build_window_replay_dict(
+        _two_car_window(), synthetic.SESSION_META, WINDOW
+    )
+    skewed_cars = _two_car_window()
+    skewed_cars[1].telemetry["Speed"] = skewed_cars[1].telemetry["Speed"] * 1.5
+    skewed = build_window_replay_dict(skewed_cars, synthetic.SESSION_META, WINDOW)
+
+    for before, after in zip(base["cars"], skewed["cars"]):
+        assert [(s["x"], s["y"]) for s in before["samples"]] == [
+            (s["x"], s["y"]) for s in after["samples"]
+        ], before["driver"]
+
+
+# --- lap ranges -------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [("12-14", (12, 14)), ("12", (12, 12)), ("1-53", (1, 53)), ("7-7", (7, 7))],
+)
+def test_parse_lap_range_accepts_a_number_or_a_range(text, expected):
+    assert parse_lap_range(text) == expected
+
+
+@pytest.mark.parametrize("text", ["14-12", "", "a-b", "12-", "1-2-3", "12.5", "-3"])
+def test_parse_lap_range_rejects_anything_else(text):
+    """A mis-parsed range is a different window, silently — so it fails loudly."""
+    with pytest.raises(TelemetryShapeError, match="lap range"):
+        parse_lap_range(text)

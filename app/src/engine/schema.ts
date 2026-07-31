@@ -14,6 +14,22 @@ import { z } from "zod";
 /** Bump only for a BREAKING contract change; additive fields do not need it. */
 export const SCHEMA_VERSION = 1;
 
+/**
+ * Whether a replay's samples form a CYCLE or an open segment.
+ *
+ * `"closed"` — a lap. The segment leaving the last sample runs back to the first,
+ * because that is where the car actually went. Every v1 replay is one.
+ *
+ * `"open"` — a session-time WINDOW containing several cars (v2). It cannot close:
+ * twenty cars do not simultaneously return to their starting positions, so the last
+ * sample is the end of the data and `interpolate.ts` holds it rather than
+ * interpolating a jump back to the start.
+ *
+ * This is a fact about the DATA, which is why it lives in the data rather than in a
+ * heuristic — see the `interpolate.ts` header for what each mode does.
+ */
+export const LOOP_MODES = ["closed", "open"] as const;
+
 /** Speed is km/h everywhere: the engine's thermal color stops are km/h-calibrated. */
 export const SPEED_UNIT = "km/h";
 
@@ -31,6 +47,17 @@ const MetaSchema = z.object({
   sampleRateHz: z.number().positive(),
   /** Seconds. */
   duration: z.number().positive(),
+  /**
+   * Cyclic (a lap) or open (a session-time window). See `LOOP_MODES`.
+   *
+   * ADDITIVE within schemaVersion 1, deliberately: `.default()` rather than
+   * `.optional()`, so a replay written before this field existed still validates,
+   * still means "a lap", and still behaves identically — while `z.infer` makes the
+   * parsed value REQUIRED, so the engine never has to branch on `undefined`.
+   * Bumping the version instead would invalidate every generated lap on disk to
+   * describe something none of them do differently.
+   */
+  loop: z.enum(LOOP_MODES).default("closed"),
   units: z.object({
     speed: z.literal(SPEED_UNIT, {
       error: `replay.meta.units.speed must be "${SPEED_UNIT}" — the engine's speed-to-color stops are calibrated in km/h`,
@@ -187,3 +214,5 @@ export type Track = Replay["track"];
 export type Corner = Track["corners"][number];
 export type Car = Replay["cars"][number];
 export type Sample = Car["samples"][number];
+/** `"closed"` (a lap) or `"open"` (a session-time window). See `LOOP_MODES`. */
+export type LoopMode = Meta["loop"];

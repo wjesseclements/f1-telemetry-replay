@@ -90,6 +90,21 @@ SCHEMA_VERSION = 1
 #: The engine's thermal colour stops are calibrated in km/h; the schema pins the unit.
 SPEED_UNIT = "km/h"
 
+#: `meta.loop` — whether the samples form a CYCLE or an open segment. Mirrored from
+#: `LOOP_MODES` in schema.ts, which rejects anything else.
+#:
+#: A lap closes: the segment leaving the last sample runs back to the first, because
+#: that is where the car went. A session-time WINDOW does not, and cannot — several
+#: cars do not simultaneously return to their starting positions — so the app holds
+#: the last sample for the final grid step instead of gliding back to the start.
+#:
+#: This single fact is what separates the two builders below. It also decides, on its
+#: own, that a window needs neither `closing_time` nor `source_times`: both exist only
+#: to give the app's cyclic wrap step a full step of travel, and an open window has no
+#: cyclic wrap step. See `build_window_replay_dict`.
+LOOP_CLOSED = "closed"
+LOOP_OPEN = "open"
+
 #: FastF1's merged telemetry lands at roughly 4-10 Hz, so 10 Hz is the finest grid
 #: that does not invent resolution. It also matches the committed app fixture, which
 #: keeps "what the app was built against" and "what the pipeline emits" the same shape.
@@ -284,6 +299,49 @@ def forward_fill(grid: np.ndarray, t: np.ndarray, values: Any) -> np.ndarray:
     return np.asarray(values)[idx]
 
 
+def has_drs(values: Any) -> bool:
+    """
+    True when a DRS channel is present AND carries a non-zero code.
+
+    An absent channel and an all-zero one are the same thing to the schema: `drs` is
+    omitted from every sample. All-zero is what a 2026+ session looks like, and what
+    a driver who never opened it looks like over a short window — which is why the
+    WINDOW builder decides this once for the whole replay rather than per car. See
+    `build_samples`.
+    """
+    return values is not None and bool(np.any(np.asarray(values) != 0))
+
+
+def resample_channels(
+    src: np.ndarray, t: np.ndarray, telemetry: Mapping[str, Any]
+) -> "dict[str, np.ndarray | None]":
+    """
+    Resample every channel EXCEPT position onto the source instants `src`.
+
+    Position is deliberately absent: it is the one channel the two builders treat
+    differently (a lap always places samples by travelled distance and fails loudly
+    on data that covers no ground; a window has to tolerate a parked car), so it
+    stays at the call sites where that difference is visible. Everything here is
+    identical for a lap and for a window, and shared so it can only be got wrong
+    once.
+
+    Resampling is by channel TYPE, per CLAUDE.md rule 6: continuous channels
+    interpolate, discrete ones forward-fill.
+    """
+    raw_drs = telemetry.get("DRS")
+    return {
+        "speed": interp_continuous(src, t, telemetry["Speed"]),
+        "throttle": clamp_throttle(interp_continuous(src, t, telemetry["Throttle"])),
+        "brake": forward_fill(src, t, normalise_brake(telemetry["Brake"])),
+        "gear": forward_fill(src, t, np.asarray(telemetry["nGear"]).astype(int)),
+        "drs": (
+            None
+            if raw_drs is None
+            else forward_fill(src, t, np.asarray(raw_drs).astype(int))
+        ),
+    }
+
+
 # --- arc-length reparameterization ------------------------------------------------
 
 
@@ -360,6 +418,87 @@ def closing_time(t: Any, x: Any, y: Any, speed: Any) -> float:
 
     gap = ((px[0] - px[-1]) * ux + (py[0] - py[-1]) * uy) / last_step
     return (travel * gap / path) / v_line
+
+
+#: One car length, in metres. Below this much TRAVEL over a whole window, a car was
+#: parked rather than moving, and its positions are held instead of being placed
+#: along a path. See `covers_ground`.
+PARKED_TRAVEL_M = 5.0
+
+#: Travel-integral units per metre. `cumulative_travel` is sum(v*dt) with v in km/h
+#: and t in seconds, so it carries km/h*s, and one metre is 3.6 of them.
+#:
+#: THIS IS THE MODULE'S ONLY UNIT CONVERSION, and it is deliberately on the one
+#: channel whose unit is part of the CONTRACT rather than an undocumented FastF1
+#: convention: `SPEED_UNIT` is emitted into `meta.units.speed` and schema.ts REJECTS
+#: any other value at load ("the engine's speed-to-color stops are calibrated in
+#: km/h"), so both sides enforce it. The POSITION channel's unit — FastF1's
+#: undocumented 1/10 m — is still never assumed anywhere in this module, which is
+#: what `resample_positions_by_travel`'s normalisation exists to preserve.
+KMH_S_PER_METRE = 3.6
+
+
+def covers_ground(t: Any, x: Any, y: Any, speed: Any) -> bool:
+    """
+    True when this car moved far enough for its positions to be placed by travelled
+    distance; False when it was parked and they should simply be held.
+
+    The distinction the caller is making is *parked* versus *corrupt*, and the two
+    builders answer it differently on purpose: a LAP that covers no ground is
+    impossible data and `resample_positions_by_travel` raises on it, while a WINDOW
+    containing a car sitting in its pit box, on the grid, or retired in the garage is
+    completely ordinary. Same condition, different meaning, so the predicate lives
+    here and the window builder is the only caller.
+
+    WHY THE TWO TESTS ARE ASYMMETRIC
+    --------------------------------
+    The path test is strict positivity — no threshold, no unit. All that can honestly
+    be asked of a channel whose scale is unknown is whether it is degenerate, and
+    `> 0` asks exactly that.
+
+    The travel test carries the threshold, because travel is measured on the SPEED
+    channel, whose unit is pinned by the schema on both sides of the contract (see
+    `KMH_S_PER_METRE`). Putting a distance threshold on the position channel instead
+    would embed FastF1's undocumented 1/10 m convention — the very assumption this
+    module is built to avoid — and would silently mean something different the day
+    FastF1 changed it.
+
+    The scale bridge `s_total / d_total` cannot be used to derive the threshold, and
+    that circularity is precisely why this predicate exists: for a parked car
+    `d_total` is ~0, which makes the bridge itself meaningless. Something has to
+    decide whether the bridge is trustworthy at all, BEFORE it is computed.
+
+    The bound is absolute rather than scaled by window length: "did this car move?"
+    is not a question whose answer should depend on how long you watched.
+
+    ACCEPTED BEHAVIOUR, stated rather than guarded: a session whose speed channel
+    reads ~1 km/h of noise while the car is stationary integrates to tens of metres
+    over a long window and is classified as MOVING. That is the predicate trusting
+    the speed channel, which is this module's standing policy, and the consequence is
+    bounded — the positions it then places stay inside the car's own jitter radius.
+    """
+    return bool(
+        cumulative_arclength(x, y)[-1] > 0.0
+        and cumulative_travel(t, speed)[-1] >= PARKED_TRAVEL_M * KMH_S_PER_METRE
+    )
+
+
+def hold_positions(
+    times: np.ndarray, t: np.ndarray, x: Any, y: Any
+) -> "tuple[np.ndarray, np.ndarray]":
+    """
+    Positions for a car that did not move: forward-fill the recorded fixes.
+
+    The honest output for a parked car. It is deliberately NOT interpolation — with
+    no travel to distribute there is nothing to interpolate along, and lerping
+    between two GPS fixes that differ only by noise would animate a stationary car.
+    Forward-fill says "the car is where the last fix put it", which is all the data
+    supports. See `covers_ground` for when this is chosen.
+    """
+    return (
+        forward_fill(times, t, np.asarray(x, dtype=float)),
+        forward_fill(times, t, np.asarray(y, dtype=float)),
+    )
 
 
 def resample_positions_by_travel(
@@ -469,6 +608,7 @@ def build_samples(
     brake: np.ndarray,
     gear: np.ndarray,
     drs: "np.ndarray | None" = None,
+    include_drs: "bool | None" = None,
 ) -> "list[dict[str, Any]]":
     """
     Turn resampled channels into the schema's `samples` array.
@@ -481,8 +621,26 @@ def build_samples(
     `drs` is omitted from EVERY sample when the channel is absent or all-zero — the
     schema treats a partially-present channel as pipeline drift and rejects it, and
     an all-zero channel is what a 2026+ session looks like.
+
+    `include_drs` OVERRIDES that per-car decision, and the window builder always
+    passes it, because DRS inclusion is a property of the replay rather than of one
+    driver. Over a three-lap window a driver who never opened DRS has an all-zero
+    channel and would silently lose the HUD indicator while their team-mate kept it —
+    two cars in one file disagreeing about whether the season has DRS at all. `None`
+    (the default) means "decide from this car's own channel", which is the right
+    answer for a single lap, where the car IS the replay.
     """
-    include_drs = drs is not None and bool(np.any(np.asarray(drs) != 0))
+    if include_drs is None:
+        include_drs = has_drs(drs)
+    if include_drs and drs is None:
+        # Only reachable by asking for DRS on a car that has no DRS channel. The
+        # window builder never does — it requires the channel on EVERY car before
+        # including it — but silently emitting the car without the key would produce
+        # exactly the incoherent file the override exists to prevent, so say so.
+        raise TelemetryShapeError(
+            "include_drs=True but this car carries no DRS channel; a replay cannot "
+            "have some cars with the indicator and some without"
+        )
     drs_values = np.asarray(drs).astype(int) if include_drs else None
 
     samples = []
@@ -570,23 +728,17 @@ def build_replay_dict(
     src = source_times(grid, lap_time, rate)
 
     # x/y come from the path, parameterised by travelled distance rather than by time
-    # (see the module docstring); every other channel is a plain resample.
+    # (see the module docstring); every other channel is a plain resample. A lap that
+    # covers no ground is corrupt, so this is the call that RAISES rather than
+    # tolerating it — the window builder is where a car legitimately sits still.
     gx, gy = resample_positions_by_travel(
         src, t, telemetry["X"], telemetry["Y"], telemetry["Speed"]
     )
-    gspeed = interp_continuous(src, t, telemetry["Speed"])
-    gthrottle = clamp_throttle(interp_continuous(src, t, telemetry["Throttle"]))
-    gbrake = forward_fill(src, t, normalise_brake(telemetry["Brake"]))
-    ggear = forward_fill(src, t, np.asarray(telemetry["nGear"]).astype(int))
+    ch = resample_channels(src, t, telemetry)
 
-    raw_drs = telemetry.get("DRS")
-    gdrs = (
-        None
-        if raw_drs is None
-        else forward_fill(src, t, np.asarray(raw_drs).astype(int))
+    samples = build_samples(
+        grid, gx, gy, ch["speed"], ch["throttle"], ch["brake"], ch["gear"], ch["drs"]
     )
-
-    samples = build_samples(grid, gx, gy, gspeed, gthrottle, gbrake, ggear, gdrs)
     n = len(samples)
 
     return {
@@ -599,6 +751,9 @@ def build_replay_dict(
             "rotation": float(meta.rotation),
             "sampleRateHz": rate,
             "duration": round(n / rate, 3),
+            # A lap closes, so the app runs the segment leaving the last sample back
+            # to the first. See LOOP_CLOSED.
+            "loop": LOOP_CLOSED,
             "units": {"speed": SPEED_UNIT},
         },
         "track": {
@@ -625,6 +780,324 @@ def build_replay_dict(
             }
         ],
     }
+
+
+# --- the session-time window (v2) -------------------------------------------------
+
+
+@dataclass(frozen=True)
+class SessionMeta:
+    """
+    The non-telemetry facts about a SESSION — shared by every car in a window.
+
+    Deliberately not `ReplayMeta`: that carries `driver`, `team` and `color`, which
+    for a window are per-car facts and live on `WindowCar`. Handing the window
+    builder a `ReplayMeta` would mean passing three fields it must ignore, and one
+    day someone would read `meta.driver` and get whichever driver happened to be
+    typed first.
+    """
+
+    year: int
+    event: str
+    session: str
+    track: str
+    #: Degrees, from FastF1 `circuit_info`. Applied by the app at render time.
+    rotation: float
+
+
+@dataclass(frozen=True)
+class WindowCar:
+    """One driver's contribution to a window: who they are, and their telemetry.
+
+    `telemetry` is keyed exactly like `build_replay_dict`'s, with one difference that
+    is the whole point of v2: `Time` is on a SHARED axis (session seconds), not
+    rebased to this driver's own start. See `build_window_replay_dict`.
+    """
+
+    driver: str
+    team: str
+    color: str
+    telemetry: Mapping[str, Any]
+
+
+def parse_lap_range(text: str) -> "tuple[int, int]":
+    """
+    `"12-14"` -> `(12, 14)`; a bare `"12"` is the single lap `(12, 12)`.
+
+    Lives here rather than next to the argument parser because it is pure logic with
+    a quiet failure mode — a mis-parsed range is a different window, silently — and
+    `build_replay.py` cannot be tested at all (it imports FastF1, which CI does not
+    install). Anything worth a test belongs on this side of that seam.
+    """
+    try:
+        bounds = [int(part) for part in str(text).split("-")]
+    except ValueError:
+        bounds = []
+    if len(bounds) == 1:
+        return bounds[0], bounds[0]
+    if len(bounds) != 2 or bounds[0] > bounds[1]:
+        raise TelemetryShapeError(
+            f"lap range must be a lap number or A-B with A <= B, got {text!r}"
+        )
+    return bounds[0], bounds[1]
+
+
+def window_grid(
+    t0: float, t1: float, rate: int = SAMPLE_RATE_HZ
+) -> "tuple[np.ndarray, np.ndarray]":
+    """
+    The emitted grid and the source instants for a session-time window `[t0, t1)`.
+
+    Returns `(grid, src)` where `grid` is `k / rate` — what the schema requires as
+    `t` — and `src` is `t0 + k / rate`, the instant on the shared session axis that
+    sample k is read from. Every car reads the same `src`, which is what makes
+    sample k of every car the same moment (CLAUDE.md rule 5).
+
+    NO TIME-BASE STRETCH, AND NO CLOSING CHORD
+    ------------------------------------------
+    `source_times` and `closing_time` are absent here, and their absence is a
+    decision rather than an oversight. Both exist for exactly one reason: to give the
+    app's CYCLIC wrap step a full step of travel, because a lap loops sample n-1 back
+    to sample 0 (see the module docstring and `LOOP_CLOSED`). A window is open — the
+    app holds its last sample instead — so there is no wrap step to feed, nothing to
+    stretch onto, and no fix to close back to. `src` is therefore `t0 + k / rate`
+    exactly, and the emitted time base is the session's own, scaled by 1.0.
+
+    THE LAST STEP IS A HOLD, WHICH IS WHY `duration` CAN EXCEED THE WINDOW
+    ---------------------------------------------------------------------
+    `n = floor((t1 - t0) * rate) + 1` puts the last sample at or before `t1`, and
+    `meta.duration = n / rate` therefore runs up to one grid step PAST it. That
+    surplus is the holding step at the end of the window, not missing data.
+    """
+    span = float(t1) - float(t0)
+    if span <= 0:
+        raise TelemetryShapeError(
+            f"window must run forwards: t0={t0} is not before t1={t1}"
+        )
+    grid = uniform_grid(span, rate)
+    return grid, float(t0) + grid
+
+
+def build_window_replay_dict(
+    cars: Sequence[WindowCar],
+    meta: SessionMeta,
+    window: "tuple[float, float]",
+    corners: Sequence[Mapping[str, Any]] = (),
+    rate: int = SAMPLE_RATE_HZ,
+) -> "dict[str, Any]":
+    """
+    Build a schema-conforming MULTI-CAR replay from one session-time window.
+
+    This is the v2 shape: not a per-car lap, but a shared stretch of a session with
+    every driver resampled onto one grid, so `cars[k]` of every car is the same
+    instant. `cars[0]` is the REFERENCE driver — the window is expected to span a
+    whole number of their laps, which is what puts `track.startFinish` on the actual
+    line and lets the renderer's ribbon close (see PLAN.md Slice 8).
+
+    THE ONE LINE THAT MATTERS MOST: no car's time axis is rebased.
+    `build_replay_dict` starts with `t = t - t[0]`, which is a LAP operation — it
+    makes each lap start at zero. Doing it here would destroy the alignment that is
+    the entire purpose of v2, and it is what CLAUDE.md rule 5 forbids: alignment is
+    on SessionTime, not on per-lap Time. Every car is read at the same `src`.
+
+    Cars whose telemetry does not cover the whole window are not an error and are not
+    dropped. `np.interp` and `forward_fill` both clamp, so a car that retires mid-way
+    holds its last fix for the rest of the window and a car that joins late holds its
+    first — which is what actually happened. Nothing extrapolates.
+    """
+    if len(cars) == 0:
+        raise TelemetryShapeError("a window needs at least one car")
+
+    grid, src = window_grid(window[0], window[1], rate)
+
+    # DRS is decided ONCE for the replay, not per car: over a short window a driver
+    # who never opened it looks identical to a 2026 season, and two cars in one file
+    # disagreeing about whether DRS exists is incoherent. Requiring the channel on
+    # every car (rather than raising when one lacks it) degrades in the safe
+    # direction — the indicator disappears for everybody instead of the build failing.
+    per_car = []
+    for car in cars:
+        check_columns(car.telemetry.keys())
+        t = _window_time_axis(car)
+        per_car.append((car, t, resample_channels(src, t, car.telemetry)))
+
+    include_drs = all(ch["drs"] is not None for _, _, ch in per_car) and any(
+        has_drs(ch["drs"]) for _, _, ch in per_car
+    )
+
+    built = []
+    for car, t, ch in per_car:
+        x, y = car.telemetry["X"], car.telemetry["Y"]
+        # Parked or moving — the one place a window differs from a lap in how
+        # positions are placed. See `covers_ground`.
+        if covers_ground(t, x, y, car.telemetry["Speed"]):
+            gx, gy = resample_positions_by_travel(
+                src, t, x, y, car.telemetry["Speed"]
+            )
+        else:
+            gx, gy = hold_positions(src, t, x, y)
+        built.append(
+            (
+                car,
+                gx,
+                gy,
+                build_samples(
+                    grid,
+                    gx,
+                    gy,
+                    ch["speed"],
+                    ch["throttle"],
+                    ch["brake"],
+                    ch["gear"],
+                    ch["drs"],
+                    include_drs=include_drs,
+                ),
+            )
+        )
+
+    n = len(grid)
+    _, ref_x, ref_y, ref_samples = built[0]
+
+    return {
+        "meta": {
+            "schemaVersion": SCHEMA_VERSION,
+            "year": int(meta.year),
+            "event": str(meta.event),
+            "session": str(meta.session),
+            "track": str(meta.track),
+            "rotation": float(meta.rotation),
+            "sampleRateHz": rate,
+            "duration": round(n / rate, 3),
+            # A window does not close — the app holds the last sample rather than
+            # gliding every car back to where it started. See LOOP_OPEN.
+            "loop": LOOP_OPEN,
+            "units": {"speed": SPEED_UNIT},
+        },
+        "track": {
+            # From the REFERENCE car, exactly as a lap takes it from its only car. A
+            # whole-lap window starts on the line, so this is the line.
+            "startFinish": {
+                "x": ref_samples[0]["x"],
+                "y": ref_samples[0]["y"],
+                "angle": round(
+                    float(math.atan2(ref_y[1] - ref_y[0], ref_x[1] - ref_x[0])), 6
+                ),
+            },
+            "corners": build_corners(corners),
+        },
+        "cars": [
+            {
+                "driver": str(car.driver),
+                "team": str(car.team),
+                "color": normalise_color(car.color),
+                "samples": samples,
+            }
+            for car, _, _, samples in built
+        ],
+    }
+
+
+def _window_time_axis(car: WindowCar) -> np.ndarray:
+    """The car's shared-axis time column, validated but deliberately NOT rebased."""
+    t = np.asarray(car.telemetry["Time"], dtype=float)
+    if t.ndim != 1 or len(t) < 2:
+        raise TelemetryShapeError(
+            f"{car.driver}: telemetry needs at least 2 rows to interpolate "
+            f"between, got {len(t)}"
+        )
+    if np.any(np.diff(t) < 0):
+        raise TelemetryShapeError(
+            f"{car.driver}: telemetry Time must be non-decreasing; the source rows "
+            "are out of order"
+        )
+    return t
+
+
+def window_car_report(
+    cars: Sequence[WindowCar],
+) -> "list[tuple[str, bool, float]]":
+    """
+    Per car: `(driver, moved, distance travelled in metres)`.
+
+    The distance is converted from the travel integral by the one contract-backed
+    conversion this module has (`KMH_S_PER_METRE`). It is deliberately NOT derived
+    from the position channel, whose scale is the undocumented unknown.
+
+    WHAT THIS DELIBERATELY DOES NOT REPORT, and why
+    -----------------------------------------------
+    An earlier version of this function also reported each car's `path / travel`
+    ratio, on the theory that it was a per-car "unit bridge" whose spread across cars
+    would bound how far two cars' along-track positions could disagree — a number
+    Slice 9's relative gaps would rest on. Measured on 2024 Monza R it came out at
+    24 m across VER/LEC/NOR, which looked alarming.
+
+    IT WAS MEASURING NOTHING. `resample_positions_by_travel` places sample k at
+    `(d_k / d_total) * s_total` — a FRACTION of the car's own path — so the ratio
+    cancels out of the emitted positions entirely. That is 6b's unit-agnosticism,
+    and it is pinned by a test: multiplying one car's speed channel by 1.5 moves its
+    ratio by 33% and leaves every emitted coordinate byte-identical.
+
+    So there is no cross-car bridge drift to bound, and "fix" it by sharing one
+    bridge between cars would be a regression — it would reintroduce the scale
+    dependence 6b removed, unpin each car's endpoint from its own last recorded fix,
+    and reopen the overrun 6b rejected. The honest per-car quality metric is
+    `motion_fidelity`, which measures something the output actually carries.
+    """
+    report = []
+    for car in cars:
+        t = np.asarray(car.telemetry["Time"], dtype=float)
+        moved = covers_ground(
+            t, car.telemetry["X"], car.telemetry["Y"], car.telemetry["Speed"]
+        )
+        travel = float(cumulative_travel(t, car.telemetry["Speed"])[-1])
+        report.append((str(car.driver), moved, travel / KMH_S_PER_METRE))
+    return report
+
+
+def motion_fidelity(
+    samples: Sequence[Mapping[str, Any]], rate: int = SAMPLE_RATE_HZ
+) -> "tuple[float, float] | None":
+    """
+    Does this car's marker move at the speed the HUD shows? `(r, cv)`, or `None` for
+    a car that never moved.
+
+    This is Slice 6b's verification metric, computed on the emitted samples instead
+    of by hand: the implied velocity `|dxy| * rate` between consecutive samples,
+    against the speed channel over the same step, at k = 1 (the single-step window,
+    no smoothing).
+
+    * `r` — correlation. 6b's target was **> 0.97**; before the arc-length fix a real
+      lap scored 0.70 and after it 0.9998.
+    * `cv` — the implied/actual ratio's coefficient of variation, `sd / mean`. 6b's
+      headline number: 0.2717 before, 0.0070 after.
+
+    BOTH ARE SCALE-FREE, which is what makes them usable here at all. The implied
+    velocity is in position-units per second and the speed channel is in km/h, and
+    this module does not know the conversion between them — but a correlation is
+    invariant under scaling either axis, and dividing the ratio's sd by its own mean
+    cancels the same unknown. No hard-coded 0.1 or 1/3.6, exactly as 6b requires.
+
+    Every step here is a real step: an open window has no cyclic wrap step to
+    exclude, unlike a lap. Steps where the car is stationary are dropped — a zero
+    denominator carries no information about fidelity — and `None` comes back when
+    too few remain to correlate.
+    """
+    x = np.array([float(s["x"]) for s in samples])
+    y = np.array([float(s["y"]) for s in samples])
+    v = np.array([float(s["speed"]) for s in samples])
+
+    implied = np.hypot(np.diff(x), np.diff(y)) * rate
+    actual = 0.5 * (v[:-1] + v[1:])
+    moving = actual > 0.0
+    if int(np.count_nonzero(moving)) < 2:
+        return None
+
+    implied, actual = implied[moving], actual[moving]
+    if implied.std() == 0.0 or actual.std() == 0.0:
+        return None
+
+    ratio = implied / actual
+    return float(np.corrcoef(implied, actual)[0, 1]), float(ratio.std() / ratio.mean())
 
 
 def dump_json(replay: Mapping[str, Any]) -> str:

@@ -290,6 +290,7 @@
   "meta": {
     "duration": 3.1,
     "event": "Synthetic GP",
+    "loop": "closed",
     "rotation": -14.0,
     "sampleRateHz": 10,
     "schemaVersion": 1,

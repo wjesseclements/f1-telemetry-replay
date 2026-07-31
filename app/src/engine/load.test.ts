@@ -251,6 +251,61 @@ describe("parseReplay — uniform-grid guard", () => {
     expect(gridIssues).toHaveLength(1);
     expect(gridIssues[0].path).toEqual(["cars", 0, "samples", 100, "t"]);
   });
+
+  it("checks every car's grid, not just the first", () => {
+    // The v2 shape: cars share ONE grid, so a second driver drifting off it is the
+    // same desync as a wrong sample count and has to fail the same way. Car 0 is
+    // left untouched so the issue can only have come from car 1.
+    const bad = clone();
+    const second = structuredClone(bad.cars[0]);
+    second.driver = "LEC";
+    second.color = "#F91536";
+    second.samples[7].t = second.samples[7].t + 0.05;
+    bad.cars.push(second);
+
+    const err = expectRejection(bad);
+    const gridIssues = err.issues.filter((i) =>
+      i.message.includes("uniform 10 Hz grid"),
+    );
+    expect(gridIssues).toHaveLength(1);
+    expect(gridIssues[0].path).toEqual(["cars", 1, "samples", 7, "t"]);
+  });
+});
+
+describe("parseReplay — meta.loop", () => {
+  // `loop` tells the engine whether the samples are a CYCLE (a lap) or an open
+  // session-time window (v2). It is additive within schemaVersion 1, which only
+  // holds if a file written before it existed still loads AND still means "a lap".
+  it("defaults a replay without the field to closed", () => {
+    expect(sampleLap.meta).not.toHaveProperty("loop");
+    expect(parseReplay(sampleLap).meta.loop).toBe("closed");
+  });
+
+  it("accepts both modes when the field is present", () => {
+    for (const loop of ["closed", "open"] as const) {
+      const ok = clone();
+      ok.meta.loop = loop;
+      expect(parseReplay(ok).meta.loop, loop).toBe(loop);
+    }
+  });
+
+  it("rejects any other value rather than falling back to a default", () => {
+    // A typo must not silently become "closed": a window read as a lap glides every
+    // car across the circuit for the final grid step. Fail loudly instead.
+    const bad = clone();
+    bad.meta.loop = "sideways";
+
+    const err = expectRejection(bad, "sample-lap.json");
+    expect(err.message).toContain("meta.loop");
+  });
+
+  it("rejects null, which is not the same as absent", () => {
+    // `.default()` fills in for `undefined` only. An explicit null is a pipeline
+    // emitting a field it could not compute, and that should be visible.
+    const bad = clone();
+    bad.meta.loop = null;
+    expectRejection(bad);
+  });
 });
 
 describe("parseReplay — span agreement", () => {

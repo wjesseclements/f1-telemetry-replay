@@ -22,6 +22,18 @@ Run (single fast lap, e.g. Verstappen, 2024 Monza qualifying)
     python build_replay.py --year 2024 --gp Monza --session Q \
         --driver VER --out ../app/public/data/monza_ver.json
 
+Run (v2: several cars over a shared session-time window)
+--------------------------------------------------------
+    python build_replay.py --year 2024 --gp Monza --session R \
+        --drivers VER,LEC,NOR --laps 12-14 \
+        --out ../app/public/data/monza_race.json
+
+`--laps` is what switches modes. The window is the FIRST driver's lap range, in
+session time, and every driver is resampled onto one grid derived from it — so
+`cars[k]` is the same instant for everybody (CLAUDE.md rule 5). Naming the window by
+laps rather than by raw seconds is a correctness choice, not an ergonomic one; see
+`resolve_lap_window`.
+
 Then load that file in the app with the "Load replay" picker. `app/public/data/` is
 gitignored, so generated laps are never committed and the app still boots from its
 committed fixture with zero network.
@@ -33,6 +45,7 @@ in CI or a restricted sandbox.
 from __future__ import annotations
 
 import argparse
+import math
 import os
 import shutil
 import subprocess
@@ -51,12 +64,18 @@ from replay_transform import (
     REQUIRED_COLUMNS,
     SAMPLE_RATE_HZ,
     ReplayMeta,
+    SessionMeta,
     TelemetryShapeError,
     build_replay_dict,
+    build_window_replay_dict,
     check_columns,
     closing_time,
     dump_json,
+    parse_lap_range,
     time_base_stretch,
+    motion_fidelity,
+    window_car_report,
+    WindowCar,
 )
 
 #: Repo-relative location of the app, resolved from this file so the validator can be
@@ -187,21 +206,254 @@ def validate_output(path: Path) -> None:
         )
 
 
-def build_race_replay(year, gp, cache_dir=".f1cache"):
+#: Seconds of telemetry kept either side of the window, so interpolation at the
+#: window's own edges has real neighbours instead of clamping against them.
+WINDOW_PAD_S = 2.0
+
+#: Slice 6b's acceptance bar for "the marker moves at the speed the HUD shows",
+#: applied per car on every window build. 6b measured 0.70 before its fix and 0.9998
+#: after, against this target.
+MOTION_FIDELITY_TARGET_R = 0.97
+
+
+def _team_and_color(session, laps, driver):
+    """A driver's team and its colour, with the same non-fatal fallback a lap uses."""
+    try:
+        team = laps.iloc[0]["Team"]
+        return str(team), fastf1.plotting.get_team_color(team, session=session)
+    except Exception as err:  # noqa: BLE001 - a colour is not worth failing a fetch
+        print(f"{driver}: team colour lookup failed ({err}); using the default")
+        return "", ""
+
+
+def _session_seconds(column):
+    """A FastF1 timedelta column as plain seconds on the SESSION axis."""
+    return column.dt.total_seconds().to_numpy()
+
+
+def _driver_window_telemetry(session, driver, t0, t1):
     """
-    Full-grid version — same schema, many cars. The key difference from a single
-    lap: every driver's telemetry must be aligned on SESSION TIME (not per-lap
-    time) so the cars are shown at the same instant. Left as the scale-up step;
-    the frontend already iterates cars[] and needs no changes.
+    One driver's telemetry over `[t0, t1]` session seconds, on the SHARED axis.
+
+    The `Time` key handed back is SessionTime, not the per-lap time `build_lap_replay`
+    uses — that substitution is the whole of CLAUDE.md rule 5, and it is made here in
+    the fetch layer rather than in `replay_transform`, which never learns what
+    "session time" means and only ever sees a monotone axis with an origin someone
+    else chose.
+
+    A margin is kept either side so the first and last grid points interpolate
+    between real fixes. Rows outside it are dropped rather than carried: the
+    normalisation in `resample_positions_by_travel` is estimated from whatever slice
+    it is given, so handing it a whole race for one driver and a three-lap window for
+    another would silently scale them differently.
     """
-    raise NotImplementedError(
-        "Slice 8: align all drivers on session time, then build cars[] exactly as above."
+    laps = _pick_driver_laps(session.laps, driver)
+    if laps is None or len(laps) == 0:
+        raise SystemExit(f"no laps found for driver {driver!r} in this session")
+
+    tel = laps.get_telemetry()
+    check_columns(tel.columns)
+    if "SessionTime" not in tel.columns:
+        raise SystemExit(
+            f"{driver}: telemetry has no SessionTime column (got: "
+            f"{', '.join(map(str, tel.columns))}); multi-car alignment needs it"
+        )
+
+    session_s = _session_seconds(tel["SessionTime"])
+    keep = (session_s >= t0 - WINDOW_PAD_S) & (session_s <= t1 + WINDOW_PAD_S)
+    rows = tel[keep]
+    covered = session_s[keep]
+    if len(covered) < 2:
+        raise SystemExit(
+            f"{driver} has {len(covered)} telemetry row(s) inside the window "
+            f"{t0:.2f}s-{t1:.2f}s; they were not on track for it. Drop them from "
+            "--drivers, or choose a lap range they ran."
+        )
+
+    telemetry = {
+        name: rows[name].to_numpy()
+        for name in REQUIRED_COLUMNS + OPTIONAL_COLUMNS
+        if name in rows.columns
+    }
+    telemetry["Time"] = covered
+
+    team, color = _team_and_color(session, laps, driver)
+    car = WindowCar(driver=str(driver), team=team, color=color, telemetry=telemetry)
+    return car, (float(covered[0]), float(covered[-1]))
+
+
+def resolve_lap_window(session, driver, first_lap, last_lap):
+    """
+    The session-time window spanned by a REFERENCE driver's laps `first..last`.
+
+    A window is named by laps rather than by raw session seconds for two reasons that
+    are about correctness, not ergonomics (though nobody knows when lap 12 was
+    either). A whole-lap window starts and ends on the start/finish line, so:
+
+    * `track.startFinish`, taken from the reference car's first sample, is the line;
+    * the renderer's ribbon — traced from `cars[0]` and closed with `closePath` —
+      actually closes, instead of drawing a chord across the infield.
+
+    Both would be silent visual lies with an arbitrary `t0`, and both cost nothing to
+    avoid. See PLAN.md Slice 8.
+    """
+    laps = _pick_driver_laps(session.laps, driver)
+    chosen = laps[
+        (laps["LapNumber"] >= first_lap) & (laps["LapNumber"] <= last_lap)
+    ]
+    if len(chosen) == 0:
+        raise SystemExit(
+            f"{driver} has no laps {first_lap}-{last_lap} in this session "
+            f"(recorded laps: {int(laps['LapNumber'].min())}-"
+            f"{int(laps['LapNumber'].max())})"
+        )
+
+    starts = _session_seconds(chosen["LapStartTime"])
+    lap_times = _session_seconds(chosen["LapTime"])
+    t0 = float(starts[0])
+
+    # The window ends where the last chosen lap ends. FastF1 leaves `LapTime` as NaT
+    # on some laps (an in/out lap, or one cut by a red flag), and a NaN would
+    # propagate all the way to a nonsense grid — so it is caught here and named,
+    # rather than estimated. Guessing the end of the window would guess how much of
+    # the race the file contains.
+    if math.isnan(lap_times[-1]):
+        raise SystemExit(
+            f"{driver} lap {last_lap} has no recorded lap time (FastF1 leaves it "
+            "unset on in/out laps and red-flagged laps), so the window has no "
+            "defined end. Choose a lap range of clean laps."
+        )
+    return t0, float(starts[-1] + lap_times[-1])
+
+
+def build_race_replay(year, gp, session_id, drivers, laps, cache_dir=".f1cache"):
+    """
+    Fetch several drivers over a shared session-time window and return
+    `(replay, window, cars)`.
+
+    The v2 shape. Every driver is resampled onto ONE grid derived from the window, so
+    sample k of every car is the same instant — which is what `cars[]` being an array
+    has been waiting for since Slice 2, and why the app needs no change to render it.
+
+    `drivers[0]` is the reference: the window is its lap range, and it supplies the
+    replay's start/finish line.
+    """
+    os.makedirs(cache_dir, exist_ok=True)
+    fastf1.Cache.enable_cache(cache_dir)
+
+    session = fastf1.get_session(year, gp, session_id)
+    session.load(telemetry=True, laps=True, weather=False, messages=False)
+
+    first_lap, last_lap = laps
+    t0, t1 = resolve_lap_window(session, drivers[0], first_lap, last_lap)
+    print(
+        f"window from {drivers[0]} laps {first_lap}-{last_lap}: "
+        f"session {t0:.2f}s -> {t1:.2f}s ({t1 - t0:.2f}s)"
     )
+
+    window_cars = []
+    coverage = {}
+    for driver in drivers:
+        car, covered = _driver_window_telemetry(session, driver, t0, t1)
+        window_cars.append(car)
+        coverage[driver] = covered
+        print(
+            f"  {driver}: {len(car.telemetry['Time'])} source rows covering "
+            f"{covered[0]:.2f}s -> {covered[1]:.2f}s"
+        )
+
+    circuit = session.get_circuit_info()
+    meta = SessionMeta(
+        year=int(year),
+        event=str(gp),
+        session=str(session_id),
+        track=str(session.event["EventName"]),
+        rotation=float(circuit.rotation),
+    )
+
+    replay = build_window_replay_dict(
+        window_cars,
+        meta,
+        (t0, t1),
+        corners=[row for _, row in circuit.corners.iterrows()],
+        rate=SAMPLE_RATE_HZ,
+    )
+    return replay, (t0, t1), window_cars, coverage
+
+
+def report_window(replay, window, cars, coverage) -> None:
+    """
+    Print the numbers behind a window build, for the same reason `build_lap_replay`
+    prints its closing chord and time-base stretch: a deliberate approximation should
+    still be impossible to be surprised by.
+
+    The one worth reading is MOTION FIDELITY — Slice 6b's `r` and ratio-spread
+    metric, now computed per car on every build instead of by hand once. It answers
+    the question Slice 9's relative gaps actually rest on: does each car's marker
+    move at the speed its own telemetry claims?
+    """
+    t0, t1 = window
+    n = len(replay["cars"][0]["samples"])
+    rate = replay["meta"]["sampleRateHz"]
+    print(
+        f"window {t0:.2f}s -> {t1:.2f}s ({t1 - t0:.2f}s) · {len(replay['cars'])} cars "
+        f"· {n} samples each @ {rate} Hz · duration {replay['meta']['duration']}s · "
+        f"open, no closing chord · time base 1.000000x"
+    )
+
+    poor = []
+    for (driver, moved, distance), car in zip(window_car_report(cars), replay["cars"]):
+        start, end = coverage[driver]
+        partial = ""
+        if start > t0 + 1.0 / rate or end < t1 - 1.0 / rate:
+            partial = f" · PARTIAL coverage {start:.2f}s -> {end:.2f}s"
+        if not moved:
+            print(f"  {driver}: PARKED (held positions, no path placement){partial}")
+            continue
+
+        fidelity = motion_fidelity(car["samples"], rate)
+        if fidelity is None:
+            print(f"  {driver}: {distance:.0f} m · motion fidelity unavailable{partial}")
+            continue
+        corr, spread = fidelity
+        if corr < MOTION_FIDELITY_TARGET_R:
+            poor.append((driver, corr))
+        print(
+            f"  {driver}: {distance:.0f} m · motion fidelity r={corr:.4f} "
+            f"spread={spread:.4f}{partial}"
+        )
+
+    if poor:
+        # 6b's own bar, applied automatically. Below it the marker's apparent speed
+        # stops agreeing with the HUD — the exact defect 6b existed to remove — so it
+        # is worth knowing before the file becomes somebody's demo. Loud, not fatal:
+        # the output is still schema-valid and still worth looking at.
+        names = ", ".join(f"{driver} (r={corr:.4f})" for driver, corr in poor)
+        print(
+            f"\nWARNING: motion fidelity below {MOTION_FIDELITY_TARGET_R} for: "
+            f"{names}.\n"
+            f"  Their markers will not move at the speed their own telemetry "
+            f"reports — the defect Slice 6b removed for laps. Check the source "
+            f"telemetry for those drivers over this window before using the "
+            f"replay; see `replay_transform.motion_fidelity`.\n"
+        )
+
+    size_mb = len(dump_json(replay)) / 1e6
+    print(f"  estimated file size: {size_mb:.1f} MB")
+    if size_mb > 20.0:
+        print(
+            f"\nWARNING: {size_mb:.0f} MB is a lot to push through a file picker.\n"
+            f"  Narrow the lap range or the driver list; a full race grid is tens of "
+            f"megabytes and is not what the window exists to produce.\n"
+        )
 
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(
-        description="Fetch one lap of F1 telemetry via FastF1 and emit replay JSON."
+        description=(
+            "Fetch F1 telemetry via FastF1 and emit replay JSON: one driver's "
+            "fastest lap, or (with --laps) a multi-car session-time window."
+        )
     )
     ap.add_argument("--year", type=int, required=True)
     ap.add_argument(
@@ -210,6 +462,25 @@ def main(argv=None) -> int:
     ap.add_argument("--session", default="Q", help="FP1/FP2/FP3/Q/S/R")
     ap.add_argument("--driver", default="VER", help="3-letter code, e.g. VER")
     ap.add_argument("--out", default="replay.json")
+    # --- race window (v2) ---------------------------------------------------------
+    # `--laps` is the switch between the two modes, and it is the lap RANGE rather
+    # than a session-time range on purpose: a whole-lap window starts and ends on the
+    # start/finish line, which is what keeps `track.startFinish` honest and the
+    # rendered ribbon closed. See `resolve_lap_window`.
+    ap.add_argument(
+        "--laps",
+        help=(
+            "reference driver's lap range, e.g. 12-14. Switches to multi-car "
+            "session-time window mode."
+        ),
+    )
+    ap.add_argument(
+        "--drivers",
+        help=(
+            "comma-separated codes for window mode, e.g. VER,LEC,NOR. The FIRST is "
+            "the reference driver whose laps define the window. Defaults to --driver."
+        ),
+    )
     ap.add_argument(
         "--no-validate",
         action="store_true",
@@ -217,6 +488,50 @@ def main(argv=None) -> int:
     )
     args = ap.parse_args(argv)
 
+    if args.drivers is not None and args.laps is None:
+        raise SystemExit(
+            "--drivers selects the cars in a session-time WINDOW, which is named by "
+            "--laps. Add --laps A-B, or use --driver for a single fastest lap."
+        )
+
+    if args.laps is not None:
+        return _run_window(args)
+    return _run_lap(args)
+
+
+def _run_window(args) -> int:
+    drivers = [
+        code.strip().upper()
+        for code in (args.drivers or args.driver).split(",")
+        if code.strip()
+    ]
+    lap_range = parse_lap_range(args.laps)
+
+    try:
+        data, window, cars, coverage = build_race_replay(
+            args.year, args.gp, args.session, drivers, lap_range
+        )
+    except TelemetryShapeError as err:
+        raise SystemExit(f"telemetry cannot produce a valid replay: {err}")
+
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(dump_json(data))
+
+    print(
+        f"wrote {out}: {data['meta']['track']} · "
+        f"{', '.join(car['driver'] for car in data['cars'])}"
+    )
+    report_window(data, window, cars, coverage)
+
+    if args.no_validate:
+        print("WARNING: --no-validate: output was NOT checked against the schema.")
+    else:
+        validate_output(out)
+    return 0
+
+
+def _run_lap(args) -> int:
     try:
         data, recorded, closing = build_lap_replay(
             args.year, args.gp, args.session, args.driver

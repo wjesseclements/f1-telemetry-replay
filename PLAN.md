@@ -494,17 +494,150 @@ small and known; and it should land **before any real-data lap becomes someone's
 
 ## Phase v2 — multi-car race replay (engine & schema unchanged)
 
-### [ ] Slice 8 — Session-time alignment in the engine + pipeline
-- `src/engine/align.ts`: resample every driver onto one shared **SessionTime** grid
-  (not per-lap `Time`) so all cars show the same instant. Pure + unit-tested.
+### [x] Slice 8 — Session-time alignment in the engine + pipeline
+- ~~`src/engine/align.ts`~~ — **no such module was needed, and that is the finding.**
+  Alignment is not a transform the app applies; it is a property the pipeline builds
+  in. Every driver is resampled onto one grid at emit time, so by the time the app
+  sees a replay, `cars[k]` is already the same instant for everybody and `sampleAt`
+  needs no new code at all.
 - Implement `build_race_replay()` in the pipeline emitting `cars[]` length > 1 on that
-  shared grid. **No changes to `schema.ts` or the existing engine** should be required.
+  shared grid. **Done.** `--laps A-B` switches `build_replay.py` into window mode.
 - **Verify:** unit tests for session-time alignment; a multi-car JSON validates against
-  the unchanged schema.
+  the schema.
+
+- **Amendment (this slice) — what a v2 replay IS.** A shared session-time **window**
+  containing N cars on one grid, not a per-car lap. The window is named by a
+  **reference driver's lap range** (`--drivers VER,LEC,NOR --laps 20-22`), and that is
+  a correctness choice rather than an ergonomic one:
+  - a whole-lap window starts on the start/finish line, so `track.startFinish` —
+    taken from the reference car's `samples[0]` — is the line. Measured on the real
+    excerpt: VER's sample 0 is **exactly 0.00 units** from it.
+  - `paths.ts` closes the ribbon with `closePath()` from `cars[0]`, which only closes
+    for a whole number of laps. An arbitrary `t0` draws a chord across the infield.
+  - A full race is arithmetically out: ~4400 s × 20 cars ≈ **75 MB** through a file
+    picker. Three laps × three cars is 1.6 MB.
+- **Amendment (this slice) — additive within `schemaVersion` 1, argued against the
+  refinements rather than asserted.** Uniform grid holds by construction (one shared
+  grid). Span agreement holds **exactly**, not to within one step — Slice 3 wrote that
+  refinement to "reject v2 multi-car replays whose drivers carry different sample
+  counts", and it passes. The only contract line that moved is one new `meta` field
+  with a **default**, so every replay written before it still loads and still means "a
+  lap". Bumping to 2 would have invalidated every generated lap on disk to describe
+  something none of them do differently.
+- **Amendment (this slice) — the engine changed, and it is one field and one line.**
+  `interpolate.ts`'s header claimed "a replay is a closed lap" as a standing fact. It
+  is a fact about the DATA, so it now lives in the data: `meta.loop: "closed" | "open"`.
+  `sampleCarAt` gains a required 4th parameter and one line
+  (`j = loop === "open" ? min(i+1, n-1) : (i+1) % n`); `headingAt` already held the
+  previous direction on a zero-length step, so it was correct for free. `clock.ts`,
+  the store, `scene.ts`, `paths.ts`, `trail.ts` and `TrackCanvas.tsx` are **untouched**.
+  - **The transport still loops, so the window's end is a HARD CUT** — cars jump back
+    to their start positions in one frame, trails reset. Video-loop semantics, stated
+    in the header because it is easy to mistake for the bug it replaces.
+  - **Measured on the real excerpt, both modes:** through the final grid step every car
+    sits **0.00 units** from its last sample (held). Closed mode would put LEC **1504
+    units** away — halfway through a **3008-unit (~300 m)** glide across the circuit in
+    0.1 s. In the browser the HUD freezes at `142/210/0 km/h` for the whole final step
+    and then jumps to `277/263/0` in a single frame: a cut, not a glide.
+  - Note VER's own closing chord is only **257 units**, because the reference car
+    starts *and* ends at the line. The reference car nearly masks the defect; it is the
+    other cars that expose it.
+- **Amendment (this slice) — the two flagged span assumptions, settled.** One fact
+  (`loop`) settled all three flags, which is the check that the shape is right:
+  - **6b's travel/path normalisation: KEPT.** Its load-bearing reason (the
+    dimensionless unit bridge cancelling FastF1's undocumented 1/10 m and km/h)
+    survives verbatim. Its "the lap provably closes" clause was never doing the work —
+    restated correctly, the premise is that the recorded polyline is ground the car
+    covered and the position channel's total distance is trustworthy while its timing
+    is not, which holds for any contiguous slice.
+  - **`closing_time` and `source_times`: NOT CALLED for a window.** Both exist solely
+    to give the app's cyclic wrap step a full step of travel. An open window has no
+    cyclic wrap step, so there is no closing chord and the time base stretch is
+    **1.000000** by construction.
+  - **Degenerate cases:** partially-zero speed (pit box, grid), pit-lane excursions,
+    retirements mid-window and data starting late all need **no special case** —
+    the travel integral goes flat and `np.interp`/`forward_fill` clamp, so a car parks
+    at its last known fix and nothing extrapolates. Only an **entirely** stationary car
+    is new, via `covers_ground`: the same condition means *corrupt* for a lap (the lap
+    builder still raises) and *parked in the box* for a window.
+- **Amendment (this slice) — `covers_ground`'s threshold is on the SPEED channel, and
+  that is the whole design.** A distance threshold in position units would embed
+  FastF1's undocumented 1/10 m convention — the assumption the module exists to avoid.
+  So the two tests are asymmetric on purpose: the path test is strict positivity (no
+  threshold, no unit), and the travel test carries the bound (`PARKED_TRAVEL_M = 5 m`
+  via `KMH_S_PER_METRE = 3.6`), because `SPEED_UNIT` is pinned by the schema on both
+  sides of the contract. The scale bridge cannot be used to derive it — for a parked
+  car the bridge is itself meaningless, which is exactly why the predicate exists.
+  Pinned by tests at the boundary in both directions, including a position-rescaling
+  test that is the executable form of "no position-unit assumption".
+- **Amendment (this slice) — the approved plan asserted a defect that DOES NOT EXIST,
+  and the measurement is what said so.** Recorded because the sequence matters:
+  - The plan claimed each car carried a per-car "unit bridge" (`path / travel`) into
+    its placement, so cars with different ratios would drift apart along the track. It
+    specified a decision rule: if the spread exceeded a car length, switch to one
+    shared bridge. On 2024 Monza R it computed to **24.15 m — over the bar**, and the
+    remedy was ready to apply.
+  - **It was measuring nothing.** `resample_positions_by_travel` places sample k at
+    `(d_k / d_total) * s_total` — a FRACTION of the car's own path — so the ratio
+    cancels out entirely. Verified before acting: multiplying ONE car's speed channel
+    by 1.5 moves its ratio by **33%** and leaves every emitted coordinate — its own and
+    its neighbours' — **byte-identical**. That is 6b's unit-agnosticism doing its job.
+  - Applying the approved remedy would have been a **regression**: a shared bridge
+    reintroduces the scale dependence 6b removed, unpins each car's endpoint from its
+    own last recorded fix, and reopens the overrun 6b rejected. The rule was dropped,
+    not satisfied, and the refutation is kept as a regression test.
+  - It is replaced by a metric that measures something the output actually carries:
+    **`motion_fidelity`** — 6b's own k = 1 implied-vs-actual check (`r` and the ratio's
+    coefficient of variation), computed per car on every build instead of by hand
+    once, with 6b's `r > 0.97` bar as a printed tripwire. Both halves are scale-free,
+    so no hard-coded 0.1 or 1/3.6 anywhere.
+- **Amendment (this slice):** DRS inclusion is decided **once per replay**, not per
+  car. Over a short window a driver who never opened DRS has an all-zero channel and
+  would silently lose the HUD indicator while their team-mate kept it — two cars in one
+  file disagreeing about whether the season has DRS. No schema refinement for it: the
+  schema guards assumptions the ENGINE makes, and the engine makes none here.
+- **Amendment (this slice):** `parse_lap_range` lives in `replay_transform.py`, not
+  next to the argument parser. `build_replay.py` imports FastF1, which CI does not
+  install, so nothing in it can be tested — anything with a quiet failure mode (a
+  mis-parsed range is a different window, silently) belongs on the testable side.
+- **Verified (2026-07-31):**
+  - `npm run check` green with **0 warnings** (330 tests, engine coverage 100%).
+  - `pytest` green (**149 tests**, `replay_transform.py` 100% lines + branches).
+  - `validate:replay` green on all three goldens; a deliberately broken multi-car file
+    exits 1 naming `cars[1].samples` (span) and `cars[2].samples[5].t` (grid).
+  - **Real data — 2024 Monza R, VER/LEC/NOR, VER laps 20-22**, 260.61 s window →
+    2607 samples per car @ 10 Hz, 1.6 MB, `loop: "open"`, time base 1.000000×:
+
+    | | distance | motion fidelity r | spread |
+    |---|---|---|---|
+    | VER | 17408 m | **0.9998** | 0.0084 |
+    | LEC | 18190 m | **0.9998** | 0.0067 |
+    | NOR | 18195 m | **0.9999** | 0.0063 |
+
+    6b's post-fix lap numbers were r = 0.9998, sd 0.0070 — the window builder holds
+    the same quality on race data. Three distinct real team colours (`#0600ef`,
+    `#e8002d`, `#ff8000`), so PR #31's binding works across teams.
+  - **Rendered in the app through the existing picker, no UI changes:** Monza
+    recognisable with 11 corners and S/F on the main straight, VER on the line at
+    t = 0 while LEC and NOR sit 3106 and 3571 units away (the alignment being real,
+    not three copies), three HUD readouts at one instant (312/322/320 km/h, all 8th
+    gear).
 
 ### [ ] Slice 9 — Multi-car render + driver selection + gaps
 - Render iterates the existing `cars[]` (already an array — no count branching). Driver
   show/highlight selection; relative gaps in the HUD.
+- **Inherited from Slice 8, so it is not rediscovered:**
+  - `buildScene`'s ribbon and `track.startFinish` both come from `cars[0]`. That is
+    only safe because Slice 8 restricts windows to whole laps of the reference driver.
+    **Decoupling them from `cars[0]` is what would unlock arbitrary time-range
+    windows** — which is the feature request behind "show me this overtake", so it
+    belongs here rather than as a later cleanup.
+  - Gap accuracy rests on **`motion_fidelity`**, not on any cross-car scale term —
+    Slice 8 proved the per-car ratio cancels out of the placement entirely (see its
+    regression test). Real Monza race data scores r = 0.9998–0.9999 per car.
+  - A 3-lap window is 2607 samples per car. `TrailPainter` at 20 cars over that span
+    is the first place the retained-`Path2D` accounting from Slice 4b gets a real
+    test, and the full thermal trail is already settled as selected-car-only (below).
 - **Design constraint (decided in Slice 4b, not open for re-debate):** the full thermal
   trail is a property of the **selected car only**. Unselected cars get at most a short
   fading tail in team colour. Twenty full-lap speed trails on near-identical racing lines
