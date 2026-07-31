@@ -570,27 +570,44 @@ small and known; and it should land **before any real-data lap becomes someone's
   car the bridge is itself meaningless, which is exactly why the predicate exists.
   Pinned by tests at the boundary in both directions, including a position-rescaling
   test that is the executable form of "no position-unit assumption".
-- **Amendment (this slice) — the approved plan asserted a defect that DOES NOT EXIST,
-  and the measurement is what said so.** Recorded because the sequence matters:
-  - The plan claimed each car carried a per-car "unit bridge" (`path / travel`) into
-    its placement, so cars with different ratios would drift apart along the track. It
-    specified a decision rule: if the spread exceeded a car length, switch to one
-    shared bridge. On 2024 Monza R it computed to **24.15 m — over the bar**, and the
-    remedy was ready to apply.
-  - **It was measuring nothing.** `resample_positions_by_travel` places sample k at
-    `(d_k / d_total) * s_total` — a FRACTION of the car's own path — so the ratio
-    cancels out entirely. Verified before acting: multiplying ONE car's speed channel
-    by 1.5 moves its ratio by **33%** and leaves every emitted coordinate — its own and
-    its neighbours' — **byte-identical**. That is 6b's unit-agnosticism doing its job.
-  - Applying the approved remedy would have been a **regression**: a shared bridge
+- **Amendment (this slice) — the approved plan's cross-car decision rule was BUILT ON
+  A WRONG MODEL, and was dropped rather than followed. RATIFIED.** Recorded in the
+  `closing_time` style, because the sequence is the point: a rule that fires is not
+  the same as a rule that is right, and this one fired.
+  - **The approved rule.** The plan claimed each car carried a per-car "unit bridge"
+    (`path / travel`) into its placement, so cars with different ratios would drift
+    apart along the track, and Slice 9's relative gaps would inherit that error. The
+    rule, written down in advance so it could not be re-litigated afterwards: *if the
+    spread implies more than one car length (~5 m) of along-track error over the
+    window, switch to a single shared bridge taken from the best-conditioned car — in
+    this slice.*
+  - **It fired.** 2024 Monza R, VER/LEC/NOR over VER laps 20-22: ratios 2.787433 /
+    2.783735 / 2.786036, a relative spread of 0.13% over an 18.2 km window =
+    **24.15 m. Over the bar.** The remedy was specified, in scope, and ready.
+  - **The experiment that refuted the mechanism.** Run before acting, precisely
+    because a five-fold overshoot of the bar is either a real defect or a wrong model.
+    `resample_positions_by_travel` places sample k at `(d_k / d_total) * s_total` — a
+    FRACTION of the car's own path — so the ratio cancels algebraically and never
+    reaches the output. Multiplying **one** car's speed channel by 1.5 moves that
+    car's ratio by **33%** and leaves every emitted coordinate, its own and its
+    neighbours', **byte-identical**. A quantity that can move a third of its value
+    with zero effect on the output is not a source of positional error. This is 6b's
+    unit-agnosticism working exactly as designed.
+  - **Following the rule would have been a regression**, not a no-op: a shared bridge
     reintroduces the scale dependence 6b removed, unpins each car's endpoint from its
-    own last recorded fix, and reopens the overrun 6b rejected. The rule was dropped,
-    not satisfied, and the refutation is kept as a regression test.
-  - It is replaced by a metric that measures something the output actually carries:
+    own last recorded fix, and reopens the overrun 6b rejected. The rule was therefore
+    **dropped, not satisfied and not quietly ignored**, and the refutation is kept as
+    a named regression test
+    (`test_one_car_s_speed_scale_changes_nothing_for_it_or_its_neighbours`) so that
+    anyone who reintroduces an absolute or shared scale fails on it.
+  - **The replacement diagnostic**, measuring something the output actually carries:
     **`motion_fidelity`** — 6b's own k = 1 implied-vs-actual check (`r` and the ratio's
     coefficient of variation), computed per car on every build instead of by hand
     once, with 6b's `r > 0.97` bar as a printed tripwire. Both halves are scale-free,
-    so no hard-coded 0.1 or 1/3.6 anywhere.
+    so no hard-coded 0.1 or 1/3.6 anywhere. Real Monza race data scores
+    r = 0.9998–0.9999 per car, matching 6b's post-fix lap numbers.
+  - **Slice 9 inherits the corrected model:** gap accuracy rests on per-car motion
+    fidelity, and there is no cross-car scale term to carry forward.
 - **Amendment (this slice):** DRS inclusion is decided **once per replay**, not per
   car. Over a short window a driver who never opened DRS has an all-zero channel and
   would silently lose the HUD indicator while their team-mate kept it — two cars in one
