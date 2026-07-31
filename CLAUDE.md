@@ -23,6 +23,11 @@ from FastF1 data. PRD.md holds the detail; this file holds the law.
   build_replay.py --year 2024 --gp Monza --session Q --driver VER --out
   ../app/public/data/monza_ver.json`. It validates its own output through the app's
   real schema before exiting; load the result with the app's "Load replay JSON" picker.
+- Pipeline, multi-car (v2): add `--laps A-B` to switch to a session-time **window**;
+  `--drivers VER,LEC,NOR --laps 20-22`. The window is the FIRST driver's lap range and
+  every driver is resampled onto one grid, so `cars[k]` is the same instant for all of
+  them (rule 5). Whole laps only — that is what keeps `track.startFinish` on the line
+  and the rendered ribbon closed.
 - Pipeline tests (no network, gated in CI): `cd pipeline && pytest`
 - Validate any replay JSON by hand: `cd app && npm run validate:replay -- <file>`
 

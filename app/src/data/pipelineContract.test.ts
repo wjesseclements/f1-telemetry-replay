@@ -34,9 +34,10 @@ function readGolden(name: string): unknown {
 
 const WITH_DRS = "lap-drs.golden.json";
 const WITHOUT_DRS = "lap-nodrs.golden.json";
+const RACE = "race-window.golden.json";
 
 describe("pipeline output against the schema", () => {
-  it.each([WITH_DRS, WITHOUT_DRS])(
+  it.each([WITH_DRS, WITHOUT_DRS, RACE])(
     "%s validates through parseReplay",
     (name) => {
       // Not a smoke test: `parseReplay` is the same function `main.tsx` boots with,
@@ -98,6 +99,56 @@ describe("pipeline output against the schema", () => {
       expect(sample.throttle).toBeGreaterThanOrEqual(0);
       expect(sample.throttle).toBeLessThanOrEqual(100);
     });
+  });
+
+  it("marks a lap closed and a race window open", () => {
+    // The field the engine reads to decide whether the last sample runs back to the
+    // first. A window read as a lap glides every car across the circuit for the
+    // final grid step; a lap read as a window freezes at the line.
+    expect(parseReplay(readGolden(WITH_DRS), WITH_DRS).meta.loop).toBe(
+      "closed",
+    );
+    expect(parseReplay(readGolden(RACE), RACE).meta.loop).toBe("open");
+  });
+
+  it("puts every car of a race window on ONE shared grid", () => {
+    // CLAUDE.md rule 5 as an assertion over real pipeline output: alignment is on
+    // session time, so index k is the same instant for every driver. Equal sample
+    // counts are what the schema's span-agreement refinement already enforces; that
+    // `t` matches sample-for-sample is the stronger claim, and it is the one Slice 9
+    // will build gaps on.
+    const replay = parseReplay(readGolden(RACE), RACE);
+    expect(replay.cars.length).toBeGreaterThan(1);
+
+    const [first, ...rest] = replay.cars;
+    for (const car of rest) {
+      expect(car.samples.length, car.driver).toBe(first.samples.length);
+      expect(
+        car.samples.map((s) => s.t),
+        car.driver,
+      ).toEqual(first.samples.map((s) => s.t));
+    }
+  });
+
+  it("gives every car of a race window the same DRS answer", () => {
+    // DRS presence is a property of the season, not of one driver's afternoon. A
+    // driver who never opened it over a short window must not look like a 2026 car
+    // parked next to a 2024 one.
+    const replay = parseReplay(readGolden(RACE), RACE);
+    const carries = replay.cars.map((car) =>
+      car.samples.every((s) => s.drs !== undefined),
+    );
+    expect(new Set(carries).size).toBe(1);
+  });
+
+  it("keeps the race window's cars distinguishable, not three copies", () => {
+    // Guards the golden itself: three identical cars would satisfy every assertion
+    // above while proving nothing about alignment.
+    const replay = parseReplay(readGolden(RACE), RACE);
+    const paths = replay.cars.map((car) =>
+      car.samples.map((s) => `${s.x},${s.y}`).join("|"),
+    );
+    expect(new Set(paths).size).toBe(replay.cars.length);
   });
 
   it("computes a real start/finish angle rather than a hard-coded zero", () => {

@@ -107,6 +107,14 @@ whatever isn't defended — defend these.
      stop a metre or two short of closing. Cost: a uniform time base stretch of
      `duration / lap`, ≤0.125% on an ~80 s lap at 10 Hz, printed on every pipeline run.
      Still pipeline-only — no schema, engine or renderer change.
+   - **Refined in Slice 8: "the lap is closed" is a fact about the DATA, so it moved
+     into the data.** A v2 race excerpt is a shared session-time **window**, not a lap,
+     and it cannot close — several cars do not simultaneously return to their starting
+     positions. `meta.loop` (`"closed"` | `"open"`, defaulting to `"closed"`) says
+     which, and `sampleCarAt` either wraps the last sample to the first or holds it.
+     Everything above stays true of a lap: `source_times` and `closing_time` exist
+     only to feed the cyclic wrap step, so a window calls neither and its time base
+     stretch is exactly 1.0.
 
 ## Data model — the replay schema
 
@@ -122,6 +130,10 @@ as a Zod schema; the loader validates against it; the Python pipeline emits it.
     "rotation": 75.0,          // degrees, from circuit_info; applied at render
     "sampleRateHz": 20,
     "duration": 84.6,          // seconds
+    "loop": "closed",          // "closed" = a lap (default when absent);
+                               // "open" = a v2 session-time window, which the
+                               // engine holds at its last sample instead of
+                               // running it back to the first
     "units": { "speed": "km/h" }
   },
   "track": {
@@ -246,8 +258,10 @@ f1-telemetry-replay/
 │     │  ├─ interpolate.ts               # O(1) sample lookup + lerp
 │     │  ├─ geometry.ts                  # rotation, bounds, fit transform
 │     │  ├─ color.ts                     # speed→thermal color
-│     │  ├─ align.ts                     # (v2) session-time multi-car alignment
 │     │  └─ __fixtures__/sample-lap.json # tiny committed fixture for tests/app
+│     │  # NOTE: no align.ts. Slice 8 found multi-car alignment is not a transform
+│     │  # the app applies — the pipeline emits every driver on one shared grid, so
+│     │  # `cars[k]` is already the same instant by the time the app parses it.
 │     ├─ store/                          # zustand transport state
 │     ├─ render/                         # canvas draw + rAF loop (reads engine)
 │     └─ components/                     # Header, HUD, Transport
