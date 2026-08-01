@@ -3,4 +3,4 @@
 # Python 3.10+ (FastF1 3.8's own floor).
 fastf1>=3.8.3,<4
 numpy>=1.26
-pandas>=2.2
+pandas>=3.0.5
