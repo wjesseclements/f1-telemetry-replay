@@ -2,5 +2,5 @@
 # This is the network-facing half of the pipeline; CI never installs this file.
 # Python 3.10+ (FastF1 3.8's own floor).
 fastf1>=3.8.3,<4
-numpy>=1.26
+numpy>=2.5.1
 pandas>=2.2

@@ -6,4 +6,4 @@
 # importable in the environment the tests run in.
 pytest>=8
 pytest-cov>=5
-numpy>=1.26
+numpy>=2.5.1
