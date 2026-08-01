@@ -5,5 +5,5 @@
 # CI run fully offline) is structural: the network-dependent library is not even
 # importable in the environment the tests run in.
 pytest>=8
-pytest-cov>=5
+pytest-cov>=7.1.0
 numpy>=1.26
