@@ -113,7 +113,12 @@ describe("gapTo — a window that passes the same ground repeatedly", () => {
   const index = buildPathIndex(circuit(3), RATE);
 
   it("measures the lap period from the path itself", () => {
-    expect(index.lapPeriod).toBeCloseTo(20, 6);
+    // Just UNDER a lap, systematically: the return is timed from where the path first
+    // comes back within the same-spot bound, which at 50 m/s is 25 m — half a second
+    // — early. It is used only as a half-width, and erring narrow is the safe way to
+    // be wrong, so the assertion is "one lap, definitely not two" rather than 20.000.
+    expect(index.lapPeriod).toBeGreaterThan(19);
+    expect(index.lapPeriod).toBeLessThan(20.01);
   });
 
   it("picks the NEAREST crossing, not the first one in the data", () => {
@@ -134,6 +139,56 @@ describe("gapTo — a window that passes the same ground repeatedly", () => {
     // more than half a lap, so it is not the same question.
     const gap = gapTo(index, index.xs[419], index.ys[419], 59.9);
     expect(gap).toBeNull();
+  });
+});
+
+describe("the lap period is the SOONEST return, not the nearest point", () => {
+  /**
+   * The regression test for a defect real data found and synthetic data had hidden.
+   *
+   * A perfect circle passes every point at exactly zero distance on every lap, so
+   * "the closest other point on the path" is a tie and the answer depends on which
+   * candidate the grid happened to yield first. Real laps are not ties: they vary by
+   * a metre or two, and on 2024 Monza R the two-laps-later pass was closer than the
+   * one-lap-later pass often enough that NOR's lap period came back as 167 s. That
+   * doubled `gapTo`'s search window, and LEC — a second behind — was reported at
+   * −82.80 s, the next lap's crossing, on roughly half the samples.
+   *
+   * So this circuit is deliberately not a tie: lap 1 runs five metres wide, which
+   * makes lap 2 the SPATIALLY nearest return from lap 0 while lap 1 is still the
+   * soonest.
+   */
+  function wideMiddleLap(): Car {
+    const perLap = 200;
+    const points: [number, number][] = [];
+    for (let k = 0; k < perLap * 3; k++) {
+      const lap = Math.floor(k / perLap);
+      const radius = 1000 / (2 * Math.PI) + (lap === 1 ? 5 : 0);
+      const a = (2 * Math.PI * (k % perLap)) / perLap;
+      points.push([radius * Math.cos(a), radius * Math.sin(a)]);
+    }
+    return carOf(
+      points,
+      Array.from({ length: perLap * 3 }, () => 180),
+    );
+  }
+
+  const index = buildPathIndex(wideMiddleLap(), RATE);
+
+  it("measures one lap, not two, when a later lap runs closer to the line", () => {
+    // Slightly UNDER a lap, always: the earliest point of the next pass that is
+    // within the residual bound is reached a little before the same angle, and a
+    // narrow window is the safe direction to be wrong in. What matters is that it is
+    // one lap and not the two the nearest-point rule returned.
+    expect(index.lapPeriod).toBeGreaterThan(19);
+    expect(index.lapPeriod).toBeLessThan(20.01);
+  });
+
+  it("therefore answers with this lap's crossing, not the next one", () => {
+    // Sample 300 is on lap 1 at t=30. A car sitting there at t=32 is 2 s behind —
+    // not 18 s ahead of the lap-2 pass, which is what an over-wide window reports.
+    const gap = gapTo(index, index.xs[300], index.ys[300], 32);
+    expect(gap!.seconds).toBeCloseTo(2, 1);
   });
 });
 

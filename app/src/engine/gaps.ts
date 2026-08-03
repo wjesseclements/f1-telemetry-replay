@@ -253,21 +253,39 @@ function candidatesNear(index: PathIndex, x: number, y: number): Candidate[] {
  * points and taking the median keeps one unlucky probe — a pit entry, a point the car
  * passed only once — from setting the value for the whole window.
  *
+ * SOONEST, NOT NEAREST, and that distinction is the whole function. A three-lap window
+ * passes each point three times, all of them within a metre of each other, so "the
+ * closest other point on the path" picks between them on lap-to-lap line variation —
+ * effectively at random. Measured on 2024 Monza R that returned TWO laps for NOR
+ * (167 s), which doubled the search window in `gapTo` and let it answer with the next
+ * lap's crossing: LEC read −82.80 s instead of +0.95 s on roughly half the samples.
+ * So candidates are filtered to points the car genuinely returned to (within the same
+ * residual bound a gap uses) and the EARLIEST return wins.
+ *
+ * The value comes back systematically a little UNDER a lap, by roughly the residual
+ * bound divided by the car's speed — the return is timed from where the path first
+ * comes back within `MAX_RESIDUAL_M`, not from the same point exactly. Half a second
+ * on an 84 s lap, and it is only ever halved into a search width, so erring narrow is
+ * the safe direction: a gap near half a lap is already ambiguous about which way round
+ * it is measured.
+ *
  * `Infinity` when no probe found a second pass: the window is shorter than a lap, so
  * there is nothing to disambiguate and every candidate is admissible.
  */
 function measureLapPeriod(index: PathIndex): number {
   const n = index.xs.length;
+  const sameSpot = MAX_RESIDUAL_M * index.unitsPerMetre;
   const periods: number[] = [];
 
   for (const k of [0, n >> 2, n >> 1, (3 * n) >> 2]) {
     const at = k / index.sampleRateHz;
-    let best: Candidate | null = null;
+    let soonest = Infinity;
     for (const c of candidatesNear(index, index.xs[k], index.ys[k])) {
-      if (Math.abs(c.t - at) < MIN_LAP_S) continue;
-      if (best === null || c.distance < best.distance) best = c;
+      const delta = Math.abs(c.t - at);
+      if (delta < MIN_LAP_S || c.distance > sameSpot) continue;
+      if (delta < soonest) soonest = delta;
     }
-    if (best !== null) periods.push(Math.abs(best.t - at));
+    if (soonest < Infinity) periods.push(soonest);
   }
 
   if (periods.length === 0) return Infinity;
