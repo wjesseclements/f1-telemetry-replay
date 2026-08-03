@@ -640,7 +640,7 @@ small and known; and it should land **before any real-data lap becomes someone's
     not three copies), three HUD readouts at one instant (312/322/320 km/h, all 8th
     gear).
 
-### [ ] Slice 9 — Multi-car render + driver selection + gaps
+### [x] Slice 9 — Multi-car render + driver selection + gaps
 - Render iterates the existing `cars[]` (already an array — no count branching). Driver
   show/highlight selection; relative gaps in the HUD.
 - **Inherited from Slice 8, so it is not rediscovered:**
@@ -671,6 +671,170 @@ small and known; and it should land **before any real-data lap becomes someone's
     same as the thermal trail.
 - **Verify:** multi-car replay shows all cars at the same instant; **≥50fps with 20
   cars** on a mid-tier laptop; selecting/highlighting drivers works by keyboard.
+
+- **Amendment (this slice) — what a GAP is, and the two things it deliberately never
+  does.** For a car `C` at clock `now`, project `C`'s position onto the FOCUSED car's
+  own sampled path and read off the time `t*` the focused car `F` was at that point:
+  `seconds = now − t*` (positive = behind), `metres = travel_F(now) − travel_F(t*)`.
+  - **It never compares distance axes across cars.** VER covered 17408 m to LEC's
+    18190 m over the same window — two numbers measured from two different points on
+    the circuit with no common origin. They never appear in the same expression: only
+    `F`'s path and `F`'s own travel integral are read, and `C` contributes one point.
+    This is Slice 8's corrected model — no cross-car scale term — carried forward.
+  - **It assumes no position unit.** Metres come from the SPEED channel (pinned by the
+    schema as km/h on both sides of the contract) integrated over the gap, the same
+    bridge Slice 8 used for `PARKED_TRAVEL_M`. Position units appear in exactly one
+    place, the residual bound, converted through a ratio measured from the car's own
+    data. Pinned by a test: scaling every `x`/`y` by 10 leaves seconds, metres and the
+    residual bit-identical (6b's rule, in Slice 8's regression-test style).
+  - **`null` is a real answer** and renders as an em dash, never a zero. A car ahead has
+    no gap near the END of a window; a car behind has none at the very start; a car off
+    `F`'s path by more than `MAX_RESIDUAL_M` (25 m) has none at all.
+- **Amendment (this slice) — the lap-period defect, found by real data and invisible to
+  synthetic data.** Recorded because the *reason* the tests missed it is the point.
+  - A multi-lap window passes each point several times, so candidates are filtered to
+    within half a lap of `now` — and the lap period is measured from the path itself,
+    since a v2 window carries no lap markers.
+  - The first implementation took the SPATIALLY nearest other pass. On a perfect
+    synthetic circle every lap passes at exactly zero distance, so that is a tie the
+    tests kept winning by luck. Real laps vary by a metre or two: on 2024 Monza R the
+    two-laps-later pass was nearer than the one-lap-later pass, NOR's period came back
+    **167 s instead of ~84**, the search window doubled, and LEC — one second behind —
+    read **−82.80 s** on roughly half the samples.
+  - Fixed by filtering to points the car genuinely returned to and taking the
+    **soonest**, not the nearest. The regression test builds a circuit whose middle lap
+    runs five metres wide, so the spatially-nearest return is two laps away while the
+    soonest is one — the synthetic form of what the real lap did.
+  - The value now comes back systematically ~0.4 s UNDER a lap (the return is timed
+    from where the path first re-enters the residual bound). It is only ever halved
+    into a search width, and erring narrow is the safe direction.
+- **Amendment (this slice) — a white screen that predates this slice, made reachable by
+  it.** Loading a one-car lap after a three-car window took the whole app down:
+  `setReplay` swaps the replay immediately while the last published frame still holds
+  the PREVIOUS replay's cars, so the HUD indexed `replay.cars[2]` of a one-car replay.
+  The single readout indexed `replay.cars[i]` the same way, so this was always there —
+  the tower just makes multi-car files normal. A frame whose car count disagrees with
+  the replay is stale by definition and is dropped rather than partially rendered; the
+  next frame is consistent within 16 ms. **Found in the browser in one action**, doing
+  exactly what the slice asks a user to do.
+- **Amendment (this slice) — selection lives in the transport store, and CLAUDE.md rule
+  1's enumeration moved with it.** Two arguments settled it, neither of them taste:
+  - the render loop already reads that store with `getState()` *inside the frame
+    callback* and subscribes to nothing, so focus costs one property access and **zero**
+    new subscriptions. Held in React and passed as a prop it would re-render
+    `TrackCanvas` on every focus change, which `TrackCanvas.test.tsx`'s `commits === 1`
+    test exists to forbid — that test now also writes `setFocusedCarIndex`;
+  - the invariant "focus is a valid index into the current replay's cars" is enforced
+    inside `setReplay`, atomically, instead of in an effect that has to notice.
+  - Rule 1's parenthetical listed the store's four fields and was now wrong, so it was
+    updated rather than left to rot: the prohibition is on PER-FRAME values, not on
+    non-transport ones.
+  - **`focusedCarIndex` is an index into `cars`, never a row in the tower** — the tower
+    sorts itself and reorders, so a stored row position would silently mean a different
+    car after a resort. `cycleFocus` steps in `cars[]` order for the same reason.
+- **Amendment (this slice) — NO schema change, argued and rejected.** Storing focus as a
+  driver code would have wanted a uniqueness refinement to be safe. Slice 8 recorded
+  that the schema guards assumptions the ENGINE makes, and the engine makes none here —
+  so the identity is the `cars` index, which is unique by construction, and
+  `schema.ts` is untouched.
+- **Amendment (this slice) — the tower is ONE list in running order, focused entry
+  inline.** Sorted by signed gap, which is focus-independent (changing the reference car
+  shifts every gap by a constant), so rows move at overtakes and at nothing else. The
+  focused car's full readout sits at its own place in that order rather than pinned to
+  the top: row position means "ahead of", and lifting one car out of it would make the
+  tower lie about where that car is. **This is also what keeps a one-car replay
+  identical** — one car, focused, rendered as the full readout, from a map that happens
+  to produce one. No count branch anywhere.
+  - **Hysteresis, not a mechanism:** a car takes the place above it only when it is more
+    than **0.05 s** better, a dead band of twice that around every crossing which cannot
+    oscillate. Without it two cars running together strobe their rows at 30 Hz. Nothing
+    is retained but the previous order.
+  - Cars with no gap pin to the bottom in `cars[]` order — an unknown gap has no place
+    in a running order, and inventing one would put a car where the data does not.
+- **Amendment (this slice) — the tail is a bounded REBUILD, which is 4b's note honoured
+  in substance rather than literally.** 4b predicted "a short tail is a bounded `syncTo`
+  window, not a different mechanism". Half right: a `Path2D` cannot express it, because
+  a tail's BACK end moves forward with its front and a retained path cannot have
+  segments removed. So `TailPainter` rebuilds every frame — but over the last
+  `TAIL_SECONDS = 1.5` of travel only, so its cost is a constant per car and does not
+  grow with a three-lap window the way a trail's would. It shares the focused car's
+  screen-space `Float64Array`, so the projection is not duplicated.
+  - The fade is quantised into **4 alpha bands**, mirroring the trail's 9 speed buckets.
+    Strokes per frame are `cars × 4`, never `cars × segments` — 80 against 380 at twenty
+    cars.
+  - **Unfocused `TrailPainter`s are never synced**, which is where the twenty-car saving
+    actually is. Refocusing costs one O(samples) refill, the same one-off a lap wrap
+    already pays.
+  - The focused car's marker is unchanged and gains NO selection ring. Everything that
+    marks focus is subtracted from the other cars, which is what makes the one-car
+    canvas identical rather than merely similar.
+- **Amendment (this slice) — `displaySignature` gained rounded `x`/`y`.** The tower's
+  gaps derive from positions. In practice they cannot freeze (the clock is already in
+  the signature and position is a function of the clock), but that is an argument about
+  what the engine can emit, and the trap in `Hud.test.tsx` is meant to be mechanical.
+  The coupling test is now run over a MULTI-CAR replay as well, because a lone car is
+  focused and a focused row shows no gap — so the single-car suite could never have
+  caught it. No extra emits: the clock term already changes on every one.
+- **Amendment (this slice) — the team NAME renders on the focused entry only.** In a
+  compact row the two gap columns leave about six characters and "Red Bull Racing"
+  truncates to "R…", which carries less than the colour swatch already does. Measured at
+  the sidebar's real width in the browser, not guessed. **Degradation path recorded
+  before it is needed:** at twenty cars, `gap_m` is the column that drops next. `gap_s`
+  never does — it is the unit the one-second DRS rule and every broadcast interval are
+  quoted in.
+- **Verified (2026-08-03):**
+  - `npm run check` green with **0 warnings** (`grep -ciE 'warn|error'` over the full
+    log = 0): 425 tests, engine coverage **100%** lines/branches/functions on every file
+    including `gaps.ts`, `runningOrder.ts`, `selection.ts`.
+  - **Tests mutation-checked, not taken on trust.** Removing the hysteresis dead band
+    fails 2 tests; removing the off-path `null` fails 1; flipping the gap's sign fails
+    9; unbounding the tail fails 1.
+  - **Real data — 2024 Monza R, VER/LEC/NOR, through the SHIPPED `gaps.ts`**, focus NOR:
+    lap period 83.400 s, and across the whole 2607-sample window
+
+    | | gap range | residual mean / max | no answer |
+    |---|---|---|---|
+    | VER → NOR | −12.120 … −6.800 s | 0.09 m / 22.84 m | 68 (2.6%) |
+    | LEC → NOR | +0.700 … +1.174 s | 0.09 m / 16.37 m | 7 (0.3%) |
+
+    VER is ahead for the whole window and LEC behind for the whole window, with no sign
+    flips — the sanity check the −82.80 s defect failed.
+  - **The accordion, which was the acceptance check.** Focus NOR, LEC behind, through
+    the chicane. The on-screen readout was sampled from the DOM in a real browser and
+    agrees with the module **to the last digit at every point**:
+
+    | t | NOR | LEC | gap_s | gap_m |
+    |---|---|---|---|---|
+    | 104.0 | 316 | 338 | +0.785 | 71 m |
+    | 105.4 | 205 | 290 | **+0.723** ← min | 49 m |
+    | 107.0 | 98 | 125 | +0.811 | 26 m |
+    | 110.0 | 69 | 70 | +1.025 | **20 m** ← min |
+    | 110.6 | 81 | 68 | **+1.042** ← max | 21 m |
+    | 114.0 | 222 | 195 | +0.950 | 55 m |
+    | 121.0 | 314 | 312 | +0.912 | 79 m |
+
+    **Both columns accordion, in phase, and it recurs every lap.** Metres run
+    80 → 19.5 → 79, a **4.1×** compression — that is the effect the eye measures.
+    Seconds run 0.865 → 0.723 → 1.042: LEC genuinely takes **0.14 s** under braking and
+    NOR genuinely takes **0.32 s** back on exit. The eye was right; the seconds column
+    separates the real gain and loss from the part that is only speed.
+  - **fps: 600 frames in exactly 5.00 s = 120 fps** with 3 cars, in a visible tab on a
+    120 Hz display — the display's full refresh rate with no dropped frames. Measured
+    with a visibility-gated rAF counter that does no DOM work inside the loop; a hidden
+    tab throttles rAF to nothing and would have measured zero.
+  - **Keyboard, live in the browser:** ArrowDown steps VER → LEC → NOR → VER (wraps),
+    ArrowUp wraps back, the speed trace follows focus every time, and with the scrubber
+    focused ArrowDown does **not** change the car — the native-first guard holds.
+  - **One-car regression:** `monza_ver.json` renders as it did in Slices 7–8 — full
+    thermal trail, one glowing marker, corner badges, S/F, DRS pill. Zero tail strokes
+    (`TrackCanvas.test.tsx` pins that too). The only HUD change is the driver/team
+    header line, which is this slice's scope.
+  - Screenshots: `docs/screenshots/slice-9-{tower-chicane,focus-and-tails,one-car-regression}`.
+- **NOT claimed: ≥50fps with 20 cars.** No 20-car file exists, so the bar is not met and
+  is not asserted. What IS established is the cost structure: per frame, 1 full trail
+  (≤1 appended segment + 9 bucket strokes) + (N−1) × 4 tail strokes + N markers —
+  **O(cars) with a small constant, independent of window length** — and gaps cost the
+  frame path nothing at all, being computed in the HUD at ≤30 Hz. Filed as Slice 12.
 
 ## Maintenance (not phase-bound — schedule after the slices above)
 
@@ -714,6 +878,32 @@ nicety.
   re-read, not just re-run); `npm run check` green; and a real lap built for a driver
   whose team colour cannot be confused with the new fallback — **not VER**, whose blue
   is what made the original bug invisible.
+
+### [ ] Slice 12 — Measure the 20-car frame budget
+
+**Filed by Slice 9 rather than claimed by it.** PRD/PLAN's bar is **≥50fps with 20 cars
+on a mid-tier laptop**; Slice 9 shipped the presentation with three and measured 120fps
+(600 frames in 5.00 s, 120 Hz display, no drops). Three cars do not test the bar, so it
+is open.
+
+- **Needs a 20-car file first**, which is a pipeline run, not a code change:
+  `--drivers <20 codes> --laps A-B`. Note Slice 8's arithmetic — a 3-lap × 3-car window
+  is 1.6 MB, so 20 cars over 3 laps is ~11 MB through a file picker. Consider a shorter
+  window, and measure the LOAD as well as the frame rate.
+- **What the cost structure predicts**, so the measurement has something to falsify:
+  per frame it is 1 full trail (≤1 appended segment + 9 bucket strokes) + 19 tails × 4
+  banded strokes + 20 markers ≈ **80 tail strokes** against today's 9, all independent
+  of window length. Gaps are NOT on the frame path — they are computed in the HUD at
+  ≤30 Hz, 20 × O(1) grid queries plus an O(N²) hysteretic sort with N ≤ 20.
+- **Suspect first if it misses:** the 20 shadow-blurred markers (only the focused car
+  has a glow, deliberately), then the tail stroke count — `TAIL_BANDS` is the dial, and
+  dropping it to 2 halves the strokes for a fade nobody is looking at on an unfocused
+  car.
+- **Verify:** a visibility-gated rAF counter in a VISIBLE tab (a hidden tab throttles
+  rAF to nothing and measures zero), on the production build via `vite preview`, over
+  ≥5 s of playback. Record frames/seconds, not a smoothed figure.
+- Backlog's "WebGL/3D escalation **only** if measured 20-car perf demands it" is
+  downstream of this measurement — it is the thing that would authorise it.
 
 ## Backlog (ideas — not committed)
 - WebGL/3D escalation **only** if measured 20-car perf demands it (documented path).

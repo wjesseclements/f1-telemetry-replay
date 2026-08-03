@@ -17,7 +17,7 @@ import {
   type FitTransform,
   type Point,
 } from "../engine/geometry";
-import { TrailPainter } from "./trail";
+import { TailPainter, TrailPainter } from "./trail";
 import type { Scene } from "./scene";
 
 /** How far off the racing line a corner number sits, in CSS pixels. */
@@ -49,6 +49,15 @@ export interface ScenePaths {
   ribbon: Path2D;
   /** One trail painter per car, in `replay.cars` order (rule 2: an array). */
   trails: readonly TrailPainter[];
+  /**
+   * One tail painter per car, over the SAME screen coordinates as `trails[i]`.
+   *
+   * Both painters exist for every car because which one is drawn is decided per frame
+   * by which car is focused, and focus changes with a keypress. Building both costs
+   * one object each — the projected coordinates, which are the only thing with a size,
+   * are shared.
+   */
+  tails: readonly TailPainter[];
   corners: readonly CornerLabel[];
   startFinish: StartFinishMark;
   /**
@@ -76,12 +85,17 @@ export interface ScenePaths {
  * the new scale. `TrackCanvas.test.tsx` pins that behaviour on a mid-lap resize.
  */
 export function buildScenePaths(scene: Scene, fit: FitTransform): ScenePaths {
+  // Projected once per car and handed to BOTH painters: the trail and the tail draw
+  // the same geometry, and a second copy would double the only allocation here that
+  // scales with window length.
+  const screens = scene.carPaths.map((pts) => toScreenArray(pts, fit));
+
   return {
     ribbon: buildRibbonPath(scene.ribbon, fit),
-    trails: scene.carPaths.map(
-      (pts, i) =>
-        new TrailPainter(toScreenArray(pts, fit), scene.carBuckets[i]),
+    trails: screens.map(
+      (screen, i) => new TrailPainter(screen, scene.carBuckets[i]),
     ),
+    tails: screens.map((screen) => new TailPainter(screen, scene.tailSegments)),
     corners: scene.corners.map((corner) => ({
       badge: offsetBy(corner.at, corner.dir, CORNER_OFFSET_PX, fit),
       on: applyTransform(corner.at, fit),

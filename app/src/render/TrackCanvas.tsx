@@ -124,8 +124,11 @@ export function TrackCanvas({ replay }: TrackCanvasProps) {
       prevMs = nowMs;
 
       // Read, don't subscribe: this is what keeps transport changes off React's
-      // render path entirely.
-      const { isPlaying, speedMult, seekTarget, consumeSeek } =
+      // render path entirely. `focusedCarIndex` rides the same read — which is the
+      // reason it lives in this store at all. Held in React and passed down as a
+      // prop, changing the followed car would re-render this component; here it
+      // costs one property access inside a callback that already runs every frame.
+      const { isPlaying, speedMult, seekTarget, consumeSeek, focusedCarIndex } =
         useTransport.getState();
 
       // The clock ref is read and written here and nowhere else. That is what
@@ -151,7 +154,15 @@ export function TrackCanvas({ replay }: TrackCanvasProps) {
       }
 
       const snapshots = sampleAt(replay, clockRef.current);
-      drawFrame(ctx, scene, measured.paths, measured.view, snapshots, colors);
+      drawFrame(
+        ctx,
+        scene,
+        measured.paths,
+        measured.view,
+        snapshots,
+        colors,
+        focusedCarIndex,
+      );
 
       // Hand the same snapshot to the HUD. This is a plain function call into a module,
       // NOT a setState: the channel rate-limits to <=30fps and wakes its subscribers

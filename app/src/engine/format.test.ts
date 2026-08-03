@@ -6,6 +6,9 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  NO_VALUE,
+  formatGapMetres,
+  formatGapSeconds,
   formatGear,
   formatLapTime,
   formatSpeed,
@@ -70,5 +73,36 @@ describe("pedalFraction", () => {
     expect(pedalFraction(120)).toBe(1);
     expect(pedalFraction(-10)).toBe(0);
     expect(pedalFraction(NaN)).toBe(0);
+  });
+});
+
+describe("formatGapSeconds", () => {
+  it("marks a car behind with + and a car ahead with -", () => {
+    expect(formatGapSeconds(0.912)).toBe("+0.912");
+    expect(formatGapSeconds(-9.3)).toBe("-9.300");
+  });
+
+  it("keeps three decimals, which is the resolution the projection has", () => {
+    expect(formatGapSeconds(0.7227)).toBe("+0.723");
+    expect(formatGapSeconds(0)).toBe("+0.000");
+  });
+
+  it("renders an unknown gap as an em dash, never as zero", () => {
+    // A zero would read as "alongside", which is the one thing it does not mean.
+    expect(formatGapSeconds(null)).toBe(NO_VALUE);
+    expect(formatGapSeconds(NaN)).toBe(NO_VALUE);
+    expect(formatGapSeconds(Infinity)).toBe(NO_VALUE);
+  });
+});
+
+describe("formatGapMetres", () => {
+  it("rounds to whole metres and drops the sign the seconds already carry", () => {
+    expect(formatGapMetres(79.14)).toBe("79 m");
+    expect(formatGapMetres(-782.4)).toBe("782 m");
+  });
+
+  it("renders an unknown gap as an em dash", () => {
+    expect(formatGapMetres(null)).toBe(NO_VALUE);
+    expect(formatGapMetres(NaN)).toBe(NO_VALUE);
   });
 });

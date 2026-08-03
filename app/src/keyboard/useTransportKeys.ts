@@ -5,6 +5,11 @@
  * transport store and nothing else; like every other consumer in this slice, it cannot
  * reach the clock and does not need to.
  *
+ * The bindings split by axis, which is the whole of the mental model: HORIZONTAL keys
+ * move through TIME (seek, restart, end), VERTICAL keys move through the FIELD (which
+ * car is followed), and Space starts and stops the clock. Up and Down were unbound
+ * before this, so nothing had to be given up to add focus.
+ *
  * Two things here are less obvious than they look.
  *
  * **Native first.** The controls are real `<button>`s and a real `<input type="range">`,
@@ -23,6 +28,7 @@
  */
 import { useEffect, useRef } from "react";
 import type { Replay } from "../engine/schema";
+import { cycleFocus } from "../engine/selection";
 import { useTransport } from "../store/transport";
 import { telemetry } from "../telemetry/channel";
 
@@ -31,7 +37,7 @@ export const SMALL_STEP_S = 1;
 /** Shift+arrow seek, in seconds. */
 export const LARGE_STEP_S = 5;
 
-/** Elements that handle arrow/Home/End themselves. */
+/** Elements that handle arrow/Home/End themselves — vertical arrows included. */
 const SELF_STEPPING = new Set(["INPUT", "SELECT", "TEXTAREA"]);
 
 /**
@@ -139,9 +145,31 @@ export function useTransportKeys(replay: Replay | null): void {
         return;
       }
 
-      if (!NAVIGATION_KEYS.has(event.key)) return;
-      // The range input steps itself — see the file header.
+      // The range input steps itself on every one of these — see the file header.
+      // This covers the focus keys below as well as the seeks: a focused scrubber
+      // moves its own value on Up and Down, and seeking the lap AND changing the
+      // followed car off one press is the double-action the rule exists to stop.
       if (SELF_STEPPING.has(tag)) return;
+
+      // Vertical arrows move through the field, horizontal ones move through time.
+      // The mapping is the timing tower's: Down is the next car in `cars[]` order,
+      // Up the previous. NOT the next ROW — the tower resorts itself as cars change
+      // places, and a resort between two presses would silently change what the
+      // second one means. See `engine/selection.ts`.
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        const { focusedCarIndex, setFocusedCarIndex } = useTransport.getState();
+        setFocusedCarIndex(
+          cycleFocus(
+            replay.cars.length,
+            focusedCarIndex,
+            event.key === "ArrowDown" ? 1 : -1,
+          ),
+        );
+        return;
+      }
+
+      if (!NAVIGATION_KEYS.has(event.key)) return;
 
       const step = event.shiftKey ? LARGE_STEP_S : SMALL_STEP_S;
 
