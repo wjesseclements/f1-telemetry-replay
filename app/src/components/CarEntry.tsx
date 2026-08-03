@@ -25,9 +25,21 @@
  * the accessible name (WCAG 2.5.3, the `label-content-name-mismatch` Slice 7 fixed),
  * and nothing here is announced live — the HUD has no `aria-live` by design.
  *
- * DEGRADATION PATH, recorded before it is needed: at twenty cars the tower gets tight.
- * `gap_m` is the column that drops. `gap_s` never does — it is the number the
- * one-second DRS rule and every broadcast interval are quoted in.
+ * WHAT THE TOWER GIVES UP FIRST, DECIDED RATHER THAN DEFAULTED
+ * -----------------------------------------------------------
+ * Width is the scarce resource here, and the order it is surrendered in is a decision,
+ * not an accident of layout:
+ *
+ *  1. **The team NAME is already gone from a compact row** — it renders on the focused
+ *     entry only. At the sidebar's real width (measured in a browser, not guessed) the
+ *     two gap columns leave about six characters, and "Red Bull Racing" truncated to
+ *     "R…" carries strictly less than the colour swatch beside it already does. This
+ *     was ratified, so width work should treat it as a decision to revisit knowingly
+ *     rather than a bug to fix: giving the name back means a wider sidebar, and the
+ *     swatch is what identifies the team in a row.
+ *  2. **`gap_m` is next**, if twenty rows get tight.
+ *  3. **`gap_s` never goes.** It is the unit the one-second DRS rule and every
+ *     broadcast interval are quoted in.
  */
 import { carHasDrs, isDrsOpen } from "../engine/drs";
 import {

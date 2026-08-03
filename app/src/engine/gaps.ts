@@ -262,12 +262,26 @@ function candidatesNear(index: PathIndex, x: number, y: number): Candidate[] {
  * So candidates are filtered to points the car genuinely returned to (within the same
  * residual bound a gap uses) and the EARLIEST return wins.
  *
- * The value comes back systematically a little UNDER a lap, by roughly the residual
- * bound divided by the car's speed — the return is timed from where the path first
- * comes back within `MAX_RESIDUAL_M`, not from the same point exactly. Half a second
- * on an 84 s lap, and it is only ever halved into a search width, so erring narrow is
- * the safe direction: a gap near half a lap is already ambiguous about which way round
- * it is measured.
+ * THE ERROR IS ONE-DIRECTIONAL, AND THAT IS THE SAFETY ARGUMENT
+ * ------------------------------------------------------------
+ * The value comes back systematically a little UNDER a lap — roughly the residual bound
+ * divided by the car's speed, about 0.4 s on an 84 s lap — because the return is timed
+ * from where the path first re-enters `MAX_RESIDUAL_M`, not from the same point exactly.
+ * That direction is chosen, because the two directions fail differently and only one of
+ * them is acceptable:
+ *
+ *  - **Too SMALL** narrows `gapTo`'s window. The only gaps it can affect are ones within
+ *    the error of half a lap, which is already the point where "ahead" and "behind" are
+ *    the same answer measured the other way round. Such a gap stops being reported and
+ *    becomes `null` — an em dash. The readout loses a number it could not have been
+ *    trusted on anyway.
+ *  - **Too LARGE** widens the window until the NEXT LAP's crossing becomes admissible,
+ *    and the nearest-in-space rule then picks it. That is not a missing number, it is a
+ *    confident wrong one: the defect this function was rewritten for reported a car one
+ *    second behind as 82.8 seconds ahead, with no indication anything was wrong.
+ *
+ * So an honest `—` is always preferred to a plausible lie, and anything that makes this
+ * estimate more generous has to argue against that trade first.
  *
  * `Infinity` when no probe found a second pass: the window is shorter than a lap, so
  * there is nothing to disambiguate and every candidate is admissible.
