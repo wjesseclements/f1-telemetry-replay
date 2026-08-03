@@ -830,11 +830,98 @@ small and known; and it should land **before any real-data lap becomes someone's
     (`TrackCanvas.test.tsx` pins that too). The only HUD change is the driver/team
     header line, which is this slice's scope.
   - Screenshots: `docs/screenshots/slice-9-{tower-chicane,focus-and-tails,one-car-regression}`.
+- **Ratified in the human's gestalt pass on production (2026-08-03) — the inline
+  focused readout, on a file that actually swaps.** The decision shipped untested: three
+  cars in a clean 3-lap window rarely change places, so "does the big readout moving
+  vertically read as truth or as churn?" was an open question at merge. Tested on a
+  **lap 13-19 pit-window file where the running order genuinely cycles**: it reads as
+  truth updating, not UI churn, and the hysteresis held with no strobing. **The inline
+  design stands as built** — this is settled, not to be re-litigated by a later slice
+  that finds the movement surprising.
 - **NOT claimed: ≥50fps with 20 cars.** No 20-car file exists, so the bar is not met and
   is not asserted. What IS established is the cost structure: per frame, 1 full trail
   (≤1 appended segment + 9 bucket strokes) + (N−1) × 4 tail strokes + N markers —
   **O(cars) with a small constant, independent of window length** — and gaps cost the
   frame path nothing at all, being computed in the HUD at ≤30 Hz. Filed as Slice 12.
+
+### [ ] Slice 9b — Trail semantics follow `meta.loop`
+
+**Found in the human's gestalt pass on production (2026-08-03), on a multi-lap endgame
+file.** In an OPEN window the focused car's trail paints the entire circuit after one
+lap and keeps repainting it, turning the app's signature into a static speed map that
+sits on top of every car. The cars are the thing you are watching; by lap two they are
+dots on a wall of colour.
+
+- **As observed** (`monza_endgame.json`, Monza R, PIA/LEC/NOR, focus LEC, **9:39.200
+  window ≈ 7 laps**, screenshot at 7:47 running at **4×**): the trail is a complete,
+  saturated closed loop of thermal colour. It has visually REPLACED the track ribbon,
+  the S/F line and the corner badges; one car marker is discernible and the other two
+  are not. **The severity scales with window length**, which is the tell — this is an
+  unbounded quantity being drawn, and 7 laps is simply further along than the 3-lap file
+  Slice 9 was built and screenshotted on, where the same defect was present at 1.5 laps
+  and went unrecognised.
+- **The tower is unaffected and was correct throughout** — PIA +7.269 / 517 m, NOR
+  +18.492 / 796 m, both resolved, no em dashes over a 7-lap window. This is a canvas
+  defect only, which is what makes it a micro-slice.
+- **The unfocused tails are working and are simply drowned out.** They are 1.5 s of team
+  colour against a full circuit of thermal paint. That is the argument for the fix being
+  the right shape: bring the focused car into the same bounded regime the other cars are
+  already in, rather than inventing a third behaviour.
+- **Watching at 4× is when it is worst**, and it is the speed a long window invites.
+
+- **It is mechanical, not a tuning problem.** "Covered portion" (Slice 4b) means "this
+  lap" only because `TrailPainter.syncTo` resets when the clock goes backwards, and in
+  a `closed` replay `meta.duration` IS one lap, so the wrap fires every lap. An `open`
+  window's `duration` is the whole window, so the only reset is at its end and every lap
+  in it accumulates. Nothing is behaving incorrectly; a semantic that was defined for a
+  one-lap replay was inherited by a three-lap one.
+- **This EXTENDS Slice 4b's ruling, it does not overturn it.** 4b chose covered-portion
+  over persistence on the grounds that "at steady pace lap-over-lap variation is minimal,
+  so persistence preserves redundant information". That is the same argument, applied to
+  the case 4b never had in front of it: within an open window, a covered portion spanning
+  several laps IS persistence. The rule stands; the case is new.
+- **Scope — composition of shipped mechanisms, no new machinery:**
+  - `loop: "closed"` → covered-portion trail, **exactly as today, unchanged**.
+  - `loop: "open"` → the focused car gets a bounded **thermal** tail: the existing
+    `TailPainter`, wearing `bucketOf`/`bucketColor` instead of one team colour, and
+    longer than an unfocused tail (**~6–10 s, tuned by eyeball**, against `TAIL_SECONDS`
+    = 1.5).
+  - **Unfocused tails are untouched** — 1.5 s, team colour.
+  - The branch is on `meta.loop`, a fact about the DATA, which is the precedent Slice 8
+    set when `sampleCarAt` gained the same parameter. It is NOT a branch on car count
+    (rule 2): a one-car open window would get the thermal tail too, and correctly so.
+- **The one open design question, to settle with the eyeball, not in advance.** The tail
+  fades by alpha band; the trail encodes speed by bucket colour. Doing both means a
+  segment's colour is a bucket times an alpha, and the thermal ramp's legibility is the
+  single thing this slice may not trade away — it is what the trail is FOR. Either:
+  - keep the fade and batch per band per bucket — **≤ `TAIL_BANDS` × `SPEED_BUCKETS` = 36
+    strokes per frame** for the one focused car, still constant and still independent of
+    window length; or
+  - drop the fade for the thermal tail and batch by bucket alone — **≤ `SPEED_BUCKETS` =
+    9 strokes**, identical to today's trail, at the cost of a hard end rather than a
+    fading one.
+  Whichever reads better on the endgame file wins. Record which, and why, as an
+  amendment.
+- **Watch for:** `paths.ts` currently builds both a `TrailPainter` and a `TailPainter`
+  per car. Only one is now reachable per mode, so build what the mode needs rather than
+  leaving a painter that can never be stroked.
+- **Bonus the bounded form brings:** a backwards seek needs no rebuild at all. The tail
+  is recomputed each frame from `[index − L, index]`, so it is always correct — the
+  `Path2D`-cannot-be-un-drawn problem that shapes `TrailPainter` simply does not arise
+  in open mode.
+- **Verify:**
+  - **Bounded strokes per frame**, asserted as a number, and constant as the clock runs
+    deep into a multi-lap window — the same shape as `TailPainter`'s existing bound test.
+  - **Closed-mode files are PIXEL-IDENTICAL.** The v1 laps on disk are the regression
+    fixtures, as in Slice 9: a closed replay must draw the same call sequence it draws
+    today, including the same `SPEED_BUCKETS` retained-path strokes and zero tail strokes.
+  - An open-mode replay draws **no retained trail `Path2D` at all** — the positive form
+    of the same guard.
+  - **Human eyeball on the endgame file is the acceptance**: the cars are legible against
+    the track for the whole window, and the thermal ramp still reads as speed.
+  - `npm run check` green with 0 warnings; engine coverage unmoved at 100%.
+- **Out of scope:** the unfocused tail's length or colour; `TAIL_BANDS`; anything in
+  `schema.ts` (`meta.loop` already exists and already means this); the pipeline.
 
 ## Maintenance (not phase-bound — schedule after the slices above)
 
