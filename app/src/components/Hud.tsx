@@ -33,6 +33,7 @@ import { buildPathIndex, gapTo, type Gap } from "../engine/gaps";
 import { orderByGap, sameOrder } from "../engine/runningOrder";
 import type { Replay } from "../engine/schema";
 import { useTransport } from "../store/transport";
+import { EMPTY_FRAME } from "../telemetry/channel";
 import { useTelemetry } from "../telemetry/useTelemetry";
 import { CarEntry } from "./CarEntry";
 import { SpeedTrace } from "./SpeedTrace";
@@ -60,7 +61,24 @@ export function Hud({ replay }: HudProps) {
     [replay, focusedCarIndex],
   );
 
-  const gaps = cars.map((snapshot, i) =>
+  /**
+   * The published frame, unless it describes a different replay.
+   *
+   * Loading a replay swaps `replay` immediately while the last frame the render loop
+   * published still holds the PREVIOUS replay's cars — one frame, at most 16 ms. Read
+   * against the new replay that indexes past the end of `cars` and takes the whole app
+   * down with a white screen; loading a one-car lap after a three-car window reached it
+   * in about a second, and it predates the tower (the single readout indexed
+   * `replay.cars[i]` the same way).
+   *
+   * A mismatched frame is stale by definition, so it is dropped rather than partially
+   * rendered: the next frame is consistent, and until it lands this shows exactly what
+   * it shows before the first publish of any replay — nothing car-shaped.
+   */
+  const snapshots =
+    cars.length === replay.cars.length ? cars : EMPTY_FRAME.cars;
+
+  const gaps = snapshots.map((snapshot, i) =>
     i === focusedCarIndex
       ? SELF
       : gapTo(pathIndex, snapshot.x, snapshot.y, clock),
@@ -105,7 +123,7 @@ export function Hud({ replay }: HudProps) {
           <CarEntry
             key={replay.cars[i].driver}
             car={replay.cars[i]}
-            snapshot={cars[i]}
+            snapshot={snapshots[i]}
             gap={gaps[i]}
             focused={i === focusedCarIndex}
             onFocus={() => setFocusedCarIndex(i)}

@@ -80,21 +80,31 @@ export function CarEntry({
         <span className="font-mono text-xs font-bold tracking-wider text-txt">
           {car.driver}
         </span>
-        {/* Empty for a replay whose pipeline could not resolve the team — an empty
-            string renders nothing, so there is no branch to write. */}
-        <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-dim">
-          {car.team}
-        </span>
+        {/*
+          The team NAME belongs to the focused entry, which has the width for it. In a
+          compact row the two gap columns leave about six characters, and "Red Bull
+          Racing" truncated to "R…" is worse than nothing — measured in the browser at
+          the sidebar's real width, not guessed. What identifies the team in a row is
+          the swatch above, which is the same mark the canvas paints that car with.
+
+          Empty for a replay whose pipeline could not resolve the team; an empty string
+          renders nothing, so there is no branch for that either.
+        */}
         {focused ? (
-          <span className="font-mono text-[10px] uppercase tracking-widest text-accent">
-            Focus
-          </span>
+          <>
+            <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-dim">
+              {car.team}
+            </span>
+            <span className="font-mono text-[10px] uppercase tracking-widest text-accent">
+              Focus
+            </span>
+          </>
         ) : (
-          <span className="flex items-baseline gap-1.5">
+          <span className="ml-auto flex items-baseline gap-2">
             <span className="font-mono text-sm font-bold tabular-nums text-txt">
               {formatGapSeconds(gap === null ? null : gap.seconds)}
             </span>
-            <span className="w-12 text-right font-mono text-[10px] tabular-nums text-dim">
+            <span className="w-11 text-right font-mono text-[10px] tabular-nums text-dim">
               {formatGapMetres(gap === null ? null : gap.metres)}
             </span>
           </span>

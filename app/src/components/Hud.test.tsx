@@ -293,12 +293,15 @@ function renderTower(clock: number, second: CarSnapshot) {
 describe("Hud timing tower", () => {
   beforeEach(() => useTransport.setState({ focusedCarIndex: 0 }));
 
-  it("shows a row per car, with the team name beside the driver", () => {
+  it("shows a row per car, naming the team on the focused one", () => {
+    // The team name goes where there is width for it. A compact row identifies its
+    // team by the colour swatch instead — at the sidebar's real width, "Red Bull
+    // Racing" truncates to "R…", which is worse than not showing it.
     renderTower(4, atSample(20));
     expect(screen.getByRole("button", { name: /VER/ })).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /Second Team/ }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /SEC/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Demo/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Second Team/ })).toBeNull();
   });
 
   it("gives the focused car the full readout and the others a gap", () => {
@@ -438,5 +441,32 @@ describe("HUD / signature coupling — the tower", () => {
     // Only position: an unfocused row shows a gap and nothing else, so speed, gear
     // and the pedals are invisible until that car is focused.
     expect(changing.sort()).toEqual(["x", "y"]);
+  });
+});
+
+describe("Hud across a replay swap", () => {
+  beforeEach(() => useTransport.setState({ focusedCarIndex: 0 }));
+
+  it("survives a frame that still describes the previous replay", () => {
+    // Loading a replay swaps `replay` immediately, but the last frame the render
+    // loop published still holds the old replay's cars for up to 16 ms. Read against
+    // the new one it indexes past the end of `cars`, which took the whole app down
+    // with a white screen — reached in about a second by loading a one-car lap after
+    // a three-car window, and present before the tower existed too.
+    telemetry.publish(1000, 4, [snapshot(), atSample(20)]);
+    expect(() => render(<Hud replay={replay} />)).not.toThrow();
+    // Nothing car-shaped until a consistent frame lands — the same state as before
+    // the first publish, rather than half a tower.
+    expect(screen.queryByRole("meter", { name: "Throttle" })).toBeNull();
+  });
+
+  it("renders again as soon as a frame for the new replay arrives", () => {
+    telemetry.publish(1000, 4, [snapshot(), atSample(20)]);
+    const view = render(<Hud replay={replay} />);
+    view.unmount();
+
+    telemetry.publish(2000, 4, [snapshot()]);
+    render(<Hud replay={replay} />);
+    expect(screen.getByRole("meter", { name: "Throttle" })).toBeInTheDocument();
   });
 });
