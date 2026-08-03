@@ -34,9 +34,12 @@ from FastF1 data. PRD.md holds the detail; this file holds the law.
 ## Architecture rules (non-negotiable — see PRD §Load-bearing decisions)
 
 1. **One clock, in a ref, never in React/store state.** A single `requestAnimationFrame`
-   loop owns the live clock. Store holds only discrete transport state (isPlaying,
-   speedMult, seekTarget, replay). HUD reads an interpolated snapshot at **≤30fps**.
-   Never setState per animation frame. Never subscribe the canvas to per-frame updates.
+   loop owns the live clock. Store holds only discrete state a HUMAN changes (isPlaying,
+   speedMult, seekTarget, replay, focusedCarIndex). HUD reads an interpolated snapshot at
+   **≤30fps**. Never setState per animation frame. Never subscribe the canvas to
+   per-frame updates. The prohibition is on PER-FRAME values, not on non-transport ones:
+   `focusedCarIndex` (v2) is in the store because the loop already reads it there without
+   subscribing, and a prop would re-render the canvas on every focus change.
 2. **`cars` is always an array.** Never branch on car count; never special-case one car.
 3. **Uniform-time samples; O(1) lookup** via `index = clock * sampleRateHz`. No scanning.
 4. **`src/engine/` is pure and headless** — no React, DOM, or canvas imports there.
