@@ -50,3 +50,34 @@ export function pedalFraction(percent: number): number {
   if (!Number.isFinite(percent)) return 0;
   return Math.min(1, Math.max(0, percent / 100));
 }
+
+/** What a readout shows where the data has no answer. An em dash, never a zero. */
+export const NO_VALUE = "—";
+
+/**
+ * A gap in seconds, signed, as a timing tower writes it.
+ *
+ * `+` is behind and `-` is ahead, which is the broadcast convention and the one the
+ * DRS one-second rule is quoted in. Three decimals because that is the resolution the
+ * projection actually has (`gaps.ts` resolves `t*` within a grid step, not to it) and
+ * because a tenth would hide the 0.14 s a following car takes under braking.
+ *
+ * `null` is a real state — the focused car never passed that point inside the window,
+ * or the car is off its path entirely — and it renders as `NO_VALUE` rather than as a
+ * zero that would read as "alongside".
+ */
+export function formatGapSeconds(seconds: number | null): string {
+  if (seconds === null || !Number.isFinite(seconds)) return NO_VALUE;
+  return `${seconds >= 0 ? "+" : "-"}${Math.abs(seconds).toFixed(3)}`;
+}
+
+/**
+ * The same gap as ground, in whole metres.
+ *
+ * UNSIGNED: it always carries the same sign as the seconds beside it, and printing it
+ * twice adds a character to every row of a twenty-car tower to say nothing new.
+ */
+export function formatGapMetres(metres: number | null): string {
+  if (metres === null || !Number.isFinite(metres)) return NO_VALUE;
+  return `${Math.round(Math.abs(metres))} m`;
+}

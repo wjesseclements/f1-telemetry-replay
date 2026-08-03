@@ -18,6 +18,7 @@ import {
   type Point,
 } from "../engine/geometry";
 import { sampleAt } from "../engine/interpolate";
+import { parseReplay } from "../engine/load";
 import { loadFixtureReplay } from "../data/fixture";
 import { useTransport } from "../store/transport";
 import {
@@ -28,7 +29,7 @@ import {
   type RafDriver,
   type RecordingContext,
 } from "../test/canvas";
-import { TRAIL_WIDTH } from "./trail";
+import { TAIL_BANDS, TAIL_WIDTH, TRAIL_WIDTH } from "./trail";
 import { CORNER_BADGE_RADIUS, TRACK_EDGE_WIDTH, buildScene } from "./scene";
 import { PAD_PX, TrackCanvas } from "./TrackCanvas";
 
@@ -141,6 +142,9 @@ beforeEach(() => {
     isPlaying: true,
     speedMult: 1,
     seekTarget: null,
+    // Reset explicitly: `setState` merges, so a focus left behind by an earlier test
+    // would otherwise decide which car this one draws a trail for.
+    focusedCarIndex: 0,
   });
 });
 
@@ -342,12 +346,15 @@ describe("TrackCanvas", () => {
       for (let i = 0; i < 60; i++) raf.tick();
     });
     // Transport changes are read by the loop, not subscribed to, so they must not
-    // re-render the canvas either.
+    // re-render the canvas either. Focus is in the same store for exactly this
+    // reason, so it belongs in the same assertion: following a different car is a
+    // change to what the loop DRAWS, never a change to what React renders.
     act(() => {
       useTransport.getState().pause();
       useTransport.getState().setSpeedMult(2);
       useTransport.getState().seek(10);
       useTransport.getState().play();
+      useTransport.getState().setFocusedCarIndex(0);
     });
     act(() => {
       for (let i = 0; i < 60; i++) raf.tick();
@@ -674,5 +681,149 @@ describe("TrackCanvas trail", () => {
     });
 
     expect(commits).toBe(1);
+  });
+});
+
+/**
+ * Focus is a per-car PROPERTY, and these are the tests that say so.
+ *
+ * The trap this slice had to avoid is a count branch — "if there is more than one car,
+ * do something different" — which would make a one-car replay a special case forever.
+ * So the assertions come in pairs: what a two-car replay draws, and the fact that a
+ * one-car replay draws exactly what it drew before focus existed.
+ */
+describe("TrackCanvas focus", () => {
+  const OTHER_COLOR = "#ff8000";
+
+  /**
+   * The fixture's lap, driven by two cars a third of a lap apart.
+   *
+   * Built by rotating the sample array rather than by inventing a second path: the
+   * schema requires every car to span `meta.duration` on the same uniform grid, and
+   * a rotation keeps both true while putting the cars in genuinely different places.
+   */
+  const twoCars = ((): typeof replay => {
+    const n = car.samples.length;
+    const shift = Math.floor(n / 3);
+    return parseReplay(
+      {
+        ...replay,
+        cars: [
+          replay.cars[0],
+          {
+            ...replay.cars[0],
+            driver: "SEC",
+            color: OTHER_COLOR,
+            samples: car.samples.map((s, k) => ({
+              ...car.samples[(k + shift) % n],
+              t: s.t,
+            })),
+          },
+        ],
+      },
+      "two-cars",
+    );
+  })();
+
+  const strokesOfWidth = (frame: DrawCall[], width: number): DrawCall[] =>
+    frame.filter((c) => c.method === "stroke" && c.lineWidth === width);
+
+  const renderTwoCars = () => {
+    useTransport.setState({ replay: twoCars });
+    render(<TrackCanvas replay={twoCars} />);
+    // The first tick has no previous timestamp and so measures no elapsed time, and
+    // `MAX_FRAME_DT_S` clamps any single frame to 100 ms — so reaching 0.5 s takes
+    // five real frames, not one long one. Five covered segments at 10 Hz.
+    act(() => {
+      raf.tick();
+      for (let i = 0; i < 5; i++) raf.tick(100);
+    });
+  };
+
+  it("gives the full thermal trail to the focused car and a tail to the other", () => {
+    renderTwoCars();
+    const frame = lastFrame(recording);
+
+    // One car's worth of bucket strokes — not two.
+    expect(
+      strokesOfWidth(frame, TRAIL_WIDTH).filter((c) => c.path),
+    ).toHaveLength(SPEED_BUCKETS);
+    // And the tail is drawn in the OTHER car's colour, which is what identifies
+    // whose it is.
+    const tails = strokesOfWidth(frame, TAIL_WIDTH);
+    expect(tails.length).toBeGreaterThan(0);
+    for (const t of tails) expect(t.strokeStyle).toBe(OTHER_COLOR);
+  });
+
+  it("moves the trail to the other car when the focus changes", () => {
+    renderTwoCars();
+    act(() => {
+      useTransport.getState().setFocusedCarIndex(1);
+    });
+    act(() => raf.tick());
+
+    const frame = lastFrame(recording);
+    expect(
+      strokesOfWidth(frame, TRAIL_WIDTH).filter((c) => c.path),
+    ).toHaveLength(SPEED_BUCKETS);
+    // Now it is the FIRST car wearing the tail.
+    for (const t of strokesOfWidth(frame, TAIL_WIDTH)) {
+      expect(t.strokeStyle.toLowerCase()).toBe(car.color.toLowerCase());
+    }
+  });
+
+  it("refills the newly-focused car's trail to the covered portion, in one frame", () => {
+    // The painter it inherits has never been synced, so the switch costs one O(n)
+    // refill — the same one-off a lap wrap already pays, and it must land complete
+    // rather than growing a segment per frame afterwards.
+    renderTwoCars();
+    act(() => {
+      useTransport.getState().setFocusedCarIndex(1);
+    });
+    act(() => raf.tick());
+    const after = strokesOfWidth(lastFrame(recording), TRAIL_WIDTH)
+      .filter((c) => c.path)
+      .flatMap((c) => c.path!.segments());
+
+    act(() => raf.tick());
+    const later = strokesOfWidth(lastFrame(recording), TRAIL_WIDTH)
+      .filter((c) => c.path)
+      .flatMap((c) => c.path!.segments());
+
+    // 0.5 s at 10 Hz is five covered segments; the next frame crosses no sample.
+    expect(after.length).toBe(5);
+    expect(later.length).toBe(5);
+  });
+
+  it("draws NO tail at all for a one-car replay", () => {
+    // Constraint of the slice: the v1 laps on disk must render as they always did.
+    render(<TrackCanvas replay={replay} />);
+    act(() => raf.tick(500));
+    expect(strokesOfWidth(lastFrame(recording), TAIL_WIDTH)).toHaveLength(0);
+  });
+
+  it("keeps the tail bounded while the trail grows with the lap", () => {
+    renderTwoCars();
+    const measure = () => {
+      const frame = lastFrame(recording);
+      return {
+        trail: strokesOfWidth(frame, TRAIL_WIDTH)
+          .filter((c) => c.path)
+          .flatMap((c) => c.path!.segments()).length,
+        tail: strokesOfWidth(frame, TAIL_WIDTH).length,
+      };
+    };
+    const early = measure();
+    // Real frames, not one huge one: `MAX_FRAME_DT_S` clamps a long gap to 100 ms, so
+    // a single 5 s tick would advance the clock by a tenth of a second.
+    act(() => {
+      for (let i = 0; i < 50; i++) raf.tick(100);
+    });
+    const late = measure();
+
+    expect(late.trail).toBeGreaterThan(early.trail);
+    // The tail's stroke count is fixed by the band count, not by how far in we are.
+    expect(late.tail).toBeLessThanOrEqual(TAIL_BANDS);
+    expect(early.tail).toBeLessThanOrEqual(TAIL_BANDS);
   });
 });

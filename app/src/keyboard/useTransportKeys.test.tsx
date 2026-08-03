@@ -10,6 +10,7 @@
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loadFixtureReplay } from "../data/fixture";
+import { parseReplay } from "../engine/load";
 import { useTransport } from "../store/transport";
 import { telemetry } from "../telemetry/channel";
 import {
@@ -259,5 +260,103 @@ describe("lifecycle", () => {
     render(<NoReplay />);
     fireEvent.keyDown(window, { key: " ", code: "Space" });
     expect(useTransport.getState().isPlaying).toBe(true);
+  });
+});
+
+/**
+ * Focus cycling — the vertical axis.
+ *
+ * The bindings split by axis: horizontal keys move through TIME, vertical keys move
+ * through the FIELD. Up and Down were unbound before this slice, so these tests also
+ * carry the negative half — that adding them took nothing away from the transport.
+ */
+describe("focus cycling", () => {
+  /** The fixture's lap driven by three cars, so cycling has somewhere to go. */
+  const threeCars = (() => {
+    const car = replay.cars[0];
+    const n = car.samples.length;
+    const clone = (driver: string, shift: number) => ({
+      ...car,
+      driver,
+      samples: car.samples.map((s, k) => ({
+        ...car.samples[(k + shift) % n],
+        t: s.t,
+      })),
+    });
+    return parseReplay(
+      {
+        ...replay,
+        cars: [car, clone("TWO", 100), clone("TRE", 200)],
+      },
+      "three-cars",
+    );
+  })();
+
+  function ThreeCarHarness() {
+    useTransportKeys(threeCars);
+    return <input type="range" aria-label="slider" />;
+  }
+
+  const focused = () => useTransport.getState().focusedCarIndex;
+
+  beforeEach(() => useTransport.setState({ focusedCarIndex: 0 }));
+
+  it("steps down the field on ArrowDown and back up on ArrowUp", () => {
+    render(<ThreeCarHarness />);
+    fireEvent.keyDown(window, { key: "ArrowDown" });
+    expect(focused()).toBe(1);
+    fireEvent.keyDown(window, { key: "ArrowDown" });
+    expect(focused()).toBe(2);
+    fireEvent.keyDown(window, { key: "ArrowUp" });
+    expect(focused()).toBe(1);
+  });
+
+  it("wraps at both ends", () => {
+    render(<ThreeCarHarness />);
+    fireEvent.keyDown(window, { key: "ArrowUp" });
+    expect(focused()).toBe(2);
+    fireEvent.keyDown(window, { key: "ArrowDown" });
+    expect(focused()).toBe(0);
+  });
+
+  it("prevents default so the page does not scroll", () => {
+    render(<ThreeCarHarness />);
+    const event = new KeyboardEvent("keydown", {
+      key: "ArrowDown",
+      cancelable: true,
+      bubbles: true,
+    });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it("does not touch the transport — following is not a playback action", () => {
+    render(<ThreeCarHarness />);
+    publishClock(10);
+    fireEvent.keyDown(window, { key: "ArrowDown" });
+    expect(useTransport.getState().isPlaying).toBe(true);
+    expect(seekTarget()).toBeNull();
+  });
+
+  it("stands down when the scrubber has focus — a range steps itself on Up/Down", () => {
+    // Otherwise one press would both move the scrubber and change the followed car.
+    const { getByLabelText } = render(<ThreeCarHarness />);
+    fireEvent.keyDown(getByLabelText("slider"), { key: "ArrowDown" });
+    expect(focused()).toBe(0);
+  });
+
+  it("is a no-op on a one-car replay, with nothing branching on the count", () => {
+    render(<Harness />);
+    fireEvent.keyDown(window, { key: "ArrowDown" });
+    fireEvent.keyDown(window, { key: "ArrowUp" });
+    expect(focused()).toBe(0);
+  });
+
+  it("leaves the horizontal seeks exactly as they were", () => {
+    render(<ThreeCarHarness />);
+    publishClock(10);
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+    expect(seekTarget()).toBeCloseTo(10 + SMALL_STEP_S, 6);
+    expect(focused()).toBe(0);
   });
 });

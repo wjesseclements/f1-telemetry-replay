@@ -15,6 +15,8 @@ export interface DrawCall {
   strokeStyle: string;
   fillStyle: string;
   lineWidth: number;
+  /** Recorded because the unfocused cars' tails fade by varying it. */
+  globalAlpha: number;
   /** For `stroke(path)` / `fill(path)`: the path that was painted. */
   path?: RecordingPath2D;
   /** For `fillText`: the string drawn. `args` holds its `[x, y]`. */
@@ -91,7 +93,12 @@ export interface RecordingContext {
  * handful of style-less `stroke` calls with nothing in them.
  */
 function createContext(calls: DrawCall[]): CanvasRenderingContext2D {
-  const state = { strokeStyle: "", fillStyle: "", lineWidth: 0 };
+  const state = {
+    strokeStyle: "",
+    fillStyle: "",
+    lineWidth: 0,
+    globalAlpha: 1,
+  };
 
   const record =
     (method: string) =>
@@ -121,6 +128,12 @@ function createContext(calls: DrawCall[]): CanvasRenderingContext2D {
     },
     set lineWidth(v: number) {
       state.lineWidth = v;
+    },
+    get globalAlpha() {
+      return state.globalAlpha;
+    },
+    set globalAlpha(v: number) {
+      state.globalAlpha = v;
     },
     lineJoin: "round",
     lineCap: "round",

@@ -29,6 +29,7 @@ import {
 import type { Replay } from "../engine/schema";
 import type { ChromeColors } from "./palette";
 import type { ScenePaths } from "./paths";
+import { TAIL_SECONDS } from "./trail";
 
 /** A corner marker in rotated world space, with the way its label should lean. */
 export interface SceneCorner {
@@ -57,6 +58,14 @@ export interface Scene {
   rotationDeg: number;
   /** Car colours, in `replay.cars` order — parallel to the snapshot array. */
   carColors: readonly string[];
+  /**
+   * How many segments an unfocused car's tail spans.
+   *
+   * Derived from `TAIL_SECONDS` and the grid rate here, once, so the tail is a
+   * DURATION rather than a sample count: a 10 Hz replay and a 20 Hz one show the same
+   * length of wake.
+   */
+  tailSegments: number;
   corners: readonly SceneCorner[];
   startFinish: { at: Point; angle: number; dir: Point };
 }
@@ -76,6 +85,10 @@ const TRACK_FILL_WIDTH = 9;
 const CAR_GLOW_RADIUS = 6.5;
 const CAR_CORE_RADIUS = 3;
 const CAR_HEADING_LENGTH = 12;
+const UNFOCUSED_RADIUS = 4.5;
+const UNFOCUSED_CORE_RADIUS = 2;
+const UNFOCUSED_HEADING_LENGTH = 8;
+const UNFOCUSED_ALPHA = 0.75;
 /** Exported so a test can pick a badge out of a recording by its radius. */
 export const CORNER_BADGE_RADIUS = 9;
 const MARK_WIDTH = 2.5;
@@ -112,6 +125,10 @@ export function buildScene(replay: Replay): Scene {
     bounds: computeBounds(carPaths.flat()),
     rotationDeg: rotation,
     carColors: replay.cars.map((car) => car.color),
+    tailSegments: Math.max(
+      1,
+      Math.round(TAIL_SECONDS * replay.meta.sampleRateHz),
+    ),
     corners: replay.track.corners.map((corner) => {
       const at = rotatePoint({ x: corner.x, y: corner.y }, rotation);
       return {
@@ -151,6 +168,14 @@ function startFinishOf(
  * Allocates nothing per car except the two small points the transform returns. The
  * ribbon and the trail are retained `Path2D`s built at measure time, so lap length
  * costs nothing here.
+ *
+ * @param focusedIndex which car wears the full thermal trail and the bright marker.
+ *        Every other car gets a short team-coloured tail instead. This is a per-car
+ *        PROPERTY test inside the existing loop — nothing here branches on how many
+ *        cars there are, and a one-car replay takes the focused path exactly as it
+ *        did before focus existed. An index outside `cars` simply focuses nobody,
+ *        which degrades to all-tails rather than to a crash; the store's `setReplay`
+ *        is what keeps it in range.
  */
 export function drawFrame(
   ctx: CanvasRenderingContext2D,
@@ -159,6 +184,7 @@ export function drawFrame(
   view: Viewport,
   snapshots: readonly CarSnapshot[],
   colors: ChromeColors,
+  focusedIndex: number,
 ): void {
   // Draw in CSS pixels; the backing store is `dpr` times larger.
   ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
@@ -185,32 +211,34 @@ export function drawFrame(
     at[i * 2] = p.x;
     at[i * 2 + 1] = p.y;
 
-    const trail = paths.trails[i];
-    trail.syncTo(snapshot.index);
-    trail.stroke(ctx);
-    // The trail's last whole segment ends at sample `index`; the car is up to one
-    // grid step past it. This closes that gap — and it belongs in THIS pass, with
-    // the rest of the trail: drawn later it would paint over the corner badges that
-    // every other trail segment passes under, and with twenty cars each car's head
-    // would paint over its neighbours' chrome.
-    trail.strokeHead(ctx, snapshot.index, p.x, p.y);
+    if (i === focusedIndex) {
+      const trail = paths.trails[i];
+      trail.syncTo(snapshot.index);
+      trail.stroke(ctx);
+      // The trail's last whole segment ends at sample `index`; the car is up to one
+      // grid step past it. This closes that gap — and it belongs in THIS pass, with
+      // the rest of the trail: drawn later it would paint over the corner badges that
+      // every other trail segment passes under, and with twenty cars each car's head
+      // would paint over its neighbours' chrome.
+      trail.strokeHead(ctx, snapshot.index, p.x, p.y);
+    } else {
+      // Unfocused cars are never `syncTo`'d, so an unfocused `TrailPainter` costs
+      // nothing at all — that is where the twenty-car saving is. Refocusing one
+      // rebuilds it in a single frame, the same one-off a lap wrap already pays.
+      paths.tails[i].stroke(ctx, snapshot.index, p.x, p.y, scene.carColors[i]);
+    }
   }
 
   drawStartFinish(ctx, paths, colors);
   drawCorners(ctx, paths, colors);
 
   for (let i = 0; i < snapshots.length; i++) {
-    drawCar(
-      ctx,
-      at[i * 2],
-      at[i * 2 + 1],
-      // The heading arrives in WORLD space; the points around it were rotated.
-      // Without this the marker points `rotationDeg` off the direction it is
-      // visibly travelling — see `rotateHeading`.
-      rotateHeading(snapshots[i].heading, scene.rotationDeg),
-      scene.carColors[i],
-      colors,
-    );
+    // The heading arrives in WORLD space; the points around it were rotated. Without
+    // this the marker points `rotationDeg` off the direction it is visibly travelling
+    // — see `rotateHeading`.
+    const heading = rotateHeading(snapshots[i].heading, scene.rotationDeg);
+    const draw = i === focusedIndex ? drawFocusedCar : drawUnfocusedCar;
+    draw(ctx, at[i * 2], at[i * 2 + 1], heading, scene.carColors[i], colors);
   }
 }
 
@@ -289,8 +317,14 @@ function drawCorners(
   }
 }
 
-/** One car: a glowing dot in the car's colour with a tick for its heading. */
-function drawCar(
+/**
+ * The focused car: a glowing dot in the car's colour with a tick for its heading.
+ *
+ * Unchanged from before focus existed, deliberately — no selection ring, no extra
+ * emphasis. Everything that distinguishes focus is subtracted from the OTHER cars, so
+ * a one-car replay draws exactly the calls it always drew.
+ */
+function drawFocusedCar(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
@@ -320,4 +354,44 @@ function drawCar(
     y + Math.sin(headingRad) * CAR_HEADING_LENGTH,
   );
   ctx.stroke();
+}
+
+/**
+ * Every other car: the same marker, smaller, dimmer, and without the glow.
+ *
+ * The glow is what carries the focused car across a crowded canvas, so it is the one
+ * thing an unfocused car may not have — at twenty cars, twenty glows would fill the
+ * circuit with light and the eye would have nothing to land on.
+ */
+function drawUnfocusedCar(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  headingRad: number,
+  carColor: string,
+  colors: ChromeColors,
+): void {
+  ctx.globalAlpha = UNFOCUSED_ALPHA;
+
+  ctx.fillStyle = carColor;
+  ctx.beginPath();
+  ctx.arc(x, y, UNFOCUSED_RADIUS, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = colors.bg;
+  ctx.beginPath();
+  ctx.arc(x, y, UNFOCUSED_CORE_RADIUS, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = carColor;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(
+    x + Math.cos(headingRad) * UNFOCUSED_HEADING_LENGTH,
+    y + Math.sin(headingRad) * UNFOCUSED_HEADING_LENGTH,
+  );
+  ctx.stroke();
+
+  ctx.globalAlpha = 1;
 }

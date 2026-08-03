@@ -12,6 +12,7 @@ beforeEach(() => {
     isPlaying: true,
     speedMult: 1,
     seekTarget: null,
+    focusedCarIndex: 0,
   });
 });
 
@@ -88,5 +89,32 @@ describe("useTransport", () => {
     useTransport.getState().pause();
     useTransport.getState().seek(20);
     expect(useTransport.getState().isPlaying).toBe(false);
+  });
+});
+
+describe("useTransport focus", () => {
+  it("starts on the first car", () => {
+    expect(initial.focusedCarIndex).toBe(0);
+  });
+
+  it("follows a chosen car", () => {
+    useTransport.getState().setFocusedCarIndex(2);
+    expect(useTransport.getState().focusedCarIndex).toBe(2);
+  });
+
+  it("returns to the first car when a replay is loaded", () => {
+    // Otherwise a three-car window followed by a one-car lap leaves the focus
+    // pointing past the end of `cars`, and every consumer needs its own guard.
+    useTransport.getState().setFocusedCarIndex(2);
+    useTransport.getState().setReplay(replay);
+    expect(useTransport.getState().focusedCarIndex).toBe(0);
+  });
+
+  it("does not disturb playback", () => {
+    // Changing who you are watching is not a transport action.
+    useTransport.getState().seek(12);
+    useTransport.getState().setFocusedCarIndex(1);
+    expect(useTransport.getState().isPlaying).toBe(true);
+    expect(useTransport.getState().seekTarget).toBe(12);
   });
 });

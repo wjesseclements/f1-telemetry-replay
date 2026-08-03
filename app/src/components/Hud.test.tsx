@@ -6,12 +6,14 @@
  * only the rendered state would leave the branch that matters for 2026+ replays
  * completely uncovered.
  */
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import sampleLap from "../engine/__fixtures__/sample-lap.json";
 import { parseReplay } from "../engine/load";
 import type { CarSnapshot } from "../engine/interpolate";
 import type { Replay } from "../engine/schema";
+import { NO_VALUE } from "../engine/format";
+import { useTransport } from "../store/transport";
 import { displaySignature, telemetry } from "../telemetry/channel";
 import { Hud } from "./Hud";
 
@@ -247,5 +249,194 @@ describe("HUD / signature coupling", () => {
       "speed",
       "throttle",
     ]);
+  });
+});
+
+/**
+ * The tower — running order, gaps, and selection.
+ *
+ * The fixture's own samples are the query points, so the expected gaps are exact: a
+ * car sitting where the focused car was at t=2 is 2 s behind at t=4, by construction
+ * rather than by tolerance.
+ */
+const laps = replay.cars[0].samples;
+
+/** The fixture's lap driven by two cars, so gaps have someone to be measured against. */
+const twoCarReplay: Replay = (() => {
+  const raw = JSON.parse(JSON.stringify(sampleLap));
+  const n = raw.cars[0].samples.length;
+  const shift = Math.floor(n / 3);
+  raw.cars.push({
+    ...raw.cars[0],
+    driver: "SEC",
+    team: "Second Team",
+    color: "#ff8000",
+    // Rotated, not invented: every car must span `meta.duration` on the same grid.
+    samples: raw.cars[0].samples.map((s: { t: number }, k: number) => ({
+      ...raw.cars[0].samples[(k + shift) % n],
+      t: s.t,
+    })),
+  });
+  return parseReplay(raw, "two-cars.json");
+})();
+
+/** A snapshot sitting exactly where the focused car was at sample `k`. */
+const atSample = (k: number, over: Partial<CarSnapshot> = {}): CarSnapshot =>
+  snapshot({ x: laps[k].x, y: laps[k].y, ...over });
+
+/** Publish two cars at `clock` and render the tower. */
+function renderTower(clock: number, second: CarSnapshot) {
+  telemetry.publish(1000, clock, [snapshot(), second]);
+  return render(<Hud replay={twoCarReplay} />);
+}
+
+describe("Hud timing tower", () => {
+  beforeEach(() => useTransport.setState({ focusedCarIndex: 0 }));
+
+  it("shows a row per car, with the team name beside the driver", () => {
+    renderTower(4, atSample(20));
+    expect(screen.getByRole("button", { name: /VER/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Second Team/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("gives the focused car the full readout and the others a gap", () => {
+    renderTower(4, atSample(20));
+    // One speed readout, not two: the tower is compact for everyone else.
+    expect(screen.getAllByRole("meter", { name: "Throttle" })).toHaveLength(1);
+    expect(screen.getByText("+2.000")).toBeInTheDocument();
+  });
+
+  it("reads a car behind as + and a car ahead as -", () => {
+    // Sitting where the focused car WILL be at t=6, at t=4: two seconds up the road.
+    renderTower(4, atSample(60));
+    expect(screen.getByText("-2.000")).toBeInTheDocument();
+  });
+
+  it("shows the ground between them as well as the time", () => {
+    const { container } = renderTower(4, atSample(20));
+    expect(container.textContent).toMatch(/\d+ m/);
+  });
+
+  it("renders an em dash, not a zero, when the gap has no answer", () => {
+    // Nowhere near the focused car's path — a pit lane, a spin, or the window's edge.
+    renderTower(4, snapshot({ x: 1e6, y: 1e6 }));
+    // Both columns go blank together: there is one answer, and it is "no answer".
+    expect(screen.getAllByText(NO_VALUE)).toHaveLength(2);
+  });
+
+  it("puts the car ahead above the car behind", () => {
+    renderTower(4, atSample(60));
+    const rows = screen.getAllByRole("button").map((b) => b.textContent ?? "");
+    expect(rows[0]).toMatch(/SEC/);
+    expect(rows[1]).toMatch(/VER/);
+  });
+
+  it("marks exactly one row as pressed, and moves it on a click", () => {
+    renderTower(4, atSample(20));
+    expect(screen.getByRole("button", { name: /VER/ })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /SEC/ }));
+
+    expect(useTransport.getState().focusedCarIndex).toBe(1);
+    expect(screen.getByRole("button", { name: /SEC/ })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: /VER/ })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+  });
+
+  it("moves the speed trace to the newly focused car", () => {
+    renderTower(4, atSample(20));
+    fireEvent.click(screen.getByRole("button", { name: /SEC/ }));
+    expect(
+      screen.getByRole("img", { name: /Speed trace for SEC/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the running order when the focus changes", () => {
+    // Gaps all shift by the same constant when the reference car changes, so track
+    // order is focus-independent. Rows move at overtakes and at nothing else.
+    renderTower(4, atSample(60));
+    const before = screen
+      .getAllByRole("button")
+      .map((b) => b.textContent ?? "");
+    fireEvent.click(screen.getByRole("button", { name: /SEC/ }));
+    const after = screen.getAllByRole("button").map((b) => b.textContent ?? "");
+    expect(after.map((t) => t.slice(0, 3))).toEqual(
+      before.map((t) => t.slice(0, 3)),
+    );
+  });
+});
+
+/**
+ * The signature trap, on the car whose gap is actually rendered.
+ *
+ * The single-car suite above cannot see this: a lone car is focused, and a focused
+ * row shows no gap, so no perturbation of its POSITION can change what is drawn. The
+ * coupling that matters for the tower is the unfocused car's — its row is a function
+ * of where it is, and if `x`/`y` were missing from the signature the channel could
+ * suppress the emit that moves it.
+ */
+describe("HUD / signature coupling — the tower", () => {
+  beforeEach(() => useTransport.setState({ focusedCarIndex: 0 }));
+
+  const focusedCar = snapshot();
+  const base = atSample(20);
+
+  const PERTURBATIONS: { [K in keyof CarSnapshot]-?: CarSnapshot[K] } = {
+    index: 7,
+    t: 9.5,
+    x: laps[60].x,
+    y: laps[60].y,
+    heading: 1.5,
+    speed: 301,
+    throttle: 91,
+    brake: 1,
+    gear: 2,
+    drs: 12,
+  };
+
+  function renderedTower(second: CarSnapshot): string {
+    telemetry.reset();
+    telemetry.publish(1000, 4, [focusedCar, second]);
+    const view = render(<Hud replay={twoCarReplay} />);
+    const html = screen.getByLabelText("Telemetry").innerHTML;
+    view.unmount();
+    return html;
+  }
+
+  it.each(Object.keys(PERTURBATIONS) as (keyof CarSnapshot)[])(
+    "keeps the signature coupled to the tower: %s",
+    (field) => {
+      const changed = { ...base, [field]: PERTURBATIONS[field] } as CarSnapshot;
+      if (renderedTower(base) === renderedTower(changed)) return;
+
+      expect(
+        displaySignature(4, [focusedCar, changed]),
+        `\`${field}\` changes the tower but NOT the display signature, so the ` +
+          `channel will suppress the emit that would update it.`,
+      ).not.toBe(displaySignature(4, [focusedCar, base]));
+    },
+  );
+
+  it("actually exercises the invariant — position DOES move the tower", () => {
+    const changing = (
+      Object.keys(PERTURBATIONS) as (keyof CarSnapshot)[]
+    ).filter(
+      (f) =>
+        renderedTower(base) !==
+        renderedTower({ ...base, [f]: PERTURBATIONS[f] } as CarSnapshot),
+    );
+    // Only position: an unfocused row shows a gap and nothing else, so speed, gear
+    // and the pedals are invisible until that car is focused.
+    expect(changing.sort()).toEqual(["x", "y"]);
   });
 });
