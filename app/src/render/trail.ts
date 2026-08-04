@@ -295,12 +295,20 @@ export class TailPainter {
 
 /**
  * How much of the recent past the FOCUSED car's comet shows in an open window, in
- * seconds.
+ * seconds — measured in REPLAY time, so it covers the same ground at any playback rate.
  *
- * **This is the eyeball knob.** Slice 9b's spec put the useful range at 6–10 s; 8 is
- * the middle of it. Edit it with `npm run dev` running and HMR applies it live.
+ * **Tuned by eye against a real file, and the spec was wrong about the range.** Slice
+ * 9b reasoned its way to 6–10 s from the data; the answer is **2**. The gap is not a
+ * mistake in the arithmetic, it is what the arithmetic was measuring: the spec reasoned
+ * in DATA time, and what a viewer judges is PERCEIVED length, which runs about 4×
+ * longer at the speeds a long window is actually watched at. At 2 s the comet reads as
+ * recent history attached to the car — roughly one braking zone — and the circuit stays
+ * legible nine minutes in. At 8 s it was already creeping back toward the wall of
+ * colour this slice exists to remove.
+ *
+ * Edit it with `npm run dev` running; HMR applies it live.
  */
-export const COMET_SECONDS = 8;
+export const COMET_SECONDS = 2;
 /** Stroke width of the comet — the focused car's wake, so as wide as a trail. */
 export const COMET_WIDTH = TRAIL_WIDTH;
 /**

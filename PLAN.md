@@ -943,9 +943,15 @@ dots on a wall of colour.
   - **The fallback stays one edit.** `COMET_BANDS = 1` yields a single fully-opaque band
     — the ≤9-stroke hard-end version — with nothing else to change, because the alpha
     formula is written in terms of the band count rather than hard-coded per band.
-- **Amendment (this slice) — `COMET_SECONDS = 8`,** the middle of the spec's 6–10 band,
-  and it is a named constant in `trail.ts` precisely so it can be tuned against a real
-  file with HMR running rather than argued about.
+- **Amendment (this slice) — `COMET_SECONDS = 2`, and the spec's 6–10 s band was
+  WRONG.** Tuned by eye against the endgame file, which is what the constant exists for.
+  The gap between 6–10 and 2 is not an arithmetic error, it is what the arithmetic was
+  measuring: **the spec reasoned in DATA time, and what a viewer judges is PERCEIVED
+  length, which runs about 4× longer at the speeds a long window is actually watched
+  at.** At 2 s the comet reads as recent history attached to the car — roughly one
+  braking zone — and the circuit stays legible nine minutes in; at 8 s it was already
+  creeping back toward the wall of colour this slice exists to remove. Recorded because
+  the next constant reasoned from data-time will be wrong the same way.
 - **Amendment (this slice) — the mode is resolved at BUILD time, not per frame.**
   `ScenePaths.trails` became `ScenePaths.focus: readonly FocusPainter[]` — the painter a
   car gets when focused, chosen once in `buildScenePaths` from `scene.loop`. Two things
@@ -986,11 +992,18 @@ dots on a wall of colour.
     seek from 20 s to 1 s): there is no retained path to rebuild, which is the free win
     the spec predicted.
   - **Eyeball on `monza_endgame.json`** (Monza R, PIA/LEC/NOR, 9:39.200 window, focus
-    LEC, at 4×): the ribbon, the S/F line, all eleven corner badges and every car are
-    legible for the whole window, including 9 minutes in. The comet reads as speed —
-    cyan through Ascari warming to red down the back straight in one frame — and fades
-    behind the car without dimming the head.
-    `docs/screenshots/slice-9b-comet-{endgame-4x,fade-and-ramp}`.
+    LEC): the ribbon, the S/F line, all eleven corner badges and every car are legible
+    for the whole window, including 9 minutes in, and at 4×. The comet reads as speed
+    and fades behind the car without dimming the head. **Human eyeball: PASS.**
+  - **Before/after are a matched pair** — same file, same clock (5:01.99), same focus,
+    same gaps (PIA +8.689 / 608 m, NOR +12.630 / 946 m), same speed (251 km/h, 6th).
+    The only difference is the trail. The "before" was produced by temporarily forcing
+    the closed-mode painter, so it is this build's own defect rather than a screenshot
+    from a different commit: `docs/screenshots/slice-9b-before-full-lap-trail.jpg` and
+    `slice-9b-after-comet-2s.jpg`, with `slice-9b-comet-fade-and-ramp.png` zoomed on the
+    shipped 2 s comet.
+  - **Closed mode spot-checked by the human on `monza_ver.json`: indistinguishable**,
+    agreeing with the byte-identical capture diff.
 
 ## Maintenance (not phase-bound — schedule after the slices above)
 
