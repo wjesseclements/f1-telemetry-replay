@@ -26,10 +26,10 @@ import {
   type FitTransform,
   type Point,
 } from "../engine/geometry";
-import type { Replay } from "../engine/schema";
+import type { LoopMode, Replay } from "../engine/schema";
 import type { ChromeColors } from "./palette";
 import type { ScenePaths } from "./paths";
-import { TAIL_SECONDS } from "./trail";
+import { COMET_SECONDS, TAIL_SECONDS } from "./trail";
 
 /** A corner marker in rotated world space, with the way its label should lean. */
 export interface SceneCorner {
@@ -66,6 +66,16 @@ export interface Scene {
    * length of wake.
    */
   tailSegments: number;
+  /** The same, for the focused car's comet in an open window (`COMET_SECONDS`). */
+  cometSegments: number;
+  /**
+   * Whether this replay is a lap or a session-time window.
+   *
+   * Carried into the scene because it decides which painter the focused car gets —
+   * a covered-portion trail or a bounded comet (Slice 9b). A fact about the DATA, the
+   * same one `sampleCarAt` branches on (Slice 8), never a fact about car count.
+   */
+  loop: LoopMode;
   corners: readonly SceneCorner[];
   startFinish: { at: Point; angle: number; dir: Point };
 }
@@ -129,6 +139,11 @@ export function buildScene(replay: Replay): Scene {
       1,
       Math.round(TAIL_SECONDS * replay.meta.sampleRateHz),
     ),
+    cometSegments: Math.max(
+      1,
+      Math.round(COMET_SECONDS * replay.meta.sampleRateHz),
+    ),
+    loop: replay.meta.loop,
     corners: replay.track.corners.map((corner) => {
       const at = rotatePoint({ x: corner.x, y: corner.y }, rotation);
       return {
@@ -212,15 +227,14 @@ export function drawFrame(
     at[i * 2 + 1] = p.y;
 
     if (i === focusedIndex) {
-      const trail = paths.trails[i];
-      trail.syncTo(snapshot.index);
-      trail.stroke(ctx);
-      // The trail's last whole segment ends at sample `index`; the car is up to one
-      // grid step past it. This closes that gap — and it belongs in THIS pass, with
-      // the rest of the trail: drawn later it would paint over the corner badges that
-      // every other trail segment passes under, and with twenty cars each car's head
-      // would paint over its neighbours' chrome.
-      trail.strokeHead(ctx, snapshot.index, p.x, p.y);
+      // Which painter this is was decided by `meta.loop` at build time (`paths.ts`),
+      // so there is no mode branch here — a closed lap's covered-portion trail and an
+      // open window's bounded comet are the same call from where this stands. Both
+      // paint under the chrome, with the segment that closes the gap to the car
+      // included: drawn later it would paint over the corner badges that every other
+      // segment passes under, and at twenty cars each car's head would paint over its
+      // neighbours'.
+      paths.focus[i].paint(ctx, snapshot.index, p.x, p.y);
     } else {
       // Unfocused cars are never `syncTo`'d, so an unfocused `TrailPainter` costs
       // nothing at all — that is where the twenty-car saving is. Refocusing one

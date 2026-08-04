@@ -844,7 +844,7 @@ small and known; and it should land **before any real-data lap becomes someone's
   **O(cars) with a small constant, independent of window length** — and gaps cost the
   frame path nothing at all, being computed in the HUD at ≤30 Hz. Filed as Slice 12.
 
-### [ ] Slice 9b — Trail semantics follow `meta.loop`
+### [x] Slice 9b — Trail semantics follow `meta.loop`
 
 **Found in the human's gestalt pass on production (2026-08-03), on a multi-lap endgame
 file.** In an OPEN window the focused car's trail paints the entire circuit after one
@@ -860,9 +860,18 @@ dots on a wall of colour.
   unbounded quantity being drawn, and 7 laps is simply further along than the 3-lap file
   Slice 9 was built and screenshotted on, where the same defect was present at 1.5 laps
   and went unrecognised.
-- **The tower is unaffected and was correct throughout** — PIA +7.269 / 517 m, NOR
-  +18.492 / 796 m, both resolved, no em dashes over a 7-lap window. This is a canvas
-  defect only, which is what makes it a micro-slice.
+- **The tower is unaffected and was correct throughout** — PIA +7.269 / 517 m, both
+  resolved, no em dashes over a 7-lap window. This is a canvas defect only, which is
+  what makes it a micro-slice.
+  - **Correction (2026-08-04):** this entry originally also recorded NOR at
+    **+18.492 / 796 m**, transcribed from the low-resolution screenshot. It was a
+    misread. Re-measured live at the same clock (7:47) with the same focus, NOR reads
+    **+10.484 / 788 m** — and the original figure was internally inconsistent with its
+    own metres column: 279 m of separation from PIA over 11.2 s implies 90 km/h on the
+    main straight, where 3.2 s implies 314 km/h. The metres were right, the seconds
+    were misread, and nothing in the code changed between the two readings (9b touches
+    only rendering; `gaps.ts` is untouched). Recorded rather than silently edited,
+    because a wrong number in the plan is worse than no number.
 - **The unfocused tails are working and are simply drowned out.** They are 1.5 s of team
   colour against a full circuit of thermal paint. That is the argument for the fix being
   the right shape: bring the focused car into the same bounded regime the other cars are
@@ -922,6 +931,79 @@ dots on a wall of colour.
   - `npm run check` green with 0 warnings; engine coverage unmoved at 100%.
 - **Out of scope:** the unfocused tail's length or colour; `TAIL_BANDS`; anything in
   `schema.ts` (`meta.loop` already exists and already means this); the pipeline.
+
+- **Amendment (this slice) — the open design question is SETTLED: the fade stays.**
+  `COMET_BANDS = 4`, ≤ `COMET_BANDS × SPEED_BUCKETS` = 36 strokes per frame for the one
+  focused car. What made it work rather than muddy is a decision inside the ramp:
+  **`COMET_ALPHA`'s newest band is exactly 1.0**, at any band count. A comet's colour is
+  a bucket multiplied by an alpha, and the spec named the ramp's legibility as the one
+  thing not to trade away — so the fade dims only what is BEHIND the car, and the head,
+  where the eye actually reads current speed, is undimmed. Verified on the endgame file:
+  the comet reads cyan through Ascari and red on the back straight in the same frame.
+  - **The fallback stays one edit.** `COMET_BANDS = 1` yields a single fully-opaque band
+    — the ≤9-stroke hard-end version — with nothing else to change, because the alpha
+    formula is written in terms of the band count rather than hard-coded per band.
+- **Amendment (this slice) — `COMET_SECONDS = 2`, and the spec's 6–10 s band was
+  WRONG.** Tuned by eye against the endgame file, which is what the constant exists for.
+  The gap between 6–10 and 2 is not an arithmetic error, it is what the arithmetic was
+  measuring: **the spec reasoned in DATA time, and what a viewer judges is PERCEIVED
+  length, which runs about 4× longer at the speeds a long window is actually watched
+  at.** At 2 s the comet reads as recent history attached to the car — roughly one
+  braking zone — and the circuit stays legible nine minutes in; at 8 s it was already
+  creeping back toward the wall of colour this slice exists to remove. Recorded because
+  the next constant reasoned from data-time will be wrong the same way.
+- **Amendment (this slice) — the mode is resolved at BUILD time, not per frame.**
+  `ScenePaths.trails` became `ScenePaths.focus: readonly FocusPainter[]` — the painter a
+  car gets when focused, chosen once in `buildScenePaths` from `scene.loop`. Two things
+  fall out that the spec asked for separately:
+  - the painter a mode cannot reach is **never built** (a closed lap has no comet, an
+    open window has no retained trail), and
+  - `drawFrame`'s per-car loop has **no mode branch at all** — it calls
+    `paths.focus[i].paint(...)`. `FocusPainter` is a one-method interface both painters
+    satisfy; `TrailPainter.paint` wraps its existing `syncTo` → `stroke` → `strokeHead`
+    in that order, which is what let the closed-mode sequence stay byte-identical
+    through a refactor that moved the call site.
+- **Amendment (this slice) — a test that was passing vacuously, found by mutation and
+  left honest rather than deleted.** `CometPainter` restores `globalAlpha` to 1 after
+  painting, and a mutation removing that line **passed the entire suite** — because
+  `COMET_ALPHA`'s newest band is already 1.0, so the context is opaque when the loop
+  ends. The line stays (the head being opaque is a property of the ramp FORMULA, not of
+  the method: change the formula to end at 0.9 and the corner badges render
+  translucent), and both the code and the test now say plainly that the assertion guards
+  the seam rather than the line. `TailPainter`'s identical line IS load-bearing — its
+  brightest band is 0.8.
+- **Verified (2026-08-04):**
+  - **Closed mode is byte-identical, measured not asserted.** The draw sequence was
+    captured from UNMODIFIED code before any file was touched — 701 frames including a
+    lap wrap, **79,213 calls**, 19 `Path2D` builds — and re-captured after the change
+    through the identical harness. **md5 `2a1656781b3c361032843e751d837e5f` both times.**
+    That ordering was the point of the exercise: a diff against a real capture, not an
+    assertion written after the fact.
+  - `npm run check` green with **0 warnings** (`grep -ciE 'warn|error'` over the full
+    log = 0): **440 tests**, engine coverage still 100%.
+  - **Mutations caught:** unbounding the comet (reaching back to sample 0) fails 2
+    tests; dimming the newest band below 1.0 fails 1. The `globalAlpha` restore is the
+    one that is not caught, and that is recorded above rather than papered over.
+  - **Bounded, at the integration level:** 30 s into an open window the frame draws
+    fewer `lineTo` calls than the number of samples the clock has covered, and no more
+    than the comet's own span plus the chrome — the property whose absence caused the
+    defect.
+  - **Backwards seek allocates nothing** in open mode (`pathsBuilt` unchanged across a
+    seek from 20 s to 1 s): there is no retained path to rebuild, which is the free win
+    the spec predicted.
+  - **Eyeball on `monza_endgame.json`** (Monza R, PIA/LEC/NOR, 9:39.200 window, focus
+    LEC): the ribbon, the S/F line, all eleven corner badges and every car are legible
+    for the whole window, including 9 minutes in, and at 4×. The comet reads as speed
+    and fades behind the car without dimming the head. **Human eyeball: PASS.**
+  - **Before/after are a matched pair** — same file, same clock (5:01.99), same focus,
+    same gaps (PIA +8.689 / 608 m, NOR +12.630 / 946 m), same speed (251 km/h, 6th).
+    The only difference is the trail. The "before" was produced by temporarily forcing
+    the closed-mode painter, so it is this build's own defect rather than a screenshot
+    from a different commit: `docs/screenshots/slice-9b-before-full-lap-trail.jpg` and
+    `slice-9b-after-comet-2s.jpg`, with `slice-9b-comet-fade-and-ramp.png` zoomed on the
+    shipped 2 s comet.
+  - **Closed mode spot-checked by the human on `monza_ver.json`: indistinguishable**,
+    agreeing with the byte-identical capture diff.
 
 ## Maintenance (not phase-bound — schedule after the slices above)
 
