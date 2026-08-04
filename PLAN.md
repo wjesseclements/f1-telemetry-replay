@@ -1007,7 +1007,7 @@ dots on a wall of colour.
 
 ## Maintenance (not phase-bound — schedule after the slices above)
 
-### [ ] Slice 10 — Toolchain: Vite 8 + vitest 4 migration
+### [x] Slice 10 — Toolchain: Vite 8 + vitest 4 migration
 - `vite` 5→8, `vitest` + `@vitest/coverage-v8` 2→4. These are **interlocked** — vitest 4
   requires a Vite 6+ peer — so they move together or not at all.
 - `@vitejs/plugin-react` 4→5 (v5 supports Vite 8; v6 is optional, later).
@@ -1019,6 +1019,131 @@ dots on a wall of colour.
   majors, so no bot PR will arrive for these.
 - **Verify:** `npm run check` green; `npm audit` clean (or only dev-only residual, stated
   explicitly); a **real Vercel preview build** succeeds — not an "Ignored Build Step" skip.
+
+**The governing principle, and it is different from every feature slice: the suite is
+the JUDGE, not the patient.** 440 tests, the `perFile` coverage ratchet, the golden
+pipeline contract and Slice 9b's md5'd draw-call baseline exist in exactly the state
+that makes a toolchain swap verifiable. So `app/src/**` and `pipeline/**` do not
+change; config files are the entire migration surface. **They did not change** —
+`git diff --stat -- app/src pipeline` is empty, and no breaking change in either major
+forced a source edit.
+
+- **Amendment (this slice) — PR #9 did NOT fail on Vite config, and the spec's
+  "expect config work, not a version bump" was aimed at the wrong thing.** Read out of
+  `gh run view 30201430595 --log-failed`, `verify` failed in **13 seconds** at `npm ci`,
+  before a Vite config line was ever parsed:
+  `ERESOLVE … peer vite@"^4.2.0 || ^5.0.0 || ^6.0.0 || ^7.0.0" from
+  @vitejs/plugin-react@4.7.0 / Found: vite@8.1.5`. Vercel runs the same install in
+  `app/` and died the same way. **PR #9 was Dependabot bumping `vite` alone** — the
+  exact interlock violation this slice's first decision names. Zero Vite-8 config
+  changes proved necessary: no `build.rollupOptions`, no `esbuild` block, no
+  `manualChunks`, nothing to migrate to `rolldownOptions`.
+- **Amendment (this slice) — the interlock is FIVE packages, not four. The fifth fails
+  SILENTLY, which is why it is worth recording.** `vite-node` (`npm run validate:replay`)
+  was not in the spec's list. `vitest@4` no longer depends on it, and `vite-node@2`
+  depends on `vite@^5` as a **regular dependency, not a peer** — so it raises no
+  ERESOLVE and instead installs a **nested second copy of vite@5**, running the schema
+  validator on a different Vite from the app and keeping the vite@5 advisories alive
+  under a green build. Bumped to `vite-node@6` (deps `vite@^8`), and the check that
+  catches this class of defect is now written down: after install, `npm ls vite --all`
+  must show **exactly one** Vite, with every consumer `deduped`.
+  - Also: **`@vitejs/plugin-react` needs `^5.2.0`, not `^5`.** 5.1.4 and below cap at
+    `vite@^7`; **5.2.0 is the first v5 whose peers include `^8.0.0`**. The spec's "4→5"
+    is right but the floor is load-bearing. v6 stays deferred as the spec says (its
+    peer is `vite: ^8.0.0` exactly and it moves the transform path; 5.2.0 is the
+    minimal delta that already supports Vite 8).
+- **Amendment (this slice) — one atomic bump, because the peer graph permits no clean
+  intermediate.** Not a preference, and argued rather than assumed:
+  - **vitest first is impossible** — `vitest@4` peers `vite >= 6`.
+  - **vite 5→7 first** installs against `plugin-react@4`, but `vitest@2`'s
+    `@vitest/mocker` and `vite-node@2` both depend on `vite@^5` directly, so that
+    intermediate silently carries two Vites and its `npm audit` is unreadable.
+  - **vite alone → 8** is precisely PR #9.
+
+  So the bump is atomic and the **verification** is what gets staged: install →
+  one-Vite check → typecheck → lint → format → tests WITHOUT coverage → tests WITH
+  coverage → build → full `check`. Splitting the two test runs matters: it is what
+  keeps a coverage-gate failure from being misread as a test failure.
+- **Amendment (this slice) — the coverage gate survived a provider REWRITE, and it was
+  proved two-sided because one-sided would not have proved it.** This was the slice's
+  most dangerous failure mode, and it was a real risk rather than a ceremonial one:
+  vitest 4 removes `coverage.all`/`coverage.extensions`, and **`@vitest/coverage-v8@4`
+  drops the `test-exclude` dependency that implemented them** (visible in the lockfile
+  diff). File selection is different code.
+  - **Positive probe:** an uncovered `src/engine/__probe__.ts` → **exit 1**, naming the
+    file, the glob key and all three metrics at 0%.
+  - **Negative probe:** the same uncovered file with the threshold key pointed at
+    `src/nowhere/**` → **exit 0**. This is what proves the `"src/engine/**"` key is
+    doing the work, rather than a global threshold coincidentally covering an
+    engine-only `coverage.include`. A positive probe alone cannot tell those apart.
+  - Per-file numbers are **unmoved**: 12 engine modules, 100% lines/branches/functions
+    each.
+  - **A finding that looks like a defect and is not:** with every engine file at 100%,
+    v4's `text` reporter prints an **empty table**. It omits fully-covered files, so
+    `__probe__.ts` appeared the instant it was not 100%. An empty table now MEANS
+    everything is at 100% — worth knowing before someone reads it as lost measurement.
+  - `vite.config.ts`'s comment claimed "`coverage.all` defaults to true, so an untested
+    module IS measured". That is now false, and `coverage.include` is what does it; the
+    comment was rewritten rather than left to rot.
+- **Amendment (this slice) — `engines.node: "22.x"`, config-as-code over a dashboard
+  setting.** The ERESOLVE diagnosis clears Node of PR #9's failure entirely, so this
+  is not a fix for a measured defect. It is taken because Vite 8's
+  `^20.19.0 || >=22.12.0` is a **new constraint the repo now carries**, and Vercel's
+  Node version was an unwritten out-of-repo setting — the class of thing this project
+  converts to config-as-code on principle. It agrees with CI's existing
+  `node-version: "22"`. No `.nvmrc`: nothing reads it (setup-node is given a literal
+  `"22"`), and one pin machines honour beats two, one decorative.
+  - **Consequence, recorded so it is not mistaken for a defect:** on a machine running
+    another major, `npm install` prints one advisory `EBADENGINE` warning. It is
+    advisory only — no `.npmrc`, `engine-strict` false — and `npm run check` does not
+    run install, so the zero-warnings gate is untouched.
+- **Amendment (this slice) — the audit residual I predicted DID NOT EXIST, and the
+  spec's original claim was right.** Recorded as a correction of the working note
+  rather than deleted, because the error was a method error worth not repeating. In
+  planning I traced `eslint@9 → minimatch@3 → brace-expansion@1.1.15` and concluded
+  the advisory could only be cleared by an eslint major, having read the published
+  version list through `tail -c 200` — which cut off every 1.x entry. **`1.1.18`
+  exists and is the 1.x fix.** A truncated view is not evidence about what is not in
+  the list; this is the same discipline as grepping a full gate log instead of its
+  tail. No eslint slice was filed, because no advisory drives one.
+  - The clearing is in two parts, both lockfile-only: the bump removes `esbuild`,
+    `rollup`, `test-exclude` and their brace-expansion copies; `npm audit fix` then
+    moves the two remaining eslint-side copies (`1.1.15 → 1.1.18`,
+    `5.0.8 → 5.0.9`), changing **2 packages and nothing else**. `npm install` alone
+    does not do this — it will not upgrade an already-satisfied transitive.
+- **Verified (2026-08-04):**
+  - **Zero source diffs.** `git diff --stat -- app/src pipeline` empty. The migration
+    is `package.json`, `package-lock.json`, `vite.config.ts` (comments only) and docs.
+  - `npm run check` green with **0 warnings** (`grep -ciE 'warn|error'` over the full
+    log = 0): **440 tests**, engine coverage **100%** lines/branches/functions per file,
+    `vite v8.2.0` building 137 modules in 402 ms.
+  - `pytest` green, untouched: **149 tests**, `replay_transform.py` 100% lines+branches.
+  - `validate:replay` green on all three goldens **through `vite-node@6`**, and still
+    exit-1 with the named path (`→ at cars[0].samples[3].speed`) on a broken file.
+  - **The draw-call baseline is byte-identical across the bundler swap** — captured on
+    the UNMODIFIED vite5/vitest2 tree before any file was touched, then re-captured
+    through the same harness afterwards, as 9b did it:
+
+    | mode | before | after | calls | Path2D |
+    |---|---|---|---|---|
+    | closed | `a4e64c6d…63f8` | **`a4e64c6d…63f8`** | 79,213 | 19 |
+    | open (comet) | `67bf212b…4238` | **`67bf212b…4238`** | 107,010 | 1 |
+
+    701 frames at 100 ms over the 58.5 s fixture, so a full lap wrap is inside it.
+    Closed mode's **79,213 calls and 19 `Path2D` builds reproduce Slice 9b's recorded
+    figures exactly**, so this is the same capture 9b made under a different digest
+    recipe — 9b's harness was never committed, so its md5 literal is not comparable and
+    is not claimed. **Slice 9b's comet is under the diff too**, which 9b's own capture
+    was not. What this proves: the loop's output survived Oxc replacing esbuild in the
+    transform path. What it does not: the production Rolldown bundle — that is the
+    preview build's job.
+  - **`npm audit`: 7 → 0.** No residual, dev-only or otherwise.
+  - **Lockfile reviewed, not accepted: 423 → 370 packages.** `esbuild` (25 entries) and
+    `rollup` (27) removed outright for `rolldown` (16) + `lightningcss` (13) + oxc
+    types — the bundler swap, legible in the lockfile. `test-exclude` and its
+    minimatch/brace-expansion copies gone, confirming the coverage finding above.
+    **No production dependency moved**: react, react-dom, zod and zustand are absent
+    from the added, removed and changed lists alike.
 
 ### [ ] Slice 11 — Make the pipeline's colour fallback honest
 

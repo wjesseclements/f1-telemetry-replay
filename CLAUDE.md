@@ -78,8 +78,17 @@ from FastF1 data. PRD.md holds the detail; this file holds the law.
 
 ## Gotchas
 
-- `npm audit` criticals in vitest/vite are dev-toolchain only, unreachable as configured
-  (no `@vitest/ui`); resolved by the toolchain slice — don't panic-fix.
+- Run all npm/npx commands from `app/`. `npx` at the repo root silently fetches a
+  transient wrong-major vitest and runs it with the REPO ROOT as its root dir; the
+  output looks plausible and nothing announces it. Treat the vitest banner's version
+  and root (`RUN v4.1.10 …/app`) as part of the evidence for any test run.
+- `npm audit` is **clean** as of Slice 10 (Vite 8 + Vitest 4): the old vitest/vite
+  criticals left with `esbuild` and `rollup`. If new ones appear, check whether they
+  are dev-toolchain only and unreachable as configured before panic-fixing.
+- Vite 8's Node floor is `^20.19.0 || >=22.12.0`, declared as `engines.node: "22.x"`
+  in `app/package.json` so Vercel reads it instead of an unwritten dashboard setting.
+  On a machine running a different major, `npm install` prints one advisory
+  `EBADENGINE` warning — expected, not a defect (`engine-strict` is off).
 
 ## Workflow
 
