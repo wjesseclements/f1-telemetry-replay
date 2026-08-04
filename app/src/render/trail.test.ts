@@ -13,6 +13,9 @@ import {
   type RecordingContext,
 } from "../test/canvas";
 import {
+  COMET_BANDS,
+  COMET_WIDTH,
+  CometPainter,
   TAIL_BANDS,
   TAIL_WIDTH,
   TRAIL_WIDTH,
@@ -261,5 +264,137 @@ describe("TailPainter", () => {
     expect(tailStrokes(recording.calls).length).toBe(1);
     const drawn = points(recording.calls);
     expect(drawn[drawn.length - 1]).toEqual([3, 1]);
+  });
+});
+
+/**
+ * CometPainter tests — the BOUND, and the thermal ramp it may not distort.
+ *
+ * The comet exists because a covered-portion trail is defined relative to a lap and an
+ * open window is not one. So the two things worth pinning are that its cost does not
+ * track window length (the property whose absence caused the defect) and that the
+ * colour at the head still reads as speed (the thing the fix may not trade away).
+ */
+describe("CometPainter", () => {
+  /** Forty samples on a straight line at x = 0, 10, 20, … */
+  const LONG = Float64Array.from(
+    Array.from({ length: 80 }, (_, i) => (i % 2 === 0 ? (i / 2) * 10 : 0)),
+  );
+  /** Cycles through three buckets so batching has something to batch. */
+  const BUCKETS = Uint8Array.from({ length: 40 }, (_, k) => [1, 4, 7][k % 3]);
+
+  const comet = (length = 12) => new CometPainter(LONG, BUCKETS, length);
+
+  const cometStrokes = (calls: readonly DrawCall[]): DrawCall[] =>
+    calls.filter((c) => c.method === "stroke" && c.lineWidth === COMET_WIDTH);
+
+  const points = (calls: readonly DrawCall[]): number[][] =>
+    calls
+      .filter((c) => c.method === "moveTo" || c.method === "lineTo")
+      .map((c) => c.args);
+
+  it("never exceeds the band x bucket bound, however deep into the window", () => {
+    // The whole point: a 7-lap window must cost what a 1-lap window costs.
+    for (const index of [0, 1, 12, 25, 39]) {
+      recording.calls.length = 0;
+      comet().paint(recording.ctx, index, 999, 5);
+      expect(cometStrokes(recording.calls).length).toBeLessThanOrEqual(
+        COMET_BANDS * SPEED_BUCKETS,
+      );
+    }
+  });
+
+  it("costs the same deep into a window as it does early", () => {
+    recording.calls.length = 0;
+    comet().paint(recording.ctx, 13, 135, 0);
+    const early = cometStrokes(recording.calls).length;
+
+    recording.calls.length = 0;
+    comet().paint(recording.ctx, 39, 395, 0);
+    expect(cometStrokes(recording.calls).length).toBe(early);
+  });
+
+  it("strokes only buckets a band actually contains, not all nine", () => {
+    // The flag array is what makes the bound a worst case rather than a fixed cost:
+    // this fixture uses three of the nine buckets.
+    recording.calls.length = 0;
+    comet().paint(recording.ctx, 25, 255, 0);
+    const used = new Set(
+      cometStrokes(recording.calls).map((c) => c.strokeStyle),
+    );
+    expect(used).toEqual(
+      new Set([bucketColor(1), bucketColor(4), bucketColor(7)]),
+    );
+  });
+
+  it("reaches back exactly `length` segments and no further", () => {
+    comet(12).paint(recording.ctx, 30, 305, 3);
+    const xs = points(recording.calls).map((p) => p[0]);
+    expect(Math.min(...xs)).toBe(180); // sample 18
+    expect(xs).not.toContain(170);
+  });
+
+  it("clamps at the start of the data rather than wrapping", () => {
+    // An open window's samples do not continue across the loop point, so a comet that
+    // reached back there would draw a chord the car never travelled.
+    comet(12).paint(recording.ctx, 3, 35, 1);
+    expect(Math.min(...points(recording.calls).map((p) => p[0]))).toBe(0);
+  });
+
+  it("ends at the car itself, in the bucket of the sample it is leaving", () => {
+    recording.calls.length = 0;
+    comet().paint(recording.ctx, 20, 203.5, 4.5);
+    const drawn = points(recording.calls);
+    expect(drawn[drawn.length - 1]).toEqual([203.5, 4.5]);
+    // The head stroke carries sample 20's bucket, exactly as `strokeHead` does.
+    const strokes = cometStrokes(recording.calls);
+    expect(strokes[strokes.length - 1].strokeStyle).toBe(
+      bucketColor(BUCKETS[20]),
+    );
+  });
+
+  it("leaves the NEWEST band fully opaque, so the ramp reads true at the head", () => {
+    // The comet's colour is a bucket times an alpha, and the ramp's legibility is the
+    // one thing Slice 9b may not trade away. The fade only dims what is behind.
+    comet().paint(recording.ctx, 25, 255, 0);
+    const alphas = cometStrokes(recording.calls).map((s) => s.globalAlpha);
+    expect(Math.max(...alphas)).toBe(1);
+    expect(Math.min(...alphas)).toBeLessThan(1);
+    expect(alphas).toEqual([...alphas].sort((a, b) => a - b));
+  });
+
+  it("leaves the context opaque for whatever is drawn next", () => {
+    // Asserts the SEAM, and deliberately does not claim to test the restore line:
+    // the newest band is 1.0, so the context is already opaque when the loop ends and
+    // deleting that line passes this test. What it does catch is a ramp change that
+    // ends below 1 without a restore — which is the failure that would actually show,
+    // as translucent corner badges. See the comment at the line itself.
+    comet().paint(recording.ctx, 25, 255, 0);
+    expect(recording.ctx.globalAlpha).toBe(1);
+  });
+
+  it("allocates no Path2D at all, at any index", () => {
+    // This is what makes a backwards seek free: there is no retained path to rebuild.
+    const before = recording.pathsBuilt();
+    const c = comet();
+    for (let i = 39; i >= 0; i--) c.paint(recording.ctx, i, i * 10 + 5, 0);
+    expect(recording.pathsBuilt()).toBe(before);
+  });
+
+  it("draws the same thing whether the index was reached forwards or backwards", () => {
+    // A CometPainter has no state, so a seek cannot leave it stale — the property
+    // `TrailPainter` needs a rebuild to achieve.
+    const forwards = comet();
+    for (let i = 0; i <= 25; i++)
+      forwards.paint(recording.ctx, i, i * 10 + 5, 0);
+    recording.calls.length = 0;
+    forwards.paint(recording.ctx, 25, 255, 0);
+    const afterForwards = JSON.stringify(recording.calls);
+
+    const backwards = comet();
+    backwards.paint(recording.ctx, 39, 395, 0);
+    recording.calls.length = 0;
+    backwards.paint(recording.ctx, 25, 255, 0);
+    expect(JSON.stringify(recording.calls)).toBe(afterForwards);
   });
 });

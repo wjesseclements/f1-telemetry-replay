@@ -11,6 +11,11 @@ import { render, cleanup, act } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MAX_FRAME_DT_S } from "../engine/clock";
 import { SPEED_BUCKETS, bucketColor, bucketOf } from "../engine/color";
+
+/** Every colour the thermal ramp can produce — used to tell a comet from a tail. */
+const BUCKET_COLOR_SET = new Set(
+  Array.from({ length: SPEED_BUCKETS }, (_, b) => bucketColor(b)),
+);
 import {
   applyTransform,
   fitTransform,
@@ -825,5 +830,99 @@ describe("TrackCanvas focus", () => {
     // The tail's stroke count is fixed by the band count, not by how far in we are.
     expect(late.tail).toBeLessThanOrEqual(TAIL_BANDS);
     expect(early.tail).toBeLessThanOrEqual(TAIL_BANDS);
+  });
+});
+
+/**
+ * Open-window rendering — Slice 9b.
+ *
+ * A covered-portion trail means "this lap" only because the clock going backwards
+ * resets it, and in a CLOSED replay `meta.duration` is one lap so that fires at the
+ * line. An open window's duration is the whole window, so the same painter accumulates
+ * every lap in it. These pin the replacement: the focused car's comet, bounded.
+ */
+describe("TrackCanvas in an open window", () => {
+  /** The fixture's geometry, relabelled as a session-time window. */
+  const openReplay = parseReplay(
+    { ...replay, meta: { ...replay.meta, loop: "open" } },
+    "open-window",
+  );
+
+  const retainedTrailStrokes = (frame: DrawCall[]): DrawCall[] =>
+    frame.filter(
+      (c) => c.method === "stroke" && c.lineWidth === TRAIL_WIDTH && c.path,
+    );
+
+  const renderOpen = (ticks: number) => {
+    useTransport.setState({ replay: openReplay });
+    render(<TrackCanvas replay={openReplay} />);
+    act(() => {
+      raf.tick();
+      for (let i = 0; i < ticks; i++) raf.tick(100);
+    });
+  };
+
+  it("builds NO retained trail at all — the positive form of the guard", () => {
+    renderOpen(200); // 20 s in, far past a comet's length
+    expect(retainedTrailStrokes(lastFrame(recording))).toHaveLength(0);
+  });
+
+  it("still paints the focused car, in thermal colours", () => {
+    renderOpen(200);
+    const frame = lastFrame(recording);
+    const comet = frame.filter(
+      (c) => c.method === "stroke" && c.lineWidth === TRAIL_WIDTH && !c.path,
+    );
+    expect(comet.length).toBeGreaterThan(0);
+    // Bucket colours, not the car's team colour — this is the trail's ramp, not a tail.
+    expect(comet.some((c) => c.strokeStyle === car.color)).toBe(false);
+    for (const stroke of comet) {
+      expect(BUCKET_COLOR_SET.has(stroke.strokeStyle)).toBe(true);
+    }
+  });
+
+  it("draws its own bounded span, not everything the clock has covered", () => {
+    // The defect was an unbounded quantity being drawn, so the property to pin is the
+    // BOUND — not constancy. The exact call count wobbles by a few either way because
+    // it depends on how many speed buckets the segments under the car happen to span,
+    // and that is bucket distribution, not growth.
+    const cometSegments = buildScene(openReplay).cometSegments;
+    const lineTos = (frame: DrawCall[]) =>
+      frame.filter((c) => c.method === "lineTo").length;
+
+    renderOpen(300); // 30 s into the window
+    const drawn = lineTos(lastFrame(recording));
+
+    // A covered-portion trail here would have crossed 300 samples and drawn every one.
+    const samplesCovered = 30 * openReplay.meta.sampleRateHz;
+    expect(drawn).toBeLessThan(samplesCovered);
+    // What it actually draws: its own span, plus the head, plus the chrome's own few
+    // lines (corner leaders, start/finish, heading ticks).
+    expect(drawn).toBeLessThanOrEqual(cometSegments + 30);
+  });
+
+  it("allocates nothing on a BACKWARDS seek — no retained path to rebuild", () => {
+    // `TrailPainter` pays `SPEED_BUCKETS` allocations here, because a Path2D cannot be
+    // un-drawn. A comet is recomputed from its bounded span every frame, so a seek is
+    // simply correct wherever it lands.
+    renderOpen(200);
+    const built = recording.pathsBuilt();
+    act(() => {
+      useTransport.getState().seek(1);
+    });
+    act(() => {
+      raf.tick();
+      raf.tick();
+    });
+    expect(recording.pathsBuilt()).toBe(built);
+  });
+
+  it("leaves the chrome opaque — the comet's fade must not leak", () => {
+    renderOpen(200);
+    const frame = lastFrame(recording);
+    const badge = frame.find(
+      (c) => c.method === "arc" && c.args[2] === CORNER_BADGE_RADIUS,
+    );
+    expect(badge?.globalAlpha).toBe(1);
   });
 });

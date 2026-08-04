@@ -17,7 +17,12 @@ import {
   type FitTransform,
   type Point,
 } from "../engine/geometry";
-import { TailPainter, TrailPainter } from "./trail";
+import {
+  CometPainter,
+  TailPainter,
+  TrailPainter,
+  type FocusPainter,
+} from "./trail";
 import type { Scene } from "./scene";
 
 /** How far off the racing line a corner number sits, in CSS pixels. */
@@ -47,10 +52,18 @@ export interface StartFinishMark {
 export interface ScenePaths {
   /** The closed track outline, retained so the frame does not rebuild it. */
   ribbon: Path2D;
-  /** One trail painter per car, in `replay.cars` order (rule 2: an array). */
-  trails: readonly TrailPainter[];
   /**
-   * One tail painter per car, over the SAME screen coordinates as `trails[i]`.
+   * The painter each car gets WHEN FOCUSED, in `replay.cars` order (rule 2: an array).
+   *
+   * Which implementation that is depends on `meta.loop` and is decided HERE, once, not
+   * per frame: a covered-portion `TrailPainter` for a closed lap, a bounded
+   * `CometPainter` for an open window (Slice 9b). Resolving it at build time is what
+   * keeps the mode out of `drawFrame`'s per-car loop entirely — and it means the
+   * painter a mode cannot reach is never built.
+   */
+  focus: readonly FocusPainter[];
+  /**
+   * One tail painter per car, over the SAME screen coordinates as `focus[i]`.
    *
    * Both painters exist for every car because which one is drawn is decided per frame
    * by which car is focused, and focus changes with a keypress. Building both costs
@@ -76,13 +89,15 @@ export interface ScenePaths {
  * Project a scene into screen space for one viewport.
  *
  * Called from `measure()` on mount and on resize. Everything it returns is either
- * retained (the ribbon path, the trail painters) or plain precomputed points; nothing
+ * retained (the ribbon path, the painters) or plain precomputed points; nothing
  * downstream recomputes a transform per frame.
  *
- * Note the trail painters are built fresh here, which resets them. That is correct
- * rather than incidental: a painter's whole state is how many segments it has
- * appended, so a new one refills to exactly the covered portion on the next frame at
- * the new scale. `TrackCanvas.test.tsx` pins that behaviour on a mid-lap resize.
+ * Note the painters are built fresh here, which resets them. That is correct rather
+ * than incidental: a `TrailPainter`'s whole state is how many segments it has appended,
+ * so a new one refills to exactly the covered portion on the next frame at the new
+ * scale. `TrackCanvas.test.tsx` pins that behaviour on a mid-lap resize. A
+ * `CometPainter` has no state at all to reset — it recomputes its whole bounded span
+ * every frame, which is why an open window survives a backwards seek for free.
  */
 export function buildScenePaths(scene: Scene, fit: FitTransform): ScenePaths {
   // Projected once per car and handed to BOTH painters: the trail and the tail draw
@@ -92,8 +107,13 @@ export function buildScenePaths(scene: Scene, fit: FitTransform): ScenePaths {
 
   return {
     ribbon: buildRibbonPath(scene.ribbon, fit),
-    trails: screens.map(
-      (screen, i) => new TrailPainter(screen, scene.carBuckets[i]),
+    // The mode decides the focused car's painter once, here. A closed lap gets no
+    // comet and an open window gets no retained trail — neither is built, so neither
+    // can be reached by a later edit that forgets which mode it is in.
+    focus: screens.map((screen, i) =>
+      scene.loop === "closed"
+        ? new TrailPainter(screen, scene.carBuckets[i])
+        : new CometPainter(screen, scene.carBuckets[i], scene.cometSegments),
     ),
     tails: screens.map((screen) => new TailPainter(screen, scene.tailSegments)),
     corners: scene.corners.map((corner) => ({
