@@ -1004,6 +1004,26 @@ dots on a wall of colour.
     shipped 2 s comet.
   - **Closed mode spot-checked by the human on `monza_ver.json`: indistinguishable**,
     agreeing with the byte-identical capture diff.
+- **Follow-up (2026-08-05) — `TAIL_SECONDS` 1.5 → 0.5, which closes this slice's own
+  focus-ratio flag.** 9b listed "the unfocused tail's length" as out of scope and left
+  the comet-vs-tail ratio open. The full-field file settled it, eyeball-tuned by the
+  human on 19 cars (Monza R laps 20-22) — the same method `COMET_SECONDS` was set by,
+  reached from the other direction:
+  - **1.5 s was sized for the three-car window it was built on.** At nineteen the
+    tails overlap into a continuous band of team colour along the racing line, and a
+    car stops being separable from its own history — the same species of defect 9b
+    fixed for the focused car, arriving via field density instead of window length.
+  - **The ratio is the point.** Focus is marked *entirely by subtraction* from the
+    other cars (Slice 9: the focused marker gains no selection ring), so trail length
+    is the only thing on the canvas that says which car is focused. 1.5 s against a
+    2 s comet is **1.3×** and reads as noise; 0.5 s is **4×** and reads at a glance.
+  - **Pinned as a relationship, not a value.** Both constants are eyeball-tuned, so
+    the test asserts `COMET_SECONDS / TAIL_SECONDS >= 3` and that the tail still
+    carries at least one segment per `TAIL_BANDS`, rather than freezing either
+    number. Restoring 1.5 fails it. Before this there was **no test that could
+    observe `TAIL_SECONDS` at all** — the stroke-count bound is written against
+    `TAIL_BANDS` and is value-independent, so the constant could have drifted to any
+    value in silence.
 
 ## Maintenance (not phase-bound — schedule after the slices above)
 

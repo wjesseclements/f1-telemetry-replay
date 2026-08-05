@@ -14,9 +14,11 @@ import {
 } from "../test/canvas";
 import {
   COMET_BANDS,
+  COMET_SECONDS,
   COMET_WIDTH,
   CometPainter,
   TAIL_BANDS,
+  TAIL_SECONDS,
   TAIL_WIDTH,
   TRAIL_WIDTH,
   TailPainter,
@@ -264,6 +266,30 @@ describe("TailPainter", () => {
     expect(tailStrokes(recording.calls).length).toBe(1);
     const drawn = points(recording.calls);
     expect(drawn[drawn.length - 1]).toEqual([3, 1]);
+  });
+});
+
+/**
+ * The focus ratio, pinned as a number rather than left to the eye.
+ *
+ * Both lengths are eyeball-tuned constants, so neither value is asserted — what is
+ * asserted is the RELATIONSHIP the tuning exists to produce. The focused car is
+ * marked entirely by subtraction from the others (Slice 9: no selection ring), so
+ * how long its history runs against everyone else's is the only signal on the canvas
+ * saying which car is focused. At 1.5 s against 2 s that was 1.3× and unreadable;
+ * shortening the tail to 0.5 s made it 4×. Anyone re-tuning either constant has to
+ * keep the gap wide enough to see.
+ */
+describe("the focused car reads as focused from length alone", () => {
+  it("gives the comet a clear multiple of an unfocused tail", () => {
+    expect(TAIL_SECONDS).toBeLessThan(COMET_SECONDS);
+    expect(COMET_SECONDS / TAIL_SECONDS).toBeGreaterThanOrEqual(3);
+  });
+
+  it("still leaves the tail long enough to fill every fade band", () => {
+    // At 10 Hz, 0.5 s is 5 segments across 4 bands. Drop below one segment per band
+    // and the fade stops being a fade — bands would render empty from the back.
+    expect(TAIL_SECONDS * 10).toBeGreaterThanOrEqual(TAIL_BANDS);
   });
 });
 
