@@ -1567,6 +1567,41 @@ is open.
   frame path nothing and does not affect any number above.
   Screenshot: `docs/screenshots/slice-12-full-field-19-cars.jpg`.
 
+- **Addendum (2026-08-05) — the GAP path was measured too, because a later brief
+  asserted a cost for it. The assertion did not survive, and it is recorded here so the
+  numbers do not propagate into a slice as inherited fact.** A brief for Slice 9d
+  carried "~0.72 ms per car per frame of a `nearestOnPath` scan, p99-owning at field
+  density, 12.4 ms of a 16.7 ms budget at 19 cars, one long frame from the bar". Every
+  clause of it is false, and each in a different way:
+  - **There is no `nearestOnPath`** anywhere in `app`, `pipeline`, `docs` or the three
+    law files. `gapTo` has been **O(1) since Slice 9**: `buildPathIndex` builds a uniform
+    spatial hash once and `candidatesNear` reads a 3×3 cell neighbourhood, so there is no
+    per-frame scan to eliminate. The optimisation had nothing to optimise.
+  - **Measured through the shipped modules** (`parseReplay` → `buildPathIndex` → `gapTo`)
+    on `monza_full_field.json`, 19 cars × 2607 samples, 2000 ticks at the HUD's own
+    cadence, JIT warmed: **1.8 µs per car per tick**, and a whole 19-car tick is
+    **0.033 ms mean / 0.049 ms p99**. That is **~400×** and **~250×** below the asserted
+    figures.
+  - **It is not on the frame path at all**, which `Hud.tsx`'s header already said in
+    prose: gaps derive from the telemetry snapshot at ≤30 Hz. At that cadence the entire
+    19-car gap workload is **~1 ms per second** of wall time.
+  - **The budget was wrong too.** This slice measured on a **120 Hz** display — an
+    **8.33 ms** frame, not 16.7 — and recorded 19-car callback **p99 2.5 ms** with **0
+    frames over 20 ms**. Neither 12.4 nor 0.72 nor 16.7 appears anywhere above.
+  - **The one real cost is `buildPathIndex` at 1.38 ms**, paid once per
+    `[replay, focusedCarIndex]` through `useMemo` — so cycling focus across a full field
+    pays it nineteen times, still off the frame path. Small, and not worth a slice.
+  - **Consequence, taken on this evidence:** 9d's projection-cursor optimisation is
+    **dropped**. The cross-frame state that mandate needed is spent on identifying
+    **lapped cars** instead — a payoff that exists — and 9d's frame-rate acceptance
+    becomes a **no-regression check against the baseline above** via the `fps-probe.js`
+    protocol, not a 12.4 → lower claim, because 12.4 was never a measurement.
+  - **The method note, which is the part worth repeating.** These figures were not
+    disprovable from this slice's own harness: `docs/perf/fps-probe.js` measures the
+    FRAME path, and gaps are not in it. Refuting them took a separate Node benchmark
+    against the real file through the real modules. **A 30 Hz cadence needs its own
+    instrument; the frame harness neither covers it nor contradicts it.**
+
 ## Backlog (ideas — not committed)
 - WebGL/3D escalation **only** if measured 20-car perf demands it (documented path).
 - Track-surface niceties: kerbs, sector coloring, mini-map.
