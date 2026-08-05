@@ -1025,6 +1025,158 @@ dots on a wall of colour.
     `TAIL_BANDS` and is value-independent, so the constant could have drifted to any
     value in silence.
 
+### [ ] Slice 9c — Raise the comet's colour resolution
+
+**Found in the Slice 10 verification pass (screenshot on record, Turn 4 braking zone,
+`monza_endgame.json`).** The comet's 9-bucket thermal quantisation reads as visible
+**stripes** at comet scale.
+
+- **Nothing is behaving incorrectly — the constant is being read at a scale it was not
+  chosen for.** `SPEED_BUCKETS = 9` was tuned for the full-circuit trail, where a
+  bucket boundary falls somewhere along a lap of track and reads as *texture*. The
+  comet is **short, focal, and adjacent to a glowing marker**, so the same nine steps
+  land within a couple of centimetres of each other in the one place the eye is
+  already looking. A braking zone sweeps the whole ramp in ~2 s, which is exactly the
+  comet's length — so every boundary is crossed inside it, at once. This is the same
+  species of finding as 9b: a decision made for a one-lap, whole-circuit view
+  inherited by something with different dimensions.
+- **Scope — the BATCHING KEY only, not the ramp.** `speedColor` and `THERMAL` do not
+  change; the comet gets a finer quantisation of the same continuous ramp (**~32
+  buckets**), and the circuit trail stays at **9**. The ramp is already continuous —
+  only the sampling of it is coarse.
+  - `paths.ts` currently builds one `Uint8Array` of bucket indices per car, shared by
+    `TrailPainter` and `CometPainter`. A second, finer key array is the honest cost:
+    one extra byte per sample per car (≈50 KB for 19 cars over a 3-lap window), built
+    once at measure time, never per frame.
+  - `BUCKET_COLORS` is resolved at module load; 32 strings instead of 9 is still free.
+    `CometPainter`'s `present` array widens with it.
+- **The bounded-strokes architecture stays intact, and the bound gets TIGHTER, not
+  looser.** `CometPainter` already skips buckets not present in a band, so the real
+  bound was never `bands × buckets` — it is the number of distinct (band, bucket)
+  pairs actually present, which cannot exceed the segment count. At `COMET_SECONDS = 2`
+  on a 10 Hz grid the comet is **20 segments**, so **strokes ≤ 21** (segments + the
+  head) whether there are 9 buckets or 32. Still constant, still independent of window
+  length — which is the property 9b exists to protect.
+  - **The existing bound test asserts `≤ COMET_BANDS × SPEED_BUCKETS` and would go
+    vacuous at 32** (128 ≫ 21). It must be re-pinned against the segment count, or the
+    slice quietly deletes its own guard while appearing to keep it.
+- **Also assess: do the 4 alpha bands band visibly too?** `COMET_BANDS = 4` quantises
+  the fade the same way the buckets quantise colour, over the same short focal span. If
+  it does, it warrants the same treatment and for the same reason. Decide with the
+  eyeball and record the answer either way — including "it does not", so the next
+  person does not re-open it.
+- **Verify:**
+  - **Human eyeball at the Turn 4 braking zone on the endgame file** — the acceptance.
+  - **Strokes counted**, asserted against the segment-count bound above, and constant
+    as the clock runs deep into a multi-lap window.
+  - **Closed mode untouched, proved by md5** — the v1 laps are the regression fixture.
+    Follow Slice 10's protocol, which is the ordering that makes it evidence: capture
+    the draw-call sequence on unmodified code **before** touching a file, then
+    re-capture through the identical harness. The harness is not committed; Slice 10's
+    entry records the parameters (701 frames at 100 ms over the 58.5 s fixture).
+  - `npm run check` green with 0 warnings; engine coverage unmoved at 100%.
+- **Out of scope:** `THERMAL`'s stops or the ramp itself; `SPEED_BUCKETS` for the
+  circuit trail; the speed legend (it generates its gradient from `THERMAL`, so it is
+  already continuous and unaffected); the unfocused tails, which are single-colour.
+
+### [ ] Slice 9d — Unwrap the gap so the running order survives a full field
+
+**Found in the human's first full-field load (2026-08-05): 19 cars, Monza R, laps
+20-22.** Two symptoms, filed as one slice because they are one defect — the second is
+the first observed near its boundary, and a fix for either that is not this fix leaves
+the other standing.
+
+- **Symptom 1 — cars far behind report as far ahead.** Observed: **HUL reads +50 s
+  against a focused VER when it is genuinely ~34 s behind.** The arithmetic identifies
+  the mechanism exactly: the lap period is **~84 s**, and `84 − 34 = 50`. The reported
+  value is the true gap's complement about one lap, not a wrong number — the fold is
+  the answer to a different question.
+- **Symptom 2 — the tower strobes.** Cars sitting near the half-lap boundary flip sign
+  frame to frame, and since `runningOrder` sorts on the signed gap, the whole tower
+  re-sorts faster than a name can be read. **Same boundary, same cause**: 9's hysteresis
+  is a 0.05 s dead band built for genuine close-quarters swaps, and it cannot damp a
+  discontinuity of ±84 s.
+- **Why 3 cars could never have shown this.** `gaps.ts` documents the convention
+  honestly — *"candidates are filtered to within half a lap of `now` … the reported gap
+  is therefore always the shorter way round — the standard convention"* — and for three
+  cars within a few seconds, shorter-way-round and true-running-order are the same
+  answer. **A 19-car field spans ~60 s of an ~84 s lap**, so most of it sits past ±42 s
+  and the two answers diverge for the majority of the grid. The module is not doing
+  something wrong; it is answering the question it was written for, and a full field
+  asks a different one.
+
+- **Direction (the human's, to spec against):** **continuity-unwrap relative progress
+  per car.** A car's ahead/behind measure must be *cumulative* rather than folded into
+  ±half a lap — no teleports across the boundary, so the ordering is the true running
+  order and the sign is stable through a lap boundary rather than at the mercy of one.
+  Both symptoms then fall out of the same property: the sort is correct because the
+  quantity is monotone, and the flicker is gone because the quantity is continuous.
+- **The hysteresis STAYS.** It was never the wrong mechanism — it is what damps genuine
+  close-quarters swaps, and it is still needed for them. Unwrapping removes the
+  discontinuity it was being asked to absorb and could not. Do not tune it up to paper
+  over the wrap; that is the failure mode this entry exists to prevent.
+- **Watch for, so it is not rediscovered:**
+  - **`null` must stay a real answer** (Slice 9's rule). Unwrapping must not manufacture
+    a gap for a car genuinely off the focused car's path — the pit lane, a spin, a
+    retirement. An unwrapped quantity that never returns `null` has hidden a failure,
+    not fixed one.
+  - **Lapped cars are the case the schema cannot see.** `gaps.ts` records that it never
+    claims "+1 lap" because the schema carries no lap counter. Unwrapping is exactly
+    the machinery that starts to distinguish them — decide explicitly whether a car a
+    full lap down is reported as such or is out of scope here, and write the decision
+    down either way. Do not let it be decided by whichever fallthrough the code takes.
+  - **Continuity needs state across frames**, which the gap path has not needed until
+    now. It is computed in the HUD at ≤30 Hz and not on the frame path (Slice 9), so
+    this does not touch rule 1 — but a per-car unwrap accumulator must survive a seek,
+    a focus change and a replay swap without lying. A backwards seek is the case to
+    test, since that is where "cumulative" and "recomputable" part company.
+  - The pure-engine boundary (rule 4) holds: this is `gaps.ts` and `runningOrder.ts`,
+    both already headless and both already at 100% coverage under the ratchet.
+- **Verify:**
+  - The `84 − 34 = 50` case, as a regression test built from the real geometry: a car
+    ~34 s behind reads ~−34, not +50.
+  - A car crossing the half-lap boundary holds its sign across it — the synthetic form
+    of the observed flicker, in the style of 9's lap-period regression test.
+  - Sort stability: over a full-field window, row order changes at overtakes and at
+    nothing else. Assert a bound on re-sorts per second, not merely that it "looks
+    stable".
+  - **Human eyeball on the full-field file is the acceptance:** order matches what the
+    track shows, the tower is legible at 19 rows, no strobing.
+  - `npm run check` green with 0 warnings; engine coverage unmoved at 100%.
+- **Out of scope:** the tower's visual density at 19 rows beyond legibility of the
+  order itself (Slice 9 already recorded `gap_m` as the column that drops next);
+  anything in `schema.ts`; the pipeline.
+
+### [ ] Slice 9e — Scrolling speed trace
+
+**Also from the full-field load.** Canvas-side only, and independent of 9d — filed
+separately because it shares neither a mechanism nor a file with the gap defect.
+
+- **The defect is the same shape as Slice 9b's**, which is the argument for the fix:
+  a quantity that grows without bound is being drawn into fixed space. `Hud`'s
+  sparkline covers the WHOLE window, so on a 7-lap file it compresses seven laps into
+  a few hundred pixels and every braking zone becomes one pixel of noise. Legibility
+  degrades with window length, exactly as the focused car's trail did.
+- **Scope:** a **fixed playhead** with a **windowed trace scrolling past it** — the
+  last ~30-60 s of the focused car's speed, not the whole window. Broadcast /
+  heart-monitor semantics: the present is always at the same place on screen, and
+  history moves. The window length is a constant tuned by eye on the full-field file.
+  - **Tune it in PERCEIVED time, not data time.** 9b's `COMET_SECONDS` spec asked for
+    6-10 s and shipped **2**, and recorded why: what a viewer judges is perceived
+    length, which runs ~4× longer at the speeds a long window is watched at. The 30-60 s
+    band above is a starting point from the same kind of reasoning that was wrong then.
+    Expect to land lower, and record the number and the reason.
+- **Bounded cost, and say so as a number.** The trace is a per-frame rebuild over a
+  bounded span, like `TailPainter` — its cost is a constant, independent of window
+  length. That property is the whole point and belongs in a test, in the shape of 9b's
+  bound test.
+- **Follows focus** (Slice 9 bound the trace to the focused car; that does not change).
+- **Verify:** the drawn span is bounded and constant as the clock runs deep into a
+  multi-lap window; the playhead does not move; a one-lap closed replay still reads
+  correctly (the v1 files are the regression fixtures, as in 9 and 9b); human eyeball on
+  the full-field and endgame files; `npm run check` green, coverage unmoved.
+- **Out of scope:** the HUD's other readouts; the tower; `schema.ts`; the pipeline.
+
 ## Maintenance (not phase-bound — schedule after the slices above)
 
 ### [x] Slice 10 — Toolchain: Vite 8 + vitest 4 migration
