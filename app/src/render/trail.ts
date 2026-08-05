@@ -188,8 +188,21 @@ export class TrailPainter implements FocusPainter {
   }
 }
 
-/** How much of the recent past an unfocused car's tail shows, in seconds. */
-export const TAIL_SECONDS = 1.5;
+/**
+ * How much of the recent past an unfocused car's tail shows, in seconds.
+ *
+ * Tuned by eye on a full-field file (19 cars, Monza R laps 20-22), the same method
+ * `COMET_SECONDS` was set by — and for the same reason, arrived at from the other
+ * direction. At 1.5 s the tails were sized for the three-car window they were built
+ * on; at nineteen they overlap into a band of team colour along the racing line and
+ * the cars stop being separable from their own history.
+ *
+ * It also fixes the focus ratio Slice 9b closed with as an open flag. The focused
+ * car's comet is `COMET_SECONDS` = 2 s; against a 1.5 s tail that is 1.3×, which is
+ * not a legible difference in motion. At 0.5 s it is 4×, so which car is focused
+ * reads from the canvas alone, without the tower.
+ */
+export const TAIL_SECONDS = 0.5;
 /** Stroke width of a tail, in CSS pixels — thinner than the focused car's trail. */
 export const TAIL_WIDTH = 3.5;
 /** How many alpha steps the fade is quantised into. See `TailPainter`. */
