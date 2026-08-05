@@ -30,6 +30,11 @@ from FastF1 data. PRD.md holds the detail; this file holds the law.
   and the rendered ribbon closed.
 - Pipeline tests (no network, gated in CI): `cd pipeline && pytest`
 - Validate any replay JSON by hand: `cd app && npm run validate:replay -- <file>`
+- Measure the frame budget: `docs/perf/fps-probe.js` — paste into the console over
+  `npm run preview`, in a **visible** tab. It is not run by `npm run check` and cannot
+  be: it needs a real browser and a gitignored replay file. Its header carries the
+  procedure and each metric's limits; Slice 12's PLAN entry carries the baseline to
+  compare a re-run against.
 
 ## Architecture rules (non-negotiable — see PRD §Load-bearing decisions)
 
