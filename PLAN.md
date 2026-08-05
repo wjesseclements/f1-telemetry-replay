@@ -1079,7 +1079,7 @@ dots on a wall of colour.
   circuit trail; the speed legend (it generates its gradient from `THERMAL`, so it is
   already continuous and unaffected); the unfocused tails, which are single-colour.
 
-### [ ] Slice 9d — Unwrap the gap so the running order survives a full field
+### [x] Slice 9d — Unwrap the gap so the running order survives a full field
 
 **Found in the human's first full-field load (2026-08-05): 19 cars, Monza R, laps
 20-22.** Two symptoms, filed as one slice because they are one defect — the second is
@@ -1146,6 +1146,141 @@ the other standing.
 - **Out of scope:** the tower's visual density at 19 rows beyond legibility of the
   order itself (Slice 9 already recorded `gap_m` as the column that drops next);
   anything in `schema.ts`; the pipeline.
+
+- **Amendment (this slice) — the mechanism is ONE SHARED CIRCUIT, not a per-car
+  accumulator, and that is what answers the spec's hardest question for free.** Every
+  car's position is projected onto **one lap of `cars[0]`** and unwrapped into cumulative
+  progress `P`, precomputed for the whole window at load. `t*` is then `P_F⁻¹(P_C(now))`:
+  one answer, no candidates to choose between, no fold.
+  - **One lap, not the window, and this was found by measuring rather than reasoning.**
+    Against the full three-lap path the nearest-segment search hops between laps, and a
+    car's "laps completed" over a 2.999-lap window came back as **18.1**. On one lap an
+    arc-position is in `[0, L)` and is unambiguous. `buildScene` already takes the ribbon
+    from `cars[0]` on the same grounds.
+  - **The seed is a RING CUT at the field's largest empty arc.** A field that does not
+    reach right round leaves a hole, and the hole is where the running order starts.
+    Measured on the real file the hole is **0.30–0.39 lap** against a second-largest
+    inter-car gap of **0.09–0.13** — `seedMargin` **3.00**, against a `SEED_MARGIN_MIN`
+    tripwire of 2.
+- **Amendment (this slice) — the state lifecycle the spec asked for is EMPTY, and that
+  is the answer rather than an evasion.** `P` is precomputed, so a gap is a pure function
+  of `(replay, focus, car, clock)`: a seek, a scrub, a wrap and a replay swap are an O(1)
+  array lookup, and a **focus change is free** because `P` does not depend on focus.
+  There is no accumulator to drift, so "cumulative" and "recomputable" never part
+  company — pinned by a test that walks the window backwards and asserts bit-identical
+  gaps to walking it forwards. The incremental projection cursor the brief wanted **does**
+  get built, inside the precomputation, where a car genuinely cannot teleport.
+- **Amendment (this slice) — the sort key STAYS `seconds` and `ORDER_HYSTERESIS_S` is
+  untouched. Moving it to `ΔP` was considered and rejected as a unit bug.** Against a
+  progress-denominated key the seconds constant reads either as ~0.9 mm of track
+  (vacuous) or as a fraction of a lap (~4 s, enormous), and **both would have passed
+  every test that existed**. It buys nothing anyway: `P_F` is monotone, so `P_F⁻¹` is
+  monotone, so ordering by `ΔP` and by `seconds` are identical. `runningOrder.test.ts`
+  now measures the dead band by bisection and asserts it equals the constant, plus a
+  paired probe in each wrong unit.
+- **Amendment (this slice) — THE APPROVED FALLBACK WAS REFUTED BY REAL DATA AND
+  REPLACED.** Recorded in full because the sequence is the point, and because the plan
+  said the two definitions "differ only by second-order pace effects" — which is exactly
+  the claim that failed.
+  - The approved design answered a car near the window's start with the mirror question
+    ("when will THIS car reach where the focused car is now?"), because a car 57 s behind
+    has no `t*` inside the window for its first 57 s. It took the unanswerable rate from
+    **11.5 % to 0.0 %** as predicted.
+  - **A PIT STOP is where the two questions stop being the same quantity.** On the real
+    file SAI and STR each cross the boundary mid-window and the readout jumped **19 s in
+    one tick** (STR 51.2 → 32.0 at t = 32 s) as the definition switched under it — the
+    same species of discontinuity this slice exists to remove, reintroduced by its own
+    fix. Found by disbelieving a 19 s range on a car nobody had overtaken.
+  - **Replaced by extending the window instead of switching the question.** The focused
+    car passed that ground one of its own laps earlier, so `timeAtProgress` walks back
+    whole laps of its progress and its time (`MAX_LAP_EXTENSION` = 4, then `null`). One
+    definition throughout, **0.0 % unanswerable, and zero discontinuities**. The
+    assumption — that the focused car's lap either side of the window resembles the one
+    inside it — is stated, and anchored on that car's own measured lap rather than an
+    invented pace.
+- **Amendment (this slice) — a projection tie tolerance that looked reasonable and froze
+  the answer.** The first version treated candidates within `MAX_RESIDUAL_M` of the
+  nearest as tied and broke ties by continuity. For a car running parallel to the
+  reference — the pit lane, or a different line down a straight — every segment for
+  ±36 m is inside that band, so continuity always won and the arc STUCK, advancing in
+  quantised 8.5 m jumps. Fixed by making the tolerance **exact equality**: the seam at
+  arc 0 / arc L does not need a fuzzy tie either, because the lap counter turns a flip
+  there back into continuous progress. Caught by mutation: restoring the coarse
+  tolerance fails **46** tests.
+- **Amendment (this slice) — the lapped-car ruling, in writing.** `Gap.lapsDown` is
+  signed the same way as `seconds`: **`+1 LAP`** a lap behind, **`-1 LAP`** a lap ahead
+  (`+2 LAPS` / `-2 LAPS` beyond). Both signs, because focusing a backmarker is the
+  configuration that produced the measured strobe and its leaders are a lap up.
+  - **Lapping that HAPPENS in the window is observed** — `ΔP` crossing `L` is an ordinary
+    reading of the precomputed series.
+  - **Lapping that PRE-DATES the window is NOT derivable, and is declared so.** From one
+    instant's geometry "34 s ahead", "51 s behind" and "137 s behind" are the same
+    picture. The seed assumes no car starts a lap down; `seedMargin` is the tripwire when
+    that assumption is doubtful.
+  - **Nobody is lapped in the real file** (max deficit ZHO **0.73 lap**), so this whole
+    path is covered by synthetic tests only — the position Slice 7 was in with
+    `closing_time`. A `+`-only implementation fails **2** tests.
+  - `metres` stays the true total rather than a within-lap remainder: the plan proposed
+    the remainder, but computing it needs the position-unit bridge in the metres column,
+    which Slice 9's doctrine keeps out of the answer. `+1 LAP / 5931 m` is unambiguous.
+- **Amendment (this slice) — a gap no longer depends on the published snapshot, and one
+  Slice 9 test was asserting the opposite.** Gaps read the replay's precomputed progress
+  at `clock`; in production that is the same thing the snapshot carries, but a test can
+  no longer move one without the other. `Hud.test.tsx`'s signature trap was aimed at the
+  unfocused car's POSITION and would now be asserting a defect, so it was re-aimed at
+  what the tower is actually a function of: the **clock** (every row) and the **focused
+  car's channels** (the readout). **Consequence for 9e, flagged not fixed:**
+  `displaySignature`'s rounded `x`/`y` term is no longer load-bearing for the tower.
+- **Verified (2026-08-05):**
+  - `npm run check` green with **0 warnings** (`grep -ciE 'warn|error'` over the full
+    log = 0): **463 tests**, engine coverage **100%** lines/branches/functions per file.
+  - **Mutations caught** (engine + components suites): removing the lap-unwrap increment
+    fails **16**; seeding at `cars[0]` instead of the ring cut fails **6**; using the
+    whole window as the reference fails **15**; restoring the coarse projection tie
+    fails **46**; forcing `lapsDown` to 0 fails **3**; dropping the whole-lap extension
+    fails **3**; rendering an ahead-by-a-lap car as `+1 LAP` fails **2**; removing the
+    hysteresis dead band fails **6**.
+  - **Real data — 2024 Monza R, 19 cars, VER laps 20-22, through the SHIPPED module**,
+    sampled at the HUD's own 30 Hz across the whole 260.7 s window:
+
+    | | before (Slice 9) | after (9d) |
+    |---|---|---|
+    | HUL against a focused VER | **≈ −33 s** ("ahead") | **+52.0 … +53.2 s** (behind) |
+    | field-total unanswerable | **22.5 %** | **0.0 %** |
+    | ±lap sign flips, focus HUL | PIA **45**, NOR 19, LEC 5 | **0** |
+    | discontinuities > 5 s, any car | 1–45 per focus | **0** |
+    | re-sorts, focus VER / HUL | 0.10 / 0.40 per s | **0.07 / 0.06** per s |
+    | order under two different focuses | differed past half a lap | **identical** |
+    | gap query cost | 1.8 µs/car/tick | **0.17 µs/car/tick** |
+
+  - **The 3-car accordion is BIT-IDENTICAL to Slice 9's recorded table** — the physical
+    signature this rework was not allowed to disturb. Focus NOR, LEC behind, through the
+    chicane, every value matching to the last digit: `+0.785`/71 m, `+0.723`/49 m,
+    `+0.811`/26 m, `+1.025`/20 m, `+1.042`/21 m, `+0.950`/55 m, `+0.912`/79 m.
+  - **Live in the browser on the full-field file, focus HUL, 4× playback:** 900 frames
+    in 7.49 s (**120 fps**), **0 row-order changes**, **0 frames showing an em dash**.
+    The tower reads VER −52.684 … COL −3.614 above a focused HUL, ZHO +4.533 below —
+    monotone, correctly signed, no strobing.
+    Screenshots: `docs/screenshots/slice-9d-tower-focus-{ver,backmarker}.jpg`.
+  - **Acceptance (b), `fps-probe.js` per the Slice 12 protocol — no regression, and the
+    frame got cheaper:**
+
+    | | Slice 12 baseline | Slice 9d |
+    |---|---|---|
+    | draw calls / frame @ 19 cars | 680 (`148 + 28·N`) | **680, method for method identical** |
+    | fps | 120 | **120** |
+    | frames > 20 ms of 600 | 0 | **0** |
+    | callback mean | 0.967 ms | **0.734 ms** |
+    | callback p95 / p99 | 2.1 / 2.5 ms | **1.7 / 2.2 ms** |
+
+    The canvas is untouched, which the identical draw-call breakdown proves rather than
+    asserts. The **24 % callback improvement is a side effect**, not a goal: the gap
+    query is 10× cheaper and a focus change no longer rebuilds an index.
+  - **The one cost that went UP, recorded rather than buried: load.** Precomputing every
+    car's progress moved into the load path, so the 9.99 MB full-field file goes
+    **53.8 ms → 118.8 ms** (one 121 ms long task), settling at 144 ms. Still far inside
+    Slice 7's < 2 s cold-load bar, and it buys the per-focus-change rebuild (a measured
+    1.38 ms, nineteen times to cycle a field) going to zero.
 
 ### [ ] Slice 9e — Scrolling speed trace
 

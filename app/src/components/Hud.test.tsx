@@ -255,17 +255,25 @@ describe("HUD / signature coupling", () => {
 /**
  * The tower — running order, gaps, and selection.
  *
- * The fixture's own samples are the query points, so the expected gaps are exact: a
- * car sitting where the focused car was at t=2 is 2 s behind at t=4, by construction
- * rather than by tolerance.
+ * SINCE SLICE 9d A GAP IS A FUNCTION OF THE REPLAY AND THE CLOCK, not of the published
+ * snapshot. `gaps.ts` reads each car's precomputed progress around a shared circuit, so
+ * these tests set up the DATA rather than injecting a position into a frame. In
+ * production the two agree by construction — the snapshot IS `sampleAt(replay, clock)`,
+ * published with that same clock — but a test can no longer move one without the other,
+ * and should not be able to.
+ *
+ * The second car is the fixture's own lap shifted by exactly 20 samples, so at 10 Hz it
+ * is 2.000 s AHEAD of the first at every clock: the expected gaps are exact by
+ * construction rather than by tolerance.
  */
 const laps = replay.cars[0].samples;
 
-/** The fixture's lap driven by two cars, so gaps have someone to be measured against. */
-const twoCarReplay: Replay = (() => {
+/** How far ahead the second car runs, in samples. 20 at 10 Hz is exactly 2 s. */
+const SHIFT = 20;
+
+function shiftedTwoCarReplay(displaceX = 0): Replay {
   const raw = JSON.parse(JSON.stringify(sampleLap));
   const n = raw.cars[0].samples.length;
-  const shift = Math.floor(n / 3);
   raw.cars.push({
     ...raw.cars[0],
     driver: "SEC",
@@ -273,21 +281,30 @@ const twoCarReplay: Replay = (() => {
     color: "#ff8000",
     // Rotated, not invented: every car must span `meta.duration` on the same grid.
     samples: raw.cars[0].samples.map((s: { t: number }, k: number) => ({
-      ...raw.cars[0].samples[(k + shift) % n],
+      ...raw.cars[0].samples[(k + SHIFT) % n],
+      x: raw.cars[0].samples[(k + SHIFT) % n].x + displaceX,
       t: s.t,
     })),
   });
   return parseReplay(raw, "two-cars.json");
-})();
+}
+
+const twoCarReplay: Replay = shiftedTwoCarReplay();
+/** The same pair, with the second car parked a long way off the circuit. */
+const offPathReplay: Replay = shiftedTwoCarReplay(1e6);
 
 /** A snapshot sitting exactly where the focused car was at sample `k`. */
 const atSample = (k: number, over: Partial<CarSnapshot> = {}): CarSnapshot =>
   snapshot({ x: laps[k].x, y: laps[k].y, ...over });
 
 /** Publish two cars at `clock` and render the tower. */
-function renderTower(clock: number, second: CarSnapshot) {
+function renderTower(
+  clock: number,
+  second: CarSnapshot,
+  target: Replay = twoCarReplay,
+) {
   telemetry.publish(1000, clock, [snapshot(), second]);
-  return render(<Hud replay={twoCarReplay} />);
+  return render(<Hud replay={target} />);
 }
 
 describe("Hud timing tower", () => {
@@ -308,13 +325,21 @@ describe("Hud timing tower", () => {
     renderTower(4, atSample(20));
     // One speed readout, not two: the tower is compact for everyone else.
     expect(screen.getAllByRole("meter", { name: "Throttle" })).toHaveLength(1);
-    expect(screen.getByText("+2.000")).toBeInTheDocument();
+    // SEC runs 20 samples up the road, so it is 2 s AHEAD of the focused car.
+    expect(screen.getByText("-2.000")).toBeInTheDocument();
   });
 
   it("reads a car behind as + and a car ahead as -", () => {
-    // Sitting where the focused car WILL be at t=6, at t=4: two seconds up the road.
+    // The same pair from the other end: focus the car up the road and the first car
+    // is two seconds behind it. Both signs off one construction, so a sign flip in
+    // `gapTo` cannot pass by being symmetric.
     renderTower(4, atSample(60));
     expect(screen.getByText("-2.000")).toBeInTheDocument();
+
+    cleanup();
+    useTransport.setState({ focusedCarIndex: 1 });
+    renderTower(4, atSample(60));
+    expect(screen.getByText("+2.000")).toBeInTheDocument();
   });
 
   it("shows the ground between them as well as the time", () => {
@@ -323,13 +348,15 @@ describe("Hud timing tower", () => {
   });
 
   it("renders an em dash, not a zero, when the gap has no answer", () => {
-    // Nowhere near the focused car's path — a pit lane, a spin, or the window's edge.
-    renderTower(4, snapshot({ x: 1e6, y: 1e6 }));
+    // Nowhere near the circuit — a pit lane, a spin, or a car in its garage.
+    renderTower(4, atSample(20), offPathReplay);
     // Both columns go blank together: there is one answer, and it is "no answer".
     expect(screen.getAllByText(NO_VALUE)).toHaveLength(2);
   });
 
   it("puts the car ahead above the car behind", () => {
+    // SEC is second in `cars[]` and first on the road, so this fails for any ordering
+    // that quietly falls back to source order.
     renderTower(4, atSample(60));
     const rows = screen.getAllByRole("button").map((b) => b.textContent ?? "");
     expect(rows[0]).toMatch(/SEC/);
@@ -380,19 +407,23 @@ describe("Hud timing tower", () => {
 });
 
 /**
- * The signature trap, on the car whose gap is actually rendered.
+ * The signature trap, on what the tower is actually a function of.
  *
- * The single-car suite above cannot see this: a lone car is focused, and a focused
- * row shows no gap, so no perturbation of its POSITION can change what is drawn. The
- * coupling that matters for the tower is the unfocused car's — its row is a function
- * of where it is, and if `x`/`y` were missing from the signature the channel could
- * suppress the emit that moves it.
+ * `displaySignature` decides when the channel emits, so anything the HUD DRAWS has to be
+ * in it or the channel will suppress the emit that would update it. Slice 9 aimed this
+ * at the unfocused car's POSITION, because a row was a function of where that car was.
+ *
+ * **Slice 9d moved the target, and the test moved with it.** A gap now comes from the
+ * replay's precomputed progress and the CLOCK; the published position does not enter it.
+ * So the coupling that matters is the clock's (it moves every row) and the focused car's
+ * channels (they move the readout). Perturbing an unfocused car's snapshot now correctly
+ * changes nothing, and a test still asserting that it does would be asserting a defect.
  */
 describe("HUD / signature coupling — the tower", () => {
   beforeEach(() => useTransport.setState({ focusedCarIndex: 0 }));
 
-  const focusedCar = snapshot();
-  const base = atSample(20);
+  const base = snapshot();
+  const second = atSample(20);
 
   const PERTURBATIONS: { [K in keyof CarSnapshot]-?: CarSnapshot[K] } = {
     index: 7,
@@ -407,9 +438,9 @@ describe("HUD / signature coupling — the tower", () => {
     drs: 12,
   };
 
-  function renderedTower(second: CarSnapshot): string {
+  function renderedTower(focused: CarSnapshot, clock = 4): string {
     telemetry.reset();
-    telemetry.publish(1000, 4, [focusedCar, second]);
+    telemetry.publish(1000, clock, [focused, second]);
     const view = render(<Hud replay={twoCarReplay} />);
     const html = screen.getByLabelText("Telemetry").innerHTML;
     view.unmount();
@@ -423,14 +454,14 @@ describe("HUD / signature coupling — the tower", () => {
       if (renderedTower(base) === renderedTower(changed)) return;
 
       expect(
-        displaySignature(4, [focusedCar, changed]),
+        displaySignature(4, [changed, second]),
         `\`${field}\` changes the tower but NOT the display signature, so the ` +
           `channel will suppress the emit that would update it.`,
-      ).not.toBe(displaySignature(4, [focusedCar, base]));
+      ).not.toBe(displaySignature(4, [base, second]));
     },
   );
 
-  it("actually exercises the invariant — position DOES move the tower", () => {
+  it("actually exercises the invariant — the focused car's channels move the tower", () => {
     const changing = (
       Object.keys(PERTURBATIONS) as (keyof CarSnapshot)[]
     ).filter(
@@ -438,9 +469,26 @@ describe("HUD / signature coupling — the tower", () => {
         renderedTower(base) !==
         renderedTower({ ...base, [f]: PERTURBATIONS[f] } as CarSnapshot),
     );
-    // Only position: an unfocused row shows a gap and nothing else, so speed, gear
-    // and the pedals are invisible until that car is focused.
-    expect(changing.sort()).toEqual(["x", "y"]);
+    // Everything the focused readout draws, and nothing else. `index`, `t`, `x`, `y`
+    // and `heading` are the canvas's business — the tower does not render them, and
+    // since 9d it does not compute gaps from them either.
+    expect(changing.sort()).toEqual([
+      "brake",
+      "drs",
+      "gear",
+      "speed",
+      "throttle",
+    ]);
+  });
+
+  it("moves every gap when the CLOCK moves, which is what 9d made the tower ride on", () => {
+    // The complement of the test above, and the one that would catch a signature that
+    // dropped the clock: with every snapshot field held fixed, advancing the clock alone
+    // must still redraw the tower AND change the signature.
+    expect(renderedTower(base, 4)).not.toBe(renderedTower(base, 6));
+    expect(displaySignature(4, [base, second])).not.toBe(
+      displaySignature(6, [base, second]),
+    );
   });
 });
 

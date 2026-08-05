@@ -20,6 +20,30 @@
  *
  * NOTE what the order is made of: `cars[]` INDICES. Selection binds to those, never to
  * a row position, so a resort can never change which car a click or a keypress means.
+ *
+ * SLICE 9d CHANGED NOTHING HERE, AND THAT IS A RESULT RATHER THAN AN OVERSIGHT
+ * ---------------------------------------------------------------------------
+ * 9d replaced the folded half-lap gap with a true cumulative one, and lapped cars became
+ * reportable. Both were expected to land on the sort key. Neither did:
+ *
+ *  - **Lapped cars order themselves.** A car a lap down has a `seconds` of about a lap,
+ *    which is simply a large gap; it sorts below the field by the existing comparison.
+ *    `Gap.lapsDown` is a DISPLAY concern (`formatGap`) and never a sort key.
+ *  - **The sort key stays `seconds`, and the alternative was a unit bug waiting to
+ *    happen.** Sorting on the progress difference `ΔP` was considered and rejected:
+ *    `ORDER_HYSTERESIS_S` is denominated in SECONDS, and against a progress-denominated
+ *    key it would read either as ~0.9 mm of track (vacuous, hysteresis silently gone) or
+ *    as a fraction of a lap (~4 s, enormous, the tower frozen). Both would have passed
+ *    every test that does not probe the dead band — so `runningOrder.test.ts` now probes
+ *    it, in both units.
+ *  - It buys nothing anyway: `P_F` is monotone in time, so `P_F⁻¹` is monotone, so
+ *    ordering by `ΔP` and ordering by `seconds` are **identical** — always, not
+ *    approximately.
+ *
+ * What 9d DID fix here is the input. The hysteresis was being asked to damp a ±lap
+ * discontinuity at the half-lap boundary and could not — a 0.05 s dead band against an
+ * 85 s jump. That discontinuity is gone from `gaps.ts`, so the dead band is back to
+ * doing the job it was sized for: genuine close-quarters swaps.
  */
 
 /**

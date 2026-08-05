@@ -72,6 +72,26 @@ export function formatGapSeconds(seconds: number | null): string {
 }
 
 /**
+ * A gap as the tower's primary column: seconds, or whole laps once there are any.
+ *
+ * One function rather than a branch at the call site, so "when does a gap stop being a
+ * time" is decided in one place. Past a lap the seconds are still correct but stop being
+ * useful — `+95.512` reads as a number to decode, `+1 LAP` reads at a glance, and it is
+ * what every broadcast tower shows.
+ *
+ * SIGNED BOTH WAYS, which is not decoration. Focusing a car that is a lap down is a real
+ * configuration — it is the one that produced Slice 9d's measured strobe — and its
+ * leaders are a lap AHEAD. The sign convention is the same one the seconds column it
+ * replaces uses: `+` behind, `-` ahead, everywhere in the tower.
+ */
+export function formatGap(seconds: number | null, lapsDown: number): string {
+  if (seconds === null || !Number.isFinite(seconds)) return NO_VALUE;
+  if (lapsDown === 0) return formatGapSeconds(seconds);
+  const laps = Math.abs(lapsDown);
+  return `${lapsDown >= 0 ? "+" : "-"}${laps} LAP${laps === 1 ? "" : "S"}`;
+}
+
+/**
  * The same gap as ground, in whole metres.
  *
  * UNSIGNED: it always carries the same sign as the seconds beside it, and printing it

@@ -1,282 +1,453 @@
 /**
  * Gaps are tested against ANALYTIC paths, not against a recorded lap.
  *
- * A straight line at a constant speed and a circle traversed a whole number of times
- * both have gaps that can be written down in closed form, so these tests assert exact
- * values rather than "close to what it printed last time". The real-data check lives
- * in the slice's verification notes, where it belongs — a test that reads a lap off
- * disk can only ever confirm that nothing changed.
+ * A closed circle traversed a whole number of times has gaps that can be written down
+ * in closed form, so these tests assert exact values rather than "close to what it
+ * printed last time". The real-data check lives in the slice's verification notes, where
+ * it belongs — a test that reads a lap off disk can only ever confirm that nothing
+ * changed.
+ *
+ * Slice 9d moved the unit of construction from "a car and a query point" to "a replay",
+ * because a gap is now a function of the replay and the clock. So the helpers here build
+ * replays whose cars are one circuit driven with a known offset between them.
  */
 import { describe, expect, it } from "vitest";
-import { MAX_RESIDUAL_M, buildPathIndex, gapTo } from "./gaps";
-import type { Car, Sample } from "./schema";
+import {
+  MAX_RESIDUAL_M,
+  SEED_MARGIN_MIN,
+  buildProgressIndex,
+  gapTo,
+} from "./gaps";
+import type { Replay, Sample } from "./schema";
 
 const RATE = 10;
+/** One lap of the test circuit: 1000 m at 180 km/h = 50 m/s, so 20 s and 200 samples. */
+const PER_LAP = 200;
+const LAP_SECONDS = 20;
 
-/** A car whose path and speed channel are given point by point. */
-function carOf(points: readonly [number, number][], speedKmh: number[]): Car {
-  const samples: Sample[] = points.map(([x, y], k) => ({
-    t: k / RATE,
-    x,
-    y,
-    speed: speedKmh[k],
-    throttle: 100,
-    brake: 0,
-    gear: 8,
-  }));
-  return { driver: "REF", team: "Test", color: "#888888", samples };
-}
-
-/**
- * A straight run east at a constant 360 km/h — 100 m/s, so at 10 Hz each step is 10 m
- * and one position unit is exactly one metre. Chosen so that expected metres can be
- * read off by inspection.
- */
-function straight(steps = 100, scale = 1): Car {
-  const points: [number, number][] = [];
-  for (let k = 0; k < steps; k++) points.push([k * 10 * scale, 0]);
-  return carOf(
-    points,
-    Array.from({ length: steps }, () => 360),
-  );
-}
-
-/**
- * A closed circle of circumference 1000 m at 180 km/h — one lap every 20 s, 200
- * samples per lap. `laps` of it makes a path that passes every point repeatedly,
- * which is the case a session-time window presents and the reason `lapPeriod` exists.
- */
-function circuit(laps: number, scale = 1): Car {
-  const perLap = 200;
-  const radius = (1000 / (2 * Math.PI)) * scale;
-  const points: [number, number][] = [];
-  for (let k = 0; k < perLap * laps; k++) {
-    const a = (2 * Math.PI * k) / perLap;
-    points.push([radius * Math.cos(a), radius * Math.sin(a)]);
+/** A closed circle of circumference 1000 m, `laps` times round, offset by `shift`. */
+function ring(laps: number, shift = 0, scale = 1, radiusBoost = 0): Sample[] {
+  const radius = (1000 / (2 * Math.PI)) * scale + radiusBoost;
+  const out: Sample[] = [];
+  for (let k = 0; k < PER_LAP * laps; k++) {
+    const a = (2 * Math.PI * (k + shift)) / PER_LAP;
+    out.push({
+      t: k / RATE,
+      x: radius * Math.cos(a),
+      y: radius * Math.sin(a),
+      speed: 180,
+      throttle: 100,
+      brake: 0,
+      gear: 8,
+    });
   }
-  return carOf(
-    points,
-    Array.from({ length: perLap * laps }, () => 180),
-  );
+  return out;
+}
+
+/** A replay whose cars are given sample by sample. `cars[0]` is the reference. */
+function replayOf(...cars: Sample[][]): Replay {
+  return {
+    meta: {
+      schemaVersion: 1,
+      sampleRateHz: RATE,
+      duration: cars[0].length / RATE,
+      rotation: 0,
+      loop: "open",
+      units: { speed: "km/h" },
+      year: 2024,
+      event: "Test",
+      track: "Test",
+      session: "R",
+    },
+    track: { corners: [], startFinish: { x: 0, y: 0, angle: 0 } },
+    cars: cars.map((samples, i) => ({
+      driver: `C${i}`,
+      team: "Test",
+      color: "#888888",
+      samples,
+    })),
+  } as Replay;
 }
 
 describe("gapTo — sign and magnitude", () => {
-  const index = buildPathIndex(straight(), RATE);
+  // C1 runs 20 samples (2 s) further round the circuit than C0 at every clock.
+  const index = buildProgressIndex(replayOf(ring(3), ring(3, 20)));
 
-  it("reports a car BEHIND as a positive gap, in seconds and metres", () => {
-    // The focused car is at x=500 at t=5; it was at x=300 at t=3.
-    const gap = gapTo(index, 300, 0, 5);
-    expect(gap).not.toBeNull();
-    expect(gap!.seconds).toBeCloseTo(2, 10);
-    // 100 m/s for 2 s.
-    expect(gap!.metres).toBeCloseTo(200, 8);
+  it("reports a car AHEAD as a negative gap, in seconds and metres", () => {
+    const gap = gapTo(index, 0, 1, 30)!;
+    expect(gap.seconds).toBeCloseTo(-2, 6);
+    // 50 m/s for 2 s.
+    expect(gap.metres).toBeCloseTo(-100, 4);
   });
 
-  it("reports a car AHEAD as a negative gap", () => {
-    const gap = gapTo(index, 700, 0, 5);
-    expect(gap!.seconds).toBeCloseTo(-2, 10);
-    expect(gap!.metres).toBeCloseTo(-200, 8);
+  it("reports a car BEHIND as a positive gap, from the other end of the same pair", () => {
+    const gap = gapTo(index, 1, 0, 30)!;
+    expect(gap.seconds).toBeCloseTo(2, 6);
+    expect(gap.metres).toBeCloseTo(100, 4);
   });
 
-  it("is zero for a car exactly where the focused car is", () => {
-    const gap = gapTo(index, 500, 0, 5);
-    expect(gap!.seconds).toBeCloseTo(0, 10);
-    expect(gap!.metres).toBeCloseTo(0, 8);
+  it("is zero for a car against itself", () => {
+    const gap = gapTo(index, 0, 0, 30)!;
+    expect(gap.seconds).toBeCloseTo(0, 8);
+    expect(gap.metres).toBeCloseTo(0, 8);
   });
 
   it("resolves BETWEEN samples, so the answer is not quantised to the grid", () => {
-    // x=355 is 55 % of the way along the step leaving sample 35.
-    const gap = gapTo(index, 355, 0, 5);
-    expect(gap!.seconds).toBeCloseTo(5 - 3.55, 10);
+    const half = buildProgressIndex(replayOf(ring(3), ring(3, 5.5)));
+    expect(half.lapUnits).toBeGreaterThan(0);
+    expect(gapTo(half, 0, 1, 30)!.seconds).toBeCloseTo(-0.55, 4);
   });
 
   it("measures metres from the focused car's own travel integral", () => {
     // A speed channel that is not constant: metres must follow the integral, not the
-    // gap in seconds times some nominal speed.
-    const speeds = Array.from({ length: 100 }, (_, k) => (k < 50 ? 360 : 180));
-    const points: [number, number][] = [];
-    for (let k = 0; k < 100; k++) points.push([k * 10, 0]);
-    const slowing = buildPathIndex(carOf(points, speeds), RATE);
-
-    // Between t=4 (sample 40) and t=6 (sample 60): nine steps at 100 m/s = 90 m, one
-    // step across the discontinuity that the trapezoid averages to 75 m/s = 7.5 m,
-    // then ten steps at 50 m/s = 50 m. 147.5, not the 150 a step change would give —
-    // the integral is the pipeline's own (Slice 6b), so the 2.5 m is where the two
-    // definitions of "when the speed changed" differ, and it belongs to the integral.
-    const gap = gapTo(slowing, 400, 0, 6);
-    expect(gap!.seconds).toBeCloseTo(2, 10);
-    expect(gap!.metres).toBeCloseTo(147.5, 6);
+    // gap in seconds times some nominal speed. Positions are untouched, so the SECONDS
+    // are unchanged and only the metres move.
+    const slow = ring(3).map((s, k) => ({ ...s, speed: k < 300 ? 180 : 90 }));
+    const index2 = buildProgressIndex(replayOf(slow, ring(3, 20)));
+    const gap = gapTo(index2, 0, 1, 40)!;
+    expect(gap.seconds).toBeCloseTo(-2, 6);
+    // Two seconds at 25 m/s, entirely inside the slow stretch.
+    expect(gap.metres).toBeCloseTo(-50, 4);
   });
 });
 
-describe("gapTo — a window that passes the same ground repeatedly", () => {
-  const index = buildPathIndex(circuit(3), RATE);
-
-  it("measures the lap period from the path itself", () => {
-    // Just UNDER a lap, systematically: the return is timed from where the path first
-    // comes back within the same-spot bound, which at 50 m/s is 25 m — half a second
-    // — early. It is used only as a half-width, and erring narrow is the safe way to
-    // be wrong, so the assertion is "one lap, definitely not two" rather than 20.000.
-    expect(index.lapPeriod).toBeGreaterThan(19);
-    expect(index.lapPeriod).toBeLessThan(20.01);
-  });
-
-  it("picks the NEAREST crossing, not the first one in the data", () => {
-    // Sample 300 is t=30 on lap 2; the same point was passed at t=10 and t=50.
-    const at = index.xs[300];
-    const gap = gapTo(index, at, index.ys[300], 32);
-    expect(gap!.seconds).toBeCloseTo(2, 6);
-  });
-
-  it("picks the nearest crossing when that one is AHEAD", () => {
-    const gap = gapTo(index, index.xs[300], index.ys[300], 28);
-    expect(gap!.seconds).toBeCloseTo(-2, 6);
-  });
-
-  it("returns null past half a lap, rather than reporting the next lap's pass", () => {
-    // At t=59.9 (the last sample) a car 2 s up the road sits where the focused car
-    // will be at 61.9 — beyond the data. Its previous pass, at 41.9, is 18 s away:
-    // more than half a lap, so it is not the same question.
-    const gap = gapTo(index, index.xs[419], index.ys[419], 59.9);
-    expect(gap).toBeNull();
-  });
-});
-
-describe("the lap period is the SOONEST return, not the nearest point", () => {
+describe("the half-lap fold is GONE — Slice 9d's whole point", () => {
   /**
-   * The regression test for a defect real data found and synthetic data had hidden.
+   * The regression test built from the real geometry that found the defect.
    *
-   * A perfect circle passes every point at exactly zero distance on every lap, so
-   * "the closest other point on the path" is a tie and the answer depends on which
-   * candidate the grid happened to yield first. Real laps are not ties: they vary by
-   * a metre or two, and on 2024 Monza R the two-laps-later pass was closer than the
-   * one-lap-later pass often enough that NOR's lap period came back as 167 s. That
-   * doubled `gapTo`'s search window, and LEC — a second behind — was reported at
-   * −82.80 s, the next lap's crossing, on roughly half the samples.
+   * On 2024 Monza R the lap is 85.5 s and HUL sits +52.7 s behind a focused VER. The old
+   * module filtered candidate crossings to within half a lap of `now` and so reported
+   * the complement, ≈ −33 s: a car most of a lap behind, shown as a third of a lap
+   * ahead. Scaled onto this 20 s circuit, a car 12.3 s behind must not read −7.7.
    *
-   * So this circuit is deliberately not a tie: lap 1 runs five metres wide, which
-   * makes lap 2 the SPATIALLY nearest return from lap 0 while lap 1 is still the
-   * soonest.
+   * IT TAKES A FIELD, and that is the mechanism rather than a detail of the fixture.
+   * Two cars 12.3 s apart on a 20 s lap are genuinely ambiguous — "12.3 s behind" and
+   * "7.7 s ahead" describe the same picture and nothing in the data prefers either. What
+   * resolves it is a field that does not reach right round: the cars occupy 0.615 of the
+   * lap and leave a 0.385 hole, and the hole is where the running order starts. This is
+   * the synthetic form of the real file, where 19 cars span 57.4 s of an 85.5 s lap.
    */
-  function wideMiddleLap(): Car {
-    const perLap = 200;
-    const points: [number, number][] = [];
-    for (let k = 0; k < perLap * 3; k++) {
-      const lap = Math.floor(k / perLap);
-      const radius = 1000 / (2 * Math.PI) + (lap === 1 ? 5 : 0);
-      const a = (2 * Math.PI * (k % perLap)) / perLap;
-      points.push([radius * Math.cos(a), radius * Math.sin(a)]);
-    }
-    return carOf(
-      points,
-      Array.from({ length: perLap * 3 }, () => 180),
-    );
-  }
+  const field = buildProgressIndex(
+    replayOf(...[0, -25, -50, -75, -100, -123].map((s) => ring(3, s))),
+  );
 
-  const index = buildPathIndex(wideMiddleLap(), RATE);
-
-  it("measures one lap, not two, when a later lap runs closer to the line", () => {
-    // Slightly UNDER a lap, always: the earliest point of the next pass that is
-    // within the residual bound is reached a little before the same angle, and a
-    // narrow window is the safe direction to be wrong in. What matters is that it is
-    // one lap and not the two the nearest-point rule returned.
-    expect(index.lapPeriod).toBeGreaterThan(19);
-    expect(index.lapPeriod).toBeLessThan(20.01);
+  it("reports the TRUE gap past half a lap, not its complement", () => {
+    expect(field.seedTrustworthy).toBe(true);
+    const gap = gapTo(field, 0, 5, 30)!;
+    expect(gap.seconds).toBeCloseTo(12.3, 4);
+    // The fold's answer, which must not appear.
+    expect(gap.seconds).not.toBeCloseTo(-(LAP_SECONDS - 12.3), 1);
   });
 
-  it("therefore answers with this lap's crossing, not the next one", () => {
-    // Sample 300 is on lap 1 at t=30. A car sitting there at t=32 is 2 s behind —
-    // not 18 s ahead of the lap-2 pass, which is what an over-wide window reports.
-    const gap = gapTo(index, index.xs[300], index.ys[300], 32);
-    expect(gap!.seconds).toBeCloseTo(2, 1);
+  it("orders the whole field the same way whichever car is focused", () => {
+    // `runningOrder` documents the order as focus-independent because changing the
+    // reference shifts every gap by a constant. Under the fold that was false past half
+    // a lap; here it is arithmetic.
+    const from0 = [1, 2, 3, 4, 5].map((c) => gapTo(field, 0, c, 30)!.seconds);
+    const from3 = [1, 2, 3, 4, 5].map((c) => gapTo(field, 3, c, 30)!.seconds);
+    const shift = from3[0] - from0[0];
+    for (let i = 0; i < from0.length; i++) {
+      expect(from3[i]).toBeCloseTo(from0[i] + shift, 6);
+    }
+  });
+
+  it("holds its sign across the half-lap boundary instead of flipping", () => {
+    // A car drifting from just inside half a lap to just outside it. The old module
+    // teleported by a whole lap here and the tower re-sorted on it; the gap must simply
+    // grow through 10 s.
+    const drifting = ring(3).map((s, k) => {
+      const lag = 95 + (k / (PER_LAP * 3)) * 20; // 9.5 s -> 11.5 s
+      const a = (2 * Math.PI * (k - lag)) / PER_LAP;
+      const r = 1000 / (2 * Math.PI);
+      return { ...s, x: r * Math.cos(a), y: r * Math.sin(a) };
+    });
+    const drift = buildProgressIndex(replayOf(ring(3), drifting));
+
+    let previous = gapTo(drift, 0, 1, 5)!.seconds;
+    expect(previous).toBeGreaterThan(0);
+    for (let t = 5.5; t <= 55; t += 0.5) {
+      const now = gapTo(drift, 0, 1, t)!.seconds;
+      expect(now).toBeGreaterThan(0);
+      // No teleport: a real gap creeps, it does not jump a lap.
+      expect(Math.abs(now - previous)).toBeLessThan(1);
+      previous = now;
+    }
+    // It genuinely crossed the boundary the old module folded at.
+    expect(previous).toBeGreaterThan(LAP_SECONDS / 2);
+  });
+});
+
+describe("lapped cars — reported, and signed both ways", () => {
+  /**
+   * The lapping has to HAPPEN inside the window, which is the ruling and not a
+   * convenience. A car that is already a lap down when the window opens is
+   * indistinguishable from one alongside — the schema carries no lap counter, so from
+   * one instant's geometry "a lap behind" and "here" are the same picture. What IS
+   * observable is a car losing a lap while being watched, so this is a car at half
+   * pace: both start on the line, C0 runs six laps and C1 runs three.
+   */
+  const slower = ring(6).map((s, k) => {
+    const a = (2 * Math.PI * (k * 0.5)) / PER_LAP;
+    const r = 1000 / (2 * Math.PI);
+    return { ...s, x: r * Math.cos(a), y: r * Math.sin(a), speed: 90 };
+  });
+  const lapped = buildProgressIndex(replayOf(ring(6), slower));
+
+  it("reports a car a lap behind as +1 lap", () => {
+    // t=60: C0 has run 3 laps, C1 has run 1.5 — one and a half laps down.
+    const gap = gapTo(lapped, 0, 1, 60)!;
+    expect(gap.lapsDown).toBe(1);
+    expect(gap.seconds).toBeCloseTo(30, 4);
+  });
+
+  it("reports the leaders as -1 lap when the LAPPED car is focused", () => {
+    // The configuration that produced the measured strobe: focus a backmarker and the
+    // cars ahead of it are a lap up. A `+`-only implementation renders this as nonsense.
+    const gap = gapTo(lapped, 1, 0, 60)!;
+    expect(gap.lapsDown).toBe(-1);
+    expect(gap.seconds).toBeLessThan(0);
+  });
+
+  it("counts more than one lap, in both directions", () => {
+    // t=100: C0 has run 5 laps, C1 2.5 — two and a half laps down.
+    expect(gapTo(lapped, 0, 1, 100)!.lapsDown).toBe(2);
+    expect(gapTo(lapped, 1, 0, 100)!.lapsDown).toBe(-2);
+  });
+
+  it("still reads 0 laps down before the car has actually lost one", () => {
+    // t=20: C0 one lap, C1 half a lap. Half a lap down is not a lap down, and a tower
+    // that rounded it up would be inventing a position.
+    expect(gapTo(lapped, 0, 1, 20)!.lapsDown).toBe(0);
+  });
+
+  it("reports 0 laps down for a window shorter than a lap, because there is no ring", () => {
+    const short = buildProgressIndex(replayOf(ring(0.5), ring(0.5, 20)));
+    expect(short.lapUnits).toBe(0);
+    expect(gapTo(short, 0, 1, 5)!.lapsDown).toBe(0);
+  });
+});
+
+describe("the ring cut that seeds the field's lap offsets", () => {
+  it("trusts a field that leaves a clear hole", () => {
+    // Three cars inside a third of the lap: the hole is the other two thirds.
+    const index = buildProgressIndex(
+      replayOf(ring(3), ring(3, -20), ring(3, -40)),
+    );
+    expect(index.seedMargin).toBeGreaterThan(SEED_MARGIN_MIN);
+    expect(index.seedTrustworthy).toBe(true);
+    expect(gapTo(index, 0, 2, 30)!.seconds).toBeCloseTo(4, 4);
+  });
+
+  it("flags a field strung evenly right round the circuit", () => {
+    // Ten cars at even spacing: every hole is the same size, so there is no cut to
+    // find and the seed is a guess. The index is still built and still answers —
+    // loudly uncertain beats silently wrong.
+    const even = Array.from({ length: 10 }, (_, i) => ring(3, -i * 20));
+    const index = buildProgressIndex(replayOf(...even));
+    expect(index.seedMargin).toBeLessThan(SEED_MARGIN_MIN);
+    expect(index.seedTrustworthy).toBe(false);
+    expect(gapTo(index, 0, 1, 30)).not.toBeNull();
   });
 });
 
 describe("gapTo — when there is no honest answer", () => {
-  it("returns null for a point further off the path than the residual bound", () => {
-    const index = buildPathIndex(straight(), RATE);
-    expect(gapTo(index, 300, MAX_RESIDUAL_M + 1, 5)).toBeNull();
+  it("returns null for a car further off the circuit than the residual bound", () => {
+    const off = ring(3, 20).map((s) => ({ ...s, x: s.x + 1e6 }));
+    const index = buildProgressIndex(replayOf(ring(3), off));
+    expect(gapTo(index, 0, 1, 30)).toBeNull();
   });
 
-  it("still answers, with a residual, for a point beside the path", () => {
-    const index = buildPathIndex(straight(), RATE);
-    const gap = gapTo(index, 300, MAX_RESIDUAL_M - 5, 5);
-    expect(gap!.residualM).toBeCloseTo(MAX_RESIDUAL_M - 5, 6);
-    expect(gap!.seconds).toBeCloseTo(2, 6);
+  it("still answers, with a residual, for a car beside the racing line", () => {
+    // A metre off the line: a defensive line, not a spin.
+    const beside = buildProgressIndex(replayOf(ring(3), ring(3, 20, 1, 1)));
+    const gap = gapTo(beside, 0, 1, 30)!;
+    expect(gap.residualM).toBeGreaterThan(0);
+    expect(gap.residualM).toBeLessThan(MAX_RESIDUAL_M);
+    expect(gap.seconds).toBeCloseTo(-2, 1);
   });
 
   it("returns null for every query against a car that never moved", () => {
-    const parked = carOf(
-      Array.from({ length: 40 }, () => [10, 10] as [number, number]),
-      Array.from({ length: 40 }, () => 0),
-    );
-    const index = buildPathIndex(parked, RATE);
-    expect(index.degenerate).toBe(true);
-    expect(index.lapPeriod).toBe(Infinity);
-    expect(gapTo(index, 10, 10, 2)).toBeNull();
+    const parked = ring(3).map((s) => ({ ...s, x: 500, y: 0, speed: 0 }));
+    const index = buildProgressIndex(replayOf(ring(3), parked));
+    expect(index.degenerate[1]).toBe(true);
+    expect(gapTo(index, 0, 1, 30)).toBeNull();
+    expect(gapTo(index, 1, 0, 30)).toBeNull();
   });
 
   it("treats a moving car with a dead speed channel as degenerate too", () => {
     // Position says it moved, speed says it did not. There is no travel integral to
     // measure metres against, so there is nothing to report.
-    const points: [number, number][] = [];
-    for (let k = 0; k < 40; k++) points.push([k * 10, 0]);
-    const index = buildPathIndex(
-      carOf(
-        points,
-        Array.from({ length: 40 }, () => 0),
-      ),
-      RATE,
+    const noSpeed = ring(3, 20).map((s) => ({ ...s, speed: 0 }));
+    const index = buildProgressIndex(replayOf(ring(3), noSpeed));
+    expect(index.degenerate[1]).toBe(true);
+    expect(gapTo(index, 0, 1, 30)).toBeNull();
+  });
+
+  it("returns null when the reference car itself never moved", () => {
+    const parked = ring(3).map((s) => ({ ...s, x: 500, y: 0, speed: 0 }));
+    const index = buildProgressIndex(replayOf(parked, ring(3)));
+    expect(index.lapUnits).toBe(0);
+    expect(gapTo(index, 0, 1, 30)).toBeNull();
+  });
+
+  it("returns null for a gap larger than the whole-lap extension can reach", () => {
+    // A window under a lap long has no ring, so nothing can be extended: a car whose
+    // progress the reference never reaches simply has no answer.
+    const short = buildProgressIndex(replayOf(ring(0.5), ring(0.5, -80)));
+    expect(gapTo(short, 0, 1, 1)).toBeNull();
+  });
+
+  it("answers rather than dividing by zero when progress is flat at the window's end", () => {
+    // A car that stops before the window closes — a retirement, or simply the flag —
+    // leaves its progress flat over the final samples. A lookup landing in that stretch
+    // has no span to interpolate across, and the guard against it is only reachable
+    // here, at the very end, because anywhere earlier the search settles on the last
+    // flat sample and the step after it is non-zero.
+    const STOP = 570; // 57.0 s; the window runs to 59.9
+    const stopping = ring(3).map((s, k) =>
+      k >= STOP ? { ...ring(3)[STOP], t: s.t, speed: 0 } : s,
     );
-    expect(index.degenerate).toBe(true);
-    expect(gapTo(index, 100, 0, 2)).toBeNull();
+    const index = buildProgressIndex(replayOf(stopping, stopping));
+
+    // Two cars stopped in the same place. "When was the other car at this progress?" has
+    // a RANGE of true answers — the whole stationary stretch — so the gap is genuinely
+    // ambiguous within it, and the assertion is the bound rather than a value it cannot
+    // honestly have. What must never happen is a NaN.
+    const flat = 59.9 - STOP / 10;
+    for (const t of [57.5, 58, 59.5]) {
+      const gap = gapTo(index, 0, 1, t)!;
+      expect(Number.isNaN(gap.seconds)).toBe(false);
+      expect(Number.isNaN(gap.metres)).toBe(false);
+      expect(Math.abs(gap.seconds)).toBeLessThanOrEqual(flat);
+    }
+    // Before the stop, the same pair is exactly zero — so the ambiguity above is a
+    // property of standing still, not of the index being wrong.
+    expect(gapTo(index, 0, 1, 30)!.seconds).toBeCloseTo(0, 6);
   });
 
-  it("reports Infinity for a path that never revisits itself", () => {
-    expect(buildPathIndex(straight(), RATE).lapPeriod).toBe(Infinity);
+  it("survives a stationary stretch in the reference car's own lap", () => {
+    // Duplicate fixes are ordinary in real data (a car held on the brakes, or sitting
+    // in its grid box). A zero-length reference segment has no direction to project
+    // onto, and a flat stretch of progress has no span to interpolate across; neither
+    // may produce a NaN.
+    const stalled = ring(3).map((s, k) =>
+      k >= 40 && k < 60 ? { ...ring(3)[40], t: s.t, speed: 0 } : s,
+    );
+    const index = buildProgressIndex(replayOf(stalled, ring(3, 20)));
+    const gap = gapTo(index, 0, 1, 30)!;
+    expect(Number.isNaN(gap.seconds)).toBe(false);
+    expect(Number.isNaN(gap.metres)).toBe(false);
+    expect(Number.isNaN(gap.residualM)).toBe(false);
+  });
+});
+
+describe("the seam where arc L meets arc 0", () => {
+  /**
+   * A car running the circuit BACKWARDS.
+   *
+   * Not a race scenario — it is the cleanest way to drive the lap counter's decrementing
+   * branch, which in real data fires when a projection near the start/finish line lands
+   * on arc L one sample and arc 0 the next. The reference's first and last points are
+   * the same ground, so that flip is legitimate and it is `projectPath`'s counter, not
+   * the projection, that has to turn it back into a continuous progress.
+   *
+   * It also reaches the one case where walking whole laps runs out: this car's progress
+   * falls without bound, and once it is more than `MAX_LAP_EXTENSION` laps below where
+   * the reference started, there is no honest answer left to give.
+   */
+  const backwardsIndex = (() => {
+    const backwards = ring(6).map((s, k) => {
+      const a = (-2 * Math.PI * k) / PER_LAP;
+      const r = 1000 / (2 * Math.PI);
+      return { ...s, x: r * Math.cos(a), y: r * Math.sin(a) };
+    });
+    return buildProgressIndex(replayOf(ring(6), backwards));
+  })();
+
+  it("gives up honestly once the deficit outruns the whole-lap extension", () => {
+    // ~1 lap below the reference's start: reachable by walking back one lap.
+    expect(gapTo(backwardsIndex, 0, 1, 20)).not.toBeNull();
+    // ~4.5 laps below it: past the extension, so an em dash rather than a guess.
+    expect(gapTo(backwardsIndex, 0, 1, 90)).toBeNull();
   });
 
-  it("survives a stationary stretch inside a moving path", () => {
-    // Duplicate fixes are ordinary in real data (a car held on the brakes). The
-    // zero-length segment has no direction to project onto and must not produce NaN.
-    const points: [number, number][] = [];
-    for (let k = 0; k < 60; k++) points.push([k < 30 ? k * 10 : 290, 0]);
-    const speeds = Array.from({ length: 60 }, (_, k) => (k < 30 ? 360 : 0));
-    const index = buildPathIndex(carOf(points, speeds), RATE);
-    const gap = gapTo(index, 100, 0, 2);
-    expect(gap!.seconds).toBeCloseTo(1, 6);
-    expect(Number.isNaN(gap!.metres)).toBe(false);
+  it("unwraps a car crossing the start/finish line the WRONG way", () => {
+    // The reference's first and last points are the same ground, so a projection near
+    // the line can legitimately land on either end. `projectPath`'s lap counter is what
+    // turns that into a continuous progress — in BOTH directions. A car running the
+    // circuit backwards is the cleanest way to drive the decrementing branch, and it
+    // must still produce finite, continuous answers rather than a NaN or a teleport.
+    let previous: number | null = null;
+    let answered = 0;
+    for (let t = 1; t < 55; t += 0.25) {
+      const gap = gapTo(backwardsIndex, 0, 1, t);
+      if (gap === null) continue;
+      expect(Number.isFinite(gap.seconds)).toBe(true);
+      answered += 1;
+      if (previous !== null) {
+        // Whatever the answer means for a car going the wrong way, it may not jump a
+        // whole lap between ticks — that is the seam being mishandled.
+        expect(Math.abs(gap.seconds - previous)).toBeLessThan(LAP_SECONDS / 2);
+      }
+      previous = gap.seconds;
+    }
+    expect(answered).toBeGreaterThan(0);
+  });
+});
+
+describe("a gap is a pure function of the replay, the pair and the clock", () => {
+  const index = buildProgressIndex(replayOf(ring(3), ring(3, 20)));
+
+  it("gives bit-identical answers arriving at a clock backwards or forwards", () => {
+    // The executable form of "there is no accumulator". Slice 9d's spec called the
+    // backwards seek the case where cumulative and recomputable part company; nothing
+    // here is cumulative at query time, so they cannot.
+    const forwards: number[] = [];
+    for (let t = 0; t <= 50; t += 0.5)
+      forwards.push(gapTo(index, 0, 1, t)!.seconds);
+
+    const backwards: number[] = [];
+    for (let t = 50; t >= 0; t -= 0.5)
+      backwards.push(gapTo(index, 0, 1, t)!.seconds);
+    backwards.reverse();
+
+    expect(backwards).toEqual(forwards);
+  });
+
+  it("gives the same answer after a jump as after walking there", () => {
+    const walked = gapTo(index, 0, 1, 37.25)!;
+    const jumped = gapTo(index, 0, 1, 37.25)!;
+    expect(jumped).toEqual(walked);
   });
 });
 
 describe("gaps carry no assumption about the position unit", () => {
   /**
    * The executable form of Slice 6b's rule, in Slice 8's regression-test style: X/Y
-   * arrive in an undocumented unit, so scaling every coordinate must leave both
-   * readouts untouched. Anything that hard-codes a metres-per-unit constant fails
-   * here, and it fails loudly rather than by being 10× wrong on a real circuit.
+   * arrive in an undocumented unit, so scaling every coordinate must leave every readout
+   * untouched. Anything that hard-codes a metres-per-unit constant fails here, and it
+   * fails loudly rather than by being 10× wrong on a real circuit.
    */
   it("gives identical seconds, metres and residual at 10x the position scale", () => {
-    const one = buildPathIndex(circuit(3), RATE);
-    const ten = buildPathIndex(circuit(3, 10), RATE);
+    const one = buildProgressIndex(replayOf(ring(3), ring(3, 20)));
+    const ten = buildProgressIndex(replayOf(ring(3, 0, 10), ring(3, 20, 10)));
 
     for (const now of [22, 30, 41.5]) {
-      const a = gapTo(one, one.xs[300], one.ys[300], now)!;
-      const b = gapTo(ten, ten.xs[300], ten.ys[300], now)!;
-      expect(b.seconds).toBeCloseTo(a.seconds, 10);
-      expect(b.metres).toBeCloseTo(a.metres, 8);
-      expect(b.residualM).toBeCloseTo(a.residualM, 8);
+      const a = gapTo(one, 0, 1, now)!;
+      const b = gapTo(ten, 0, 1, now)!;
+      expect(b.seconds).toBeCloseTo(a.seconds, 8);
+      expect(b.metres).toBeCloseTo(a.metres, 6);
+      expect(b.residualM).toBeCloseTo(a.residualM, 6);
+      expect(b.lapsDown).toBe(a.lapsDown);
     }
-    expect(ten.lapPeriod).toBeCloseTo(one.lapPeriod, 10);
     // The bridge itself DOES scale — that is what absorbs the unit.
-    expect(ten.unitsPerMetre).toBeCloseTo(10 * one.unitsPerMetre, 6);
+    expect(ten.unitsPerMetre).toBeCloseTo(10 * one.unitsPerMetre, 4);
+    expect(ten.lapUnits).toBeCloseTo(10 * one.lapUnits, 3);
   });
 
   it("gives identical answers whichever end of the grid the query lands on", () => {
-    const index = buildPathIndex(straight(), RATE);
-    // The last sample: the travel lookup has to clamp rather than read past the end.
-    const last = gapTo(index, 990, 0, 9.9);
-    expect(last!.seconds).toBeCloseTo(0, 10);
-    expect(gapTo(index, 0, 0, 0)!.seconds).toBeCloseTo(0, 10);
+    const index = buildProgressIndex(replayOf(ring(3), ring(3, 20)));
+    expect(gapTo(index, 0, 1, 0)!.seconds).toBeCloseTo(-2, 4);
+    expect(gapTo(index, 0, 1, 59.9)!.seconds).toBeCloseTo(-2, 4);
   });
 });
