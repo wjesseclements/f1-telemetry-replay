@@ -1345,7 +1345,7 @@ nicety.
   whose team colour cannot be confused with the new fallback — **not VER**, whose blue
   is what made the original bug invisible.
 
-### [ ] Slice 12 — Measure the 20-car frame budget
+### [x] Slice 12 — Measure the 20-car frame budget — **answered at 19 cars**
 
 **Filed by Slice 9 rather than claimed by it.** PRD/PLAN's bar is **≥50fps with 20 cars
 on a mid-tier laptop**; Slice 9 shipped the presentation with three and measured 120fps
@@ -1370,6 +1370,202 @@ is open.
   ≥5 s of playback. Record frames/seconds, not a smoothed figure.
 - Backlog's "WebGL/3D escalation **only** if measured 20-car perf demands it" is
   downstream of this measurement — it is the thing that would authorise it.
+
+- **Taken out of order, ahead of 9c/9d/9e, and that is the point.** This is a BASELINE:
+  9c adds comet buckets and 9e adds a scrolling trace, both specified as bounded, and
+  re-running the same instrument after them is what turns "bounded" into a before/after
+  rather than a claim. Measuring afterwards would leave nothing to compare against.
+
+- **Amendment (this slice) — the verdict is 19 cars, not 20, and it is written that way
+  everywhere.** `monza_full_field.json` (the human's disk, gitignored) holds **19** cars,
+  not 20: it is 2024 Monza R over VER laps 20-22 and the twentieth seat DNF'd out of the
+  window. The bar as written therefore cannot be met by measurement on this file, and
+  **"20-car bar met" is not claimed anywhere in this entry.** What is established instead
+  is 19 measured cars plus a marginal cost for the twentieth that is bounded rather than
+  assumed — see the exact-linearity result below, which is what licenses the bound.
+
+- **Amendment (this slice) — the instrument is committed, as `docs/perf/fps-probe.js`.**
+  The only code this slice ships. Argued rather than defaulted:
+  - **Not in `app/`.** It can never run in CI — it needs a visible browser tab and a
+    gitignored multi-megabyte data file — so it must not sit anywhere `npm run check`,
+    `eslint .` or `format:check` would adopt it and then have to be told to skip it.
+    `docs/` is outside all three, and the probe touches no app symbol, so it cannot rot
+    from code drift either.
+  - **Not the scratchpad, which is the actual change of practice.** Slices 9b and 10 both
+    left their draw-call harness uncommitted and recorded only its parameters, and **9c's
+    spec now has to rebuild that harness from prose** — the re-derivation this slice
+    exists to remove. The subset-derivation snippet is in its header for the same reason.
+  - It carries its own procedure, and its own **limits**, in the header: what each metric
+    excludes is written next to the metric, not left for a reader to infer.
+
+- **Amendment (this slice) — the approved instrument was HALF-BLIND, and re-designing it
+  mid-slice is what produced the linearity result.** The plan fitted the car-count slope
+  on callback time. Run, that turned out to be under **1 ms of an 8.3 ms budget**, i.e.
+  inside `performance.now()`'s 100 µs quantisation, and the resulting curve is
+  **sub-linear with ±0.07 ms residuals on a 0.8 ms signal** — a fit too soft to exclude
+  anything, and reporting a slope from it would have been reporting noise.
+  - So the instrument gained `countDraws()`: exact integer counts of the
+    `CanvasRenderingContext2D` calls `drawFrame` makes, per frame. Draw calls have no
+    measurement floor, and an O(N²) term in the render path lands in them immediately.
+  - The result is not approximately linear, it is **exactly** linear (below). The timing
+    was never going to show that at this scale, and a two-point fps check — the shape the
+    spec started from — could not have shown it at all.
+- **Amendment (this slice) — `countDraws` also settles the ordering assumption the
+  timing rests on.** `performance.now() − rafTimestamp` is only the app's cost if the
+  app's callback ran first in that frame. `drawFrame` calls `clearRect` first, so the
+  patch timestamps it: the probe's callback started **0.2–0.3 ms after** the app's on
+  every frame of every run, never before. Measured, not argued from registration order.
+
+- **Amendment (this slice) — the load probe's first version measured the idle gap and
+  reported it as the load.** Found by disbelieving the number, which is the only reason
+  it was found: a 3.5 MB file "loaded in 35 ms" — about four frames. `ReplayFilePicker`'s
+  handler is **async** (`await loadReplayFile(file)` → `file.text()`), so the frames
+  straight after `change` are idle and a quiet-frame detector resolves in the gap
+  **before** the parse starts. Fixed by waiting for the picker to report the new filename
+  first. The corrected figures are ~5.4 ms/MB and are independently corroborated: at
+  19 cars the browser's own `longtask` observer reports a **53 ms** task against a
+  measured `changeToLoadedMs` of **53.8 ms**, two instruments agreeing.
+
+- **Amendment (this slice) — the cost prediction in this entry was written before Slice
+  9b and was wrong about the mechanism.** Corrected rather than left to mislead the next
+  reader: the full-field file is `loop: "open"`, so the focused car's painter is
+  `CometPainter`, **not** `TrailPainter` — there is no retained trail and no appended
+  segment. And `TAIL_SECONDS` moved 1.5 → 0.5 on 2026-08-05, so an unfocused tail spans
+  5 segments, not 15. The prediction's stroke arithmetic survives (bands, not segments,
+  set the stroke count); its `lineTo` count was ~3× too high. Measured structure below.
+
+- **Verified (2026-08-05), `vite preview` on the production build, visible tab, 120 Hz
+  display, canvas 1176×657 CSS px at dpr 2. Every run is 600 frames, unsmoothed.**
+
+  **The verdict.** **19 real cars sustain 120 fps** — the display's full refresh rate,
+  **0 frames over 20 ms and 0 over 33 ms** in 600 — **against the ≥50fps bar**. The
+  20th car's marginal cost is bounded by **exactly 28 draw calls per car**, measured, so
+  the twentieth adds **+4.1%** to the frame's canvas work (680 → 708 calls). **The file
+  holds 19 because the 20th seat DNF'd out of the window; the 20-car bar is not claimed.**
+
+  | cars | speed | fps | int p50 | int p95 | int p99 | cb mean | cb p95 | cb p99 | >20ms |
+  |---|---|---|---|---|---|---|---|---|---|
+  | 1 | 1× | 120 | 8.3 | 9.2 | 9.3 | 0.670 | 1.3 | 1.5 | 0 |
+  | 1 | 4× | 120 | 8.3 | 9.3 | 9.4 | 0.671 | 1.4 | 1.6 | 0 |
+  | 3 | 1× | 120 | 8.3 | 9.2 | 9.4 | 0.718 | 1.4 | 1.8 | 0 |
+  | 3 | 4× | 120 | 8.3 | 9.2 | 9.3 | 0.693 | 1.4 | 1.8 | 0 |
+  | 7 | 1× | 120 | 8.3 | 9.1 | 9.3 | 0.872 | 1.7 | 2.1 | 0 |
+  | 7 | 4× | 120 | 8.3 | 9.3 | 9.4 | 0.870 | 1.8 | 2.4 | 0 |
+  | 13 | 1× | 120 | 8.3 | 9.2 | 9.3 | 0.956 | 2.0 | 2.3 | 0 |
+  | 13 | 4× | 120 | 8.3 | 9.0 | 9.3 | 0.938 | 2.1 | 2.7 | 0 |
+  | **19** | **1×** | **120** | 8.3 | 9.3 | 9.4 | **0.967** | 2.1 | 2.5 | **0** |
+  | **19** | **4×** | **120** | 8.3 | 9.1 | 9.3 | **0.961** | 2.2 | 2.7 | **0** |
+
+  Times in ms. `int` = rAF interval; `cb` = the app's per-frame callback, `drawFrame`
+  plus the `telemetry.publish` that synchronously renders the HUD.
+
+  - **fps is CLAMPED and says so.** 120 is the display, not a ceiling the app found:
+    `int p50` is 8.3 ms at every car count, and even `int p99` (9.4 ms) is 106 fps. This
+    is why the linearity check is not run on fps — both ends of the sweep sit on the
+    same ceiling. It is still the metric the ≥50fps bar is written against, and it clears
+    it by **2.4×** with no dropped frames.
+
+- **The car-count sweep varied car count and NOTHING else**, and the derivation is
+  checked rather than asserted. Subsets `cars[:N]` are sliced off the one full-field
+  file, so every point shares a window, a duration and `cars[0]` — hence the same ribbon,
+  bounds, fit and corner chrome. The **N=19 subset is md5-identical** to
+  `monza_full_field.json` (`95bad63f…`) and the **N=3 subset structurally equal** to the
+  shipped `monza_race.json`. The series is the real files with cars removed.
+  - The 3-car point deliberately is NOT `monza_endgame.json`, which would have confounded
+    car count with window length. That file is used as a separate control instead.
+
+- **PER-FRAME CANVAS WORK IS EXACTLY LINEAR IN CARS — `total = 148 + 28·N`, residuals at
+  floating-point zero.** This is the result the slice exists for.
+
+  | cars | total | beginPath | moveTo | lineTo | arc | stroke | fill | fillText |
+  |---|---|---|---|---|---|---|---|---|
+  | 1 | 176 | 34 | 34 | 34 | 13 | 34 | 13 | 12 |
+  | 3 | 232 | 48 | 44 | 48 | 17 | 44 | 17 | 12 |
+  | 7 | 344 | 76 | 64 | 76 | 25 | 64 | 25 | 12 |
+  | 13 | 512 | 118 | 94 | 118 | 37 | 94 | 37 | 12 |
+  | 19 | 680 | 160 | 124 | 160 | 49 | 124 | 49 | 12 |
+
+  Successive per-car slopes are **28.0, 28.0, 28.0, 28.0** — not a fit, the same integer
+  four times. **There is no O(N²) term anywhere on the frame path**, so the hypothesis
+  this measurement was designed to expose is refuted rather than assumed away.
+  - **Every column matches the code, which is what makes it a confirmed model rather
+    than a curve.** Per added (unfocused) car: `TailPainter` = 4 `beginPath` + 4 `moveTo`
+    + 6 `lineTo` + 4 `stroke` = 18, and `drawUnfocusedCar` = 3 `beginPath` + 2 `arc` +
+    2 `fill` + 1 `moveTo` + 1 `lineTo` + 1 `stroke` = 10. **18 + 10 = 28**, and the
+    per-column slopes (7, 5, 7, 2, 5, 2, 0) are each exactly what those two functions
+    add. `fillText` is flat at 12 — 11 corner numbers and `S/F`, which no car touches.
+  - The constant 148 is the chrome plus the focused car: ribbon, 11 corner badges, S/F,
+    the focused marker, and the comet's ~58 calls.
+  - **Extrapolating the 20th car is therefore arithmetic, not optimism:** +28 calls,
+    680 → 708, +4.1%, and the same +28 for the 21st.
+
+- **Callback time is SUB-linear, and the honest reading is that it is near the floor.**
+  Slope 0.0171 ms/car with residuals of ±0.063 ms on a ~0.8 ms signal, and successive
+  per-car slopes **declining** (0.024 → 0.039 → 0.014 → 0.002). Recorded as a bound, not
+  a law: the timing never rises faster than the exactly-linear draw-call count, and at
+  these magnitudes the fixed per-frame costs dominate. **The linearity claim rests on the
+  draw calls; the timing only has to not contradict it, and it does not.**
+
+- **HEADROOM, which is the number that transfers off this machine.** At 19 cars the app
+  uses **0.967 ms of the 8.33 ms** frame budget — **11.6%**. Against the bar's 20 ms
+  budget it is **4.8%**, so hardware **~20× slower** than this one would still hold
+  50 fps on the main thread. Stated with its limit: callback cost excludes GPU paint and
+  composite, so that multiple bounds the main-thread side only, and this is a 120 Hz
+  machine that is better than the bar's "mid-tier laptop".
+
+- **Playback rate is free, as predicted, and the prediction was falsifiable.** In an open
+  window the comet and the tails span a fixed number of SAMPLES, so 4× should cost the
+  same per frame as 1×. Measured difference in callback mean across all five car counts:
+  **+0.001, −0.025, −0.002, −0.018, −0.006 ms** — zero within noise, at every N.
+
+- **Slice 9b's "cost is independent of window length" is now MEASURED.**
+  `monza_endgame.json` (3 cars, 5792 samples, **2.22×** the sweep's window) draws
+  **exactly 232 calls per frame, method for method identical** to the 3-car point of the
+  sweep — 48/44/48/17/44/17/12. 120 fps, callback mean 0.778 ms (1×) / 0.747 ms (4×).
+
+- **Load cost, ~5.4 ms/MB, and it is not the bottleneck anyone feared.** Slice 12's spec
+  worried about "~11 MB through a file picker" and suggested a shorter window; measured,
+  the 9.99 MB 19-car file parses, validates through the full Zod schema and commits in
+  **54 ms**, settling at 92 ms. No shorter window is needed.
+
+  | file | MB | cars | change→loaded | →main thread quiet | longtask |
+  |---|---|---|---|---|---|
+  | field_01 | 0.53 | 1 | 9.8 ms | 26.4 | — |
+  | field_03 | 1.58 | 3 | 26.6 ms | 43.4 | — |
+  | field_07 | 3.68 | 7 | 33.0 ms | 49.7 | — |
+  | field_13 | 6.83 | 13 | 44.5 ms | 61.2 | — |
+  | **field_19** | **9.99** | **19** | **53.8 ms** | 78.8 | **53 ms** |
+
+  A later reload of the same 19-car file read 66.9 ms / 91.9 ms with a 67 ms longtask, so
+  treat this as ~55-70 ms rather than a single figure.
+
+- **NO FIXES SHIPPED, and none are indicated.** The spec's two named suspects were the 19
+  shadow-blurred markers and the tail stroke count, with `TAIL_BANDS` as the dial. Neither
+  is touched: only the focused car has a glow (`drawUnfocusedCar` sets no `shadowBlur`,
+  visible in the call counts), and at 4.8% of the bar's budget there is nothing to tune.
+  **`TAIL_BANDS` stays at 4.** Backlog's WebGL/3D escalation is **NOT authorised** — this
+  measurement is the thing that would have authorised it, and it declines to.
+
+- **What 9c and 9e inherit as their before/after.** Re-run
+  `docs/perf/fps-probe.js` unchanged and compare against **19 cars: 680 calls/frame,
+  148 + 28·N, callback mean 0.967 ms, 120 fps, 0 frames > 20 ms**.
+  - **9c** re-buckets the comet from 9 to ~32. The comet is inside the constant term
+    (~58 calls), not the per-car slope, and 9c's own spec argues its stroke bound is
+    the segment count (≤21) either way — so `total` should move by a **single-digit
+    constant** and `28·N` must not move at all. If the per-car slope moves, 9c has
+    touched the tails.
+  - **9e** replaces the whole-window sparkline with a bounded scrolling trace. That is
+    HUD work inside `telemetry.publish` at ≤30 Hz, so it lands in **callback p95/p99**
+    (2.1 / 2.5 ms today) and in **no canvas call count** — the trace is its own element.
+    Its "bounded cost, independent of window length" claim is testable exactly as 9b's
+    was above: compare the 3-car sweep point against `monza_endgame.json`.
+
+- **Noted, out of scope, and visible in this slice's own evidence:** the 19-car
+  screenshot shows the tower reading RIC −40.159 / COL −35.270 / HUL −33.342 above a
+  focused VER, with LEC, NOR and PIA on em dashes. That is **Slice 9d's wrap defect**,
+  filed and unfixed, caught here incidentally rather than re-diagnosed. It costs the
+  frame path nothing and does not affect any number above.
+  Screenshot: `docs/screenshots/slice-12-full-field-19-cars.jpg`.
 
 ## Backlog (ideas — not committed)
 - WebGL/3D escalation **only** if measured 20-car perf demands it (documented path).
