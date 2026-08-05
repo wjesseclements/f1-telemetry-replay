@@ -1025,6 +1025,60 @@ dots on a wall of colour.
     `TAIL_BANDS` and is value-independent, so the constant could have drifted to any
     value in silence.
 
+### [ ] Slice 9c — Raise the comet's colour resolution
+
+**Found in the Slice 10 verification pass (screenshot on record, Turn 4 braking zone,
+`monza_endgame.json`).** The comet's 9-bucket thermal quantisation reads as visible
+**stripes** at comet scale.
+
+- **Nothing is behaving incorrectly — the constant is being read at a scale it was not
+  chosen for.** `SPEED_BUCKETS = 9` was tuned for the full-circuit trail, where a
+  bucket boundary falls somewhere along a lap of track and reads as *texture*. The
+  comet is **short, focal, and adjacent to a glowing marker**, so the same nine steps
+  land within a couple of centimetres of each other in the one place the eye is
+  already looking. A braking zone sweeps the whole ramp in ~2 s, which is exactly the
+  comet's length — so every boundary is crossed inside it, at once. This is the same
+  species of finding as 9b: a decision made for a one-lap, whole-circuit view
+  inherited by something with different dimensions.
+- **Scope — the BATCHING KEY only, not the ramp.** `speedColor` and `THERMAL` do not
+  change; the comet gets a finer quantisation of the same continuous ramp (**~32
+  buckets**), and the circuit trail stays at **9**. The ramp is already continuous —
+  only the sampling of it is coarse.
+  - `paths.ts` currently builds one `Uint8Array` of bucket indices per car, shared by
+    `TrailPainter` and `CometPainter`. A second, finer key array is the honest cost:
+    one extra byte per sample per car (≈50 KB for 19 cars over a 3-lap window), built
+    once at measure time, never per frame.
+  - `BUCKET_COLORS` is resolved at module load; 32 strings instead of 9 is still free.
+    `CometPainter`'s `present` array widens with it.
+- **The bounded-strokes architecture stays intact, and the bound gets TIGHTER, not
+  looser.** `CometPainter` already skips buckets not present in a band, so the real
+  bound was never `bands × buckets` — it is the number of distinct (band, bucket)
+  pairs actually present, which cannot exceed the segment count. At `COMET_SECONDS = 2`
+  on a 10 Hz grid the comet is **20 segments**, so **strokes ≤ 21** (segments + the
+  head) whether there are 9 buckets or 32. Still constant, still independent of window
+  length — which is the property 9b exists to protect.
+  - **The existing bound test asserts `≤ COMET_BANDS × SPEED_BUCKETS` and would go
+    vacuous at 32** (128 ≫ 21). It must be re-pinned against the segment count, or the
+    slice quietly deletes its own guard while appearing to keep it.
+- **Also assess: do the 4 alpha bands band visibly too?** `COMET_BANDS = 4` quantises
+  the fade the same way the buckets quantise colour, over the same short focal span. If
+  it does, it warrants the same treatment and for the same reason. Decide with the
+  eyeball and record the answer either way — including "it does not", so the next
+  person does not re-open it.
+- **Verify:**
+  - **Human eyeball at the Turn 4 braking zone on the endgame file** — the acceptance.
+  - **Strokes counted**, asserted against the segment-count bound above, and constant
+    as the clock runs deep into a multi-lap window.
+  - **Closed mode untouched, proved by md5** — the v1 laps are the regression fixture.
+    Follow Slice 10's protocol, which is the ordering that makes it evidence: capture
+    the draw-call sequence on unmodified code **before** touching a file, then
+    re-capture through the identical harness. The harness is not committed; Slice 10's
+    entry records the parameters (701 frames at 100 ms over the 58.5 s fixture).
+  - `npm run check` green with 0 warnings; engine coverage unmoved at 100%.
+- **Out of scope:** `THERMAL`'s stops or the ramp itself; `SPEED_BUCKETS` for the
+  circuit trail; the speed legend (it generates its gradient from `THERMAL`, so it is
+  already continuous and unaffected); the unfocused tails, which are single-colour.
+
 ### [ ] Slice 9d — Unwrap the gap so the running order survives a full field
 
 **Found in the human's first full-field load (2026-08-05): 19 cars, Monza R, laps
