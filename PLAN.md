@@ -1262,6 +1262,19 @@ the other standing.
     The tower reads VER −52.684 … COL −3.614 above a focused HUL, ZHO +4.533 below —
     monotone, correctly signed, no strobing.
     Screenshots: `docs/screenshots/slice-9d-tower-focus-{ver,backmarker}.jpg`.
+  - **The lapped-car display was SEEN, on a file built to contain one.** No real file
+    has a lapped car, so one was made the only way the ruling permits — a car that loses
+    the lap *inside* the window (the real 3-car window with NOR replaying VER's own line
+    at 0.6×, so the geometry stays real and only the pace is synthetic). At 4:10.000 the
+    tower reads **`LAP +1 LAP 6829 m`** below LEC; focus that car and the two ahead read
+    **`LEC −1 LAP`** and **`VER −1 LAP`**. Both signs, on screen, through the shipped
+    module. Screenshot: `docs/screenshots/slice-9d-lapped-car.jpg`.
+  - **A reciprocal pair is NOT symmetric when the pace differs, and that is the
+    definition rather than a defect.** On that file at t = 180 s, VER→LAP reads +72.0 s
+    while LAP→VER reads −63.2 s. Each is measured at the QUERIED car's current point, so
+    they cover different ground at different speeds; with a 40 % pace difference the two
+    magnitudes diverge visibly. It is the same asymmetry that made the approved
+    `C`-future fallback wrong, observed from the other side.
   - **Acceptance (b), `fps-probe.js` per the Slice 12 protocol — no regression, and the
     frame got cheaper:**
 
