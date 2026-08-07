@@ -6,6 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  formatGap,
   NO_VALUE,
   formatGapMetres,
   formatGapSeconds,
@@ -104,5 +105,32 @@ describe("formatGapMetres", () => {
   it("renders an unknown gap as an em dash", () => {
     expect(formatGapMetres(null)).toBe(NO_VALUE);
     expect(formatGapMetres(NaN)).toBe(NO_VALUE);
+  });
+});
+
+describe("formatGap — seconds, or laps once there are any", () => {
+  it("shows seconds while the cars are on the same lap", () => {
+    expect(formatGap(1.234, 0)).toBe("+1.234");
+    expect(formatGap(-1.234, 0)).toBe("-1.234");
+  });
+
+  it("shows a car a lap behind as +1 LAP", () => {
+    expect(formatGap(95.5, 1)).toBe("+1 LAP");
+  });
+
+  it("shows a car a lap AHEAD as -1 LAP, which is not a hypothetical", () => {
+    // Focusing a backmarker is the configuration Slice 9d's strobe was measured in, and
+    // its leaders are a lap up. A `+`-only implementation renders this as nonsense.
+    expect(formatGap(-95.5, -1)).toBe("-1 LAP");
+  });
+
+  it("pluralises past one, in both directions", () => {
+    expect(formatGap(191, 2)).toBe("+2 LAPS");
+    expect(formatGap(-191, -2)).toBe("-2 LAPS");
+  });
+
+  it("keeps the em dash for a gap with no answer, whatever the lap count says", () => {
+    expect(formatGap(null, 0)).toBe(NO_VALUE);
+    expect(formatGap(null, 1)).toBe(NO_VALUE);
   });
 });

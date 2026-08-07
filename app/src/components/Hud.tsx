@@ -29,7 +29,7 @@
  * per focus change and free otherwise.
  */
 import { useMemo, useState } from "react";
-import { buildPathIndex, gapTo, type Gap } from "../engine/gaps";
+import { buildProgressIndex, gapTo, type Gap } from "../engine/gaps";
 import { orderByGap, sameOrder } from "../engine/runningOrder";
 import type { Replay } from "../engine/schema";
 import { useTransport } from "../store/transport";
@@ -48,18 +48,19 @@ export interface HudProps {
  * A real value rather than a special case, so it sorts into the running order at the
  * right place with nothing branching on "is this the focused one".
  */
-const SELF: Gap = { seconds: 0, metres: 0, residualM: 0 };
+const SELF: Gap = { seconds: 0, metres: 0, residualM: 0, lapsDown: 0 };
 
 export function Hud({ replay }: HudProps) {
   const { clock, cars } = useTelemetry();
   const focusedCarIndex = useTransport((s) => s.focusedCarIndex);
   const setFocusedCarIndex = useTransport((s) => s.setFocusedCarIndex);
 
-  const pathIndex = useMemo(
-    () =>
-      buildPathIndex(replay.cars[focusedCarIndex], replay.meta.sampleRateHz),
-    [replay, focusedCarIndex],
-  );
+  /**
+   * Keyed on the REPLAY alone — every car's progress around one shared circuit does not
+   * depend on which car is focused (Slice 9d). Slice 9 rebuilt a per-focus index here
+   * and paid a measured 1.38 ms on every focus change, nineteen times to cycle a field.
+   */
+  const progress = useMemo(() => buildProgressIndex(replay), [replay]);
 
   /**
    * The published frame, unless it describes a different replay.
@@ -78,10 +79,8 @@ export function Hud({ replay }: HudProps) {
   const snapshots =
     cars.length === replay.cars.length ? cars : EMPTY_FRAME.cars;
 
-  const gaps = snapshots.map((snapshot, i) =>
-    i === focusedCarIndex
-      ? SELF
-      : gapTo(pathIndex, snapshot.x, snapshot.y, clock),
+  const gaps = snapshots.map((_, i) =>
+    i === focusedCarIndex ? SELF : gapTo(progress, focusedCarIndex, i, clock),
   );
 
   /**

@@ -43,8 +43,8 @@
  */
 import { carHasDrs, isDrsOpen } from "../engine/drs";
 import {
+  formatGap,
   formatGapMetres,
-  formatGapSeconds,
   formatGear,
   formatSpeed,
   pedalFraction,
@@ -114,7 +114,10 @@ export function CarEntry({
         ) : (
           <span className="ml-auto flex items-baseline gap-2">
             <span className="font-mono text-sm font-bold tabular-nums text-txt">
-              {formatGapSeconds(gap === null ? null : gap.seconds)}
+              {formatGap(
+                gap === null ? null : gap.seconds,
+                gap === null ? 0 : gap.lapsDown,
+              )}
             </span>
             <span className="w-11 text-right font-mono text-[10px] tabular-nums text-dim">
               {formatGapMetres(gap === null ? null : gap.metres)}
