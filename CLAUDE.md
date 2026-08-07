@@ -35,6 +35,13 @@ from FastF1 data. PRD.md holds the detail; this file holds the law.
   be: it needs a real browser and a gitignored replay file. Its header carries the
   procedure and each metric's limits; Slice 12's PLAN entry carries the baseline to
   compare a re-run against.
+- Prove a render change left a mode untouched: `cd app && npx vite-node
+  ../docs/perf/drawcall-capture.mjs closed` (and `open`) — an md5 over every canvas call
+  of a fixed 701-frame run on the committed fixture. **Capture BEFORE touching a file,
+  then re-capture after**; that ordering is what makes it evidence. Add
+  `auto <file> <cars>` for the per-frame draw-call structure of a real multi-car file,
+  which is the half of a frame-budget check that needs no browser. Like `fps-probe.js`
+  it lives outside `app/` so no gate adopts it.
 
 ## Architecture rules (non-negotiable — see PRD §Load-bearing decisions)
 

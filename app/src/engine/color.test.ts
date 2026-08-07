@@ -1,8 +1,11 @@
 /**
- * Colour tests — the thermal ramp and the trail's bucketing.
+ * Colour tests — the thermal ramp, and the two resolutions the wakes sample it at.
  *
  * The stop values are the contract with the prototype's look; asserting them exactly
  * is the point. Midpoints are hand-computed from the two bracketing stops.
+ *
+ * Since Slice 9c the bucketing is parameterised by a count, so the bucketing suites run
+ * over BOTH resolutions rather than over the trail's — see `RESOLUTIONS`.
  */
 import { describe, it, expect } from "vitest";
 import sampleLap from "./__fixtures__/sample-lap.json";
@@ -10,6 +13,7 @@ import { parseReplay } from "./load";
 import {
   BUCKET_MAX_KMH,
   BUCKET_MIN_KMH,
+  COMET_BUCKETS,
   SPEED_BUCKETS,
   THERMAL,
   bucketColor,
@@ -105,59 +109,120 @@ describe("speedColor", () => {
   });
 });
 
-describe("bucketOf", () => {
+/**
+ * Both resolutions, run through the same assertions.
+ *
+ * The trail samples the ramp at `SPEED_BUCKETS` and the comet at `COMET_BUCKETS`
+ * (Slice 9c), and the one failure mode worth designing against is two palettes that can
+ * drift apart. Parameterising the tests by the count is the executable form of "one
+ * definition of speed→colour": if a resolution ever stopped being the same ramp, it
+ * would fail here rather than look slightly wrong on a canvas nobody is diffing.
+ */
+const RESOLUTIONS: readonly [string, number][] = [
+  ["SPEED_BUCKETS (trail)", SPEED_BUCKETS],
+  ["COMET_BUCKETS (comet)", COMET_BUCKETS],
+];
+
+describe.each(RESOLUTIONS)("bucketOf at %s", (_label, buckets) => {
   it("clamps below and above the bucket domain", () => {
-    expect(bucketOf(BUCKET_MIN_KMH - 100)).toBe(0);
-    expect(bucketOf(BUCKET_MIN_KMH)).toBe(0);
-    expect(bucketOf(BUCKET_MAX_KMH)).toBe(SPEED_BUCKETS - 1);
-    expect(bucketOf(BUCKET_MAX_KMH + 100)).toBe(SPEED_BUCKETS - 1);
+    expect(bucketOf(BUCKET_MIN_KMH - 100, buckets)).toBe(0);
+    expect(bucketOf(BUCKET_MIN_KMH, buckets)).toBe(0);
+    expect(bucketOf(BUCKET_MAX_KMH, buckets)).toBe(buckets - 1);
+    expect(bucketOf(BUCKET_MAX_KMH + 100, buckets)).toBe(buckets - 1);
   });
 
   it("partitions the domain into contiguous, non-decreasing buckets", () => {
-    const width = (BUCKET_MAX_KMH - BUCKET_MIN_KMH) / SPEED_BUCKETS;
+    const width = (BUCKET_MAX_KMH - BUCKET_MIN_KMH) / buckets;
     let previous = 0;
-    for (let b = 0; b < SPEED_BUCKETS; b++) {
+    for (let b = 0; b < buckets; b++) {
       const mid = BUCKET_MIN_KMH + (b + 0.5) * width;
-      expect(bucketOf(mid), `midpoint of bucket ${b}`).toBe(b);
-      expect(bucketOf(mid)).toBeGreaterThanOrEqual(previous);
-      previous = bucketOf(mid);
+      expect(bucketOf(mid, buckets), `midpoint of bucket ${b}`).toBe(b);
+      expect(bucketOf(mid, buckets)).toBeGreaterThanOrEqual(previous);
+      previous = bucketOf(mid, buckets);
     }
   });
 
   it("steps up exactly at a bucket boundary", () => {
-    const width = (BUCKET_MAX_KMH - BUCKET_MIN_KMH) / SPEED_BUCKETS;
+    const width = (BUCKET_MAX_KMH - BUCKET_MIN_KMH) / buckets;
     const boundary = BUCKET_MIN_KMH + width * 3;
-    expect(bucketOf(boundary - 0.001)).toBe(2);
-    expect(bucketOf(boundary)).toBe(3);
+    expect(bucketOf(boundary - 0.001, buckets)).toBe(2);
+    expect(bucketOf(boundary, buckets)).toBe(3);
   });
 
   it("returns a valid index for every fixture speed", () => {
     for (const s of parseReplay(sampleLap).cars[0].samples) {
-      const b = bucketOf(s.speed);
+      const b = bucketOf(s.speed, buckets);
       expect(Number.isInteger(b)).toBe(true);
       expect(b).toBeGreaterThanOrEqual(0);
-      expect(b).toBeLessThan(SPEED_BUCKETS);
+      expect(b).toBeLessThan(buckets);
     }
   });
 });
 
-describe("bucketColor", () => {
+describe.each(RESOLUTIONS)("bucketColor at %s", (_label, buckets) => {
   it("is the ramp colour at the bucket's midpoint", () => {
-    const width = (BUCKET_MAX_KMH - BUCKET_MIN_KMH) / SPEED_BUCKETS;
-    for (let b = 0; b < SPEED_BUCKETS; b++) {
-      expect(bucketColor(b), `bucket ${b}`).toBe(
+    const width = (BUCKET_MAX_KMH - BUCKET_MIN_KMH) / buckets;
+    for (let b = 0; b < buckets; b++) {
+      expect(bucketColor(b, buckets), `bucket ${b}`).toBe(
         speedColor(BUCKET_MIN_KMH + (b + 0.5) * width),
       );
     }
   });
 
-  it("gives every bucket a distinct colour — the trail actually reads as a gradient", () => {
+  it("gives every bucket a distinct colour — the wake reads as a gradient", () => {
     const colors = new Set(
-      Array.from({ length: SPEED_BUCKETS }, (_, b) => bucketColor(b)),
+      Array.from({ length: buckets }, (_, b) => bucketColor(b, buckets)),
     );
-    expect(colors.size).toBe(SPEED_BUCKETS);
+    expect(colors.size).toBe(buckets);
   });
 });
+
+describe("the two resolutions are one ramp, not two palettes", () => {
+  it("is finer, not different: every comet colour is a THERMAL colour", () => {
+    // The comet's colours must be points ON the ramp the trail samples, not a second
+    // set of stops. Both come from `speedColor`, so this holds by construction — and
+    // asserting it is what would catch anyone reintroducing a hard-coded table.
+    for (let b = 0; b < COMET_BUCKETS; b++) {
+      const width = (BUCKET_MAX_KMH - BUCKET_MIN_KMH) / COMET_BUCKETS;
+      const mid = BUCKET_MIN_KMH + (b + 0.5) * width;
+      expect(bucketColor(b, COMET_BUCKETS)).toBe(speedColor(mid));
+    }
+  });
+
+  it("agrees with the trail everywhere, to half a band each side", () => {
+    // The strong form of "no drift": at any speed the two resolutions land on nearby
+    // points of the SAME ramp. Both midpoints are within half their own band of the
+    // speed itself, so they cannot be further apart than half of each — that sum is
+    // the exact bound, not a tolerance chosen to pass. A palette that diverged would
+    // break it immediately.
+    const coarseWidth = (BUCKET_MAX_KMH - BUCKET_MIN_KMH) / SPEED_BUCKETS;
+    const fineWidth = (BUCKET_MAX_KMH - BUCKET_MIN_KMH) / COMET_BUCKETS;
+    for (let kmh = BUCKET_MIN_KMH; kmh <= BUCKET_MAX_KMH; kmh += 2.5) {
+      const fineMid = midpointOf(bucketOf(kmh, COMET_BUCKETS), COMET_BUCKETS);
+      const coarseMid = midpointOf(bucketOf(kmh, SPEED_BUCKETS), SPEED_BUCKETS);
+      expect(
+        Math.abs(fineMid - coarseMid),
+        `at ${kmh} km/h`,
+      ).toBeLessThanOrEqual((coarseWidth + fineWidth) / 2);
+    }
+  });
+
+  it("covers the same domain at both resolutions", () => {
+    expect(bucketOf(BUCKET_MIN_KMH, SPEED_BUCKETS)).toBe(0);
+    expect(bucketOf(BUCKET_MIN_KMH, COMET_BUCKETS)).toBe(0);
+    expect(bucketColor(0, SPEED_BUCKETS)).not.toBe(
+      bucketColor(0, COMET_BUCKETS),
+    );
+    // …but both are the ramp's cold end, not two different colds.
+    expect(speedRgb(BUCKET_MIN_KMH)).toEqual(THERMAL[0].rgb);
+  });
+});
+
+/** The speed at the centre of bucket `b` of `buckets` — the colour it is stroked in. */
+function midpointOf(b: number, buckets: number): number {
+  const width = (BUCKET_MAX_KMH - BUCKET_MIN_KMH) / buckets;
+  return BUCKET_MIN_KMH + (b + 0.5) * width;
+}
 
 describe("thermalRangeKmh", () => {
   it("is the span of the ramp, read from the stops", () => {

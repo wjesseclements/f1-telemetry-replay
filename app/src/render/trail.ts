@@ -49,7 +49,7 @@
  * property of the DATA (`meta.loop`) — never a branch on how many cars there are. A
  * one-car open window gets the comet too, and correctly so.
  */
-import { SPEED_BUCKETS, bucketColor } from "../engine/color";
+import { COMET_BUCKETS, SPEED_BUCKETS, bucketColor } from "../engine/color";
 
 /**
  * What the FOCUSED car's painter has to be able to do, whichever one it is.
@@ -72,10 +72,21 @@ export interface FocusPainter {
   ): void;
 }
 
-/** Bucket colours, resolved once at module load — never per frame, never per car. */
+/**
+ * Bucket colours, resolved once at module load — never per frame, never per car.
+ *
+ * Two tables because the trail and the comet sample the ramp at different resolutions
+ * (Slice 9c), not because there are two ramps: both come from the same `bucketColor`
+ * over the same domain, so a change to `THERMAL` moves both or neither. 41 strings at
+ * module load, once.
+ */
 const BUCKET_COLORS: readonly string[] = Array.from(
   { length: SPEED_BUCKETS },
-  (_, b) => bucketColor(b),
+  (_, b) => bucketColor(b, SPEED_BUCKETS),
+);
+const COMET_COLORS: readonly string[] = Array.from(
+  { length: COMET_BUCKETS },
+  (_, b) => bucketColor(b, COMET_BUCKETS),
 );
 
 /** Stroke width of the trail, in CSS pixels. */
@@ -331,10 +342,12 @@ export const COMET_WIDTH = TRAIL_WIDTH;
  * reversing that decision is one edit rather than a rework. Slice 9b left the choice to
  * the human's eye on a real file:
  *
- *  - `4` — the comet fades out behind the car. Costs ≤ `COMET_BANDS × SPEED_BUCKETS`
- *    strokes per frame.
- *  - `1` — one fully-opaque band: the hard-end fallback, ≤ `SPEED_BUCKETS` strokes,
- *    exactly what today's trail costs.
+ *  - `4` — the comet fades out behind the car.
+ *  - `1` — one fully-opaque band: the hard-end fallback, at the cost of the comet
+ *    ending abruptly rather than fading.
+ *
+ * Either way the stroke bound is `segments + 1` — see `CometPainter` — so this constant
+ * does not trade cost against legibility; it only decides which of the two looks right.
  *
  * `COMET_ALPHA` below is written so that the newest band is 1.0 at ANY band count, so
  * setting this to 1 yields a single opaque comet with nothing else to change.
@@ -360,8 +373,8 @@ const COMET_ALPHA: readonly number[] = Array.from(
 /**
  * The FOCUSED car's wake in an OPEN window: a bounded comet, painted by speed.
  *
- * `TailPainter`'s bounded rebuild wearing `TrailPainter`'s thermal colours — the whole
- * of Slice 9b is that composition. It exists because a covered-portion trail is defined
+ * `TailPainter`'s bounded rebuild wearing the thermal ramp — the whole of Slice 9b is
+ * that composition, at the finer `COMET_BUCKETS` sampling Slice 9c gave it. It exists because a covered-portion trail is defined
  * relative to a lap, and an open window is not a lap: `meta.duration` spans the whole
  * window, so the trail's reset never fires until the window ends and every lap in it
  * accumulates into one saturated static map. See the file header.
@@ -375,23 +388,37 @@ const COMET_ALPHA: readonly number[] = Array.from(
  *  - **Cost is independent of window length.** A 7-lap window costs exactly what a
  *    1-lap window costs, which is the property whose absence caused the defect.
  *
- * Strokes per frame are bounded by `COMET_BANDS × SPEED_BUCKETS` and are usually far
- * fewer: only buckets a band actually contains are stroked.
+ * THE STROKE BOUND, and why it is not `bands × buckets`
+ * -----------------------------------------------------
+ * A band strokes once per bucket it actually CONTAINS, never once per bucket that
+ * exists, so summed over the bands that is at most one stroke per segment plus the head:
+ *
+ *   strokes ≤ span + 1,  span = min(index, length)
+ *
+ * = **21** at `COMET_SECONDS = 2` on a 10 Hz grid. Independent of the bucket count and —
+ * the property Slice 9b exists to protect — independent of window length. Slice 9c
+ * raised the comet's resolution from 9 buckets to `COMET_BUCKETS`, and the bound did not
+ * move: `bands × buckets` (128) was never what limited it, and quoting that number after
+ * the raise would have been a guard in name only.
  */
 export class CometPainter implements FocusPainter {
   /**
    * Which buckets the band being drawn contains.
    *
    * Allocated once and refilled per band, never per frame — the point of it is to skip
-   * `beginPath`/`stroke` pairs for buckets that are not present, so the bound above is
-   * a worst case rather than a fixed cost.
+   * `beginPath`/`stroke` pairs for buckets that are not present, which is what makes the
+   * bound above one-per-segment instead of one-per-bucket. It matters more at
+   * `COMET_BUCKETS` than it did at nine: a comet on a straight touches one or two of the
+   * 32 and still costs one or two strokes.
    */
-  private readonly present = new Uint8Array(SPEED_BUCKETS);
+  private readonly present = new Uint8Array(COMET_BUCKETS);
 
   /**
    * @param screen  the same flat `[x0, y0, x1, y1, …]` every painter for this car uses.
-   * @param buckets `buckets[k]` is the speed bucket of the segment LEAVING sample k —
-   *                the same array `TrailPainter` colours itself from.
+   * @param buckets `buckets[k]` is the speed bucket of the segment LEAVING sample k, at
+   *                `COMET_BUCKETS` resolution — NOT the array `TrailPainter` colours
+   *                itself from, which is the same ramp sampled at `SPEED_BUCKETS`
+   *                (Slice 9c). `paths.ts` hands each painter its own key.
    * @param length  how many segments the comet spans (`COMET_SECONDS × sampleRateHz`),
    *                so it is a duration and looks the same at any grid rate.
    */
@@ -433,10 +460,10 @@ export class CometPainter implements FocusPainter {
       if (isNewest) this.present[this.buckets[index]] = 1;
 
       ctx.globalAlpha = COMET_ALPHA[b];
-      for (let bucket = 0; bucket < SPEED_BUCKETS; bucket++) {
+      for (let bucket = 0; bucket < COMET_BUCKETS; bucket++) {
         if (this.present[bucket] === 0) continue;
 
-        ctx.strokeStyle = BUCKET_COLORS[bucket];
+        ctx.strokeStyle = COMET_COLORS[bucket];
         ctx.beginPath();
         // One `moveTo`/`lineTo` pair per segment of this bucket: the segments a bucket
         // owns within a band are not necessarily contiguous, so this is a batch of

@@ -6,7 +6,12 @@
  * cases a lap is slow to reach (a backwards jump, and a rebuild landing mid-lap).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { SPEED_BUCKETS, bucketColor } from "../engine/color";
+import {
+  COMET_BUCKETS,
+  SPEED_BUCKETS,
+  bucketColor,
+  bucketOf,
+} from "../engine/color";
 import {
   installCanvasEnvironment,
   type DrawCall,
@@ -24,6 +29,16 @@ import {
   TailPainter,
   TrailPainter,
 } from "./trail";
+
+/**
+ * The two resolutions, spelled out at every call site.
+ *
+ * `bucketColor` takes the count because the trail and the comet sample ONE ramp at two
+ * resolutions (Slice 9c); an index means nothing without the count that produced it, so
+ * these two helpers exist to make a test that mixed them up read wrong rather than pass.
+ */
+const trailColor = (b: number): string => bucketColor(b, SPEED_BUCKETS);
+const cometColor = (b: number): string => bucketColor(b, COMET_BUCKETS);
 
 /** Six samples on a straight line at x = 0, 10, 20, …, so segments are identifiable. */
 const SCREEN = Float64Array.from([0, 0, 10, 0, 20, 0, 30, 0, 40, 0, 50, 0]);
@@ -79,8 +94,8 @@ describe("TrailPainter", () => {
     // Segments 0,1,2 → buckets 1,3,1. Bucket 1 batches two of them in one path.
     expect(painted(p)).toEqual(
       new Map([
-        [bucketColor(1), [0, 20]],
-        [bucketColor(3), [10]],
+        [trailColor(1), [0, 20]],
+        [trailColor(3), [10]],
       ]),
     );
   });
@@ -123,8 +138,8 @@ describe("TrailPainter", () => {
     // Refilled forward to exactly the new position — segments 0 and 1 only.
     expect(painted(p)).toEqual(
       new Map([
-        [bucketColor(1), [0]],
-        [bucketColor(3), [10]],
+        [trailColor(1), [0]],
+        [trailColor(3), [10]],
       ]),
     );
   });
@@ -150,7 +165,7 @@ describe("TrailPainter", () => {
     // Bucket of the segment LEAVING sample 2, not the one arriving at it.
     expect(stroke).toMatchObject({
       method: "stroke",
-      strokeStyle: bucketColor(BUCKETS[2]),
+      strokeStyle: trailColor(BUCKETS[2]),
       lineWidth: TRAIL_WIDTH,
     });
   });
@@ -319,13 +334,20 @@ describe("CometPainter", () => {
       .filter((c) => c.method === "moveTo" || c.method === "lineTo")
       .map((c) => c.args);
 
-  it("never exceeds the band x bucket bound, however deep into the window", () => {
+  it("never exceeds one stroke per segment plus the head, however deep in", () => {
     // The whole point: a 7-lap window must cost what a 1-lap window costs.
+    //
+    // The bound is the SEGMENT COUNT, not `COMET_BANDS × buckets`. Slice 9c raised the
+    // comet's resolution to 32 buckets, at which the old bound (128) is satisfied by
+    // anything at all — the guard would have survived the slice while measuring
+    // nothing. A band only strokes buckets it actually contains, so summed over the
+    // bands that is at most one stroke per segment, plus the head.
     for (const index of [0, 1, 12, 25, 39]) {
       recording.calls.length = 0;
       comet().paint(recording.ctx, index, 999, 5);
+      const span = Math.min(index, 12);
       expect(cometStrokes(recording.calls).length).toBeLessThanOrEqual(
-        COMET_BANDS * SPEED_BUCKETS,
+        span + 1,
       );
     }
   });
@@ -340,17 +362,45 @@ describe("CometPainter", () => {
     expect(cometStrokes(recording.calls).length).toBe(early);
   });
 
-  it("strokes only buckets a band actually contains, not all nine", () => {
-    // The flag array is what makes the bound a worst case rather than a fixed cost:
-    // this fixture uses three of the nine buckets.
+  it("strokes only buckets a band actually contains, not all 32", () => {
+    // The flag array is what makes the bound one-per-segment rather than one-per-bucket,
+    // and it matters more at 32 buckets than it did at nine: this fixture uses three.
     recording.calls.length = 0;
     comet().paint(recording.ctx, 25, 255, 0);
     const used = new Set(
       cometStrokes(recording.calls).map((c) => c.strokeStyle),
     );
     expect(used).toEqual(
-      new Set([bucketColor(1), bucketColor(4), bucketColor(7)]),
+      new Set([cometColor(1), cometColor(4), cometColor(7)]),
     );
+  });
+
+  /**
+   * The other side of the bound: proof the finer key actually reaches the canvas.
+   *
+   * A tighter bound alone is satisfiable by the change silently not working — a comet
+   * still quantised to nine colours passes every assertion above. So this drives a
+   * braking sweep across the whole ramp, the case Slice 9c was filed for, and asserts
+   * the comet resolves it into MORE distinct colours than the circuit trail could.
+   */
+  it("resolves a braking sweep past what the trail's nine buckets could", () => {
+    // 21 samples ramping 315 → 108 km/h, the hardest 2 s in the endgame file.
+    const speeds = Array.from({ length: 21 }, (_, k) => 315 - (207 * k) / 20);
+    const fine = Uint8Array.from(speeds, (v) => bucketOf(v, COMET_BUCKETS));
+    const coarse = new Set(speeds.map((v) => bucketOf(v, SPEED_BUCKETS)));
+
+    recording.calls.length = 0;
+    new CometPainter(LONG, fine, 20).paint(recording.ctx, 20, 205, 0);
+    const colors = new Set(
+      cometStrokes(recording.calls).map((c) => c.strokeStyle),
+    );
+
+    // Measured on the real file: 9 buckets give 8 distinct colours over this sweep,
+    // 32 give 19. The bound holds at the same time — this is not more strokes than
+    // there are segments, it is the same strokes carrying more of the ramp.
+    expect(colors.size).toBeGreaterThan(coarse.size);
+    expect(colors.size).toBeGreaterThan(SPEED_BUCKETS);
+    expect(cometStrokes(recording.calls).length).toBeLessThanOrEqual(21);
   });
 
   it("reaches back exactly `length` segments and no further", () => {
@@ -375,7 +425,7 @@ describe("CometPainter", () => {
     // The head stroke carries sample 20's bucket, exactly as `strokeHead` does.
     const strokes = cometStrokes(recording.calls);
     expect(strokes[strokes.length - 1].strokeStyle).toBe(
-      bucketColor(BUCKETS[20]),
+      cometColor(BUCKETS[20]),
     );
   });
 
@@ -387,6 +437,10 @@ describe("CometPainter", () => {
     expect(Math.max(...alphas)).toBe(1);
     expect(Math.min(...alphas)).toBeLessThan(1);
     expect(alphas).toEqual([...alphas].sort((a, b) => a - b));
+    // The fade is still quantised into BANDS, not one alpha per stroke. Worth pinning
+    // now that the colour key is fine enough for strokes to run nearly one per segment:
+    // stroke count and band count are no longer close, and could be confused.
+    expect(new Set(alphas).size).toBeLessThanOrEqual(COMET_BANDS);
   });
 
   it("leaves the context opaque for whatever is drawn next", () => {
