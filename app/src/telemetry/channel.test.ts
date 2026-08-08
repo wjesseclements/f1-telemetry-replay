@@ -141,6 +141,29 @@ describe("telemetry channel", () => {
     expect(emits).toHaveBeenCalledTimes(2);
   });
 
+  it("does NOT emit for a moved car at an unchanged clock (Slice 9e)", () => {
+    /**
+     * The `x`/`y` term's removal, pinned as behaviour rather than left in a comment.
+     *
+     * Slice 9 put rounded positions in the signature because the tower's gaps came from
+     * them; 9d moved gaps onto the replay's progress read at the CLOCK, and 9e's trace is
+     * a function of the clock and the car's static samples. Nothing the HUD draws is a
+     * function of a published coordinate any more, so a coordinate must not buy an emit.
+     *
+     * This pair CANNOT occur in production — the loop publishes `sampleAt(clock)`, so a
+     * moved car means a moved clock — which is exactly why the term cost nothing to
+     * remove and why removing it changes no real emit count.
+     */
+    const { channel, emits } = withListener();
+    channel.publish(1000, 1, [snapshot({ x: 0, y: 0 })]);
+    channel.publish(2000, 1, [snapshot({ x: 5000, y: -9000 })]);
+    expect(emits).toHaveBeenCalledTimes(1);
+
+    // The clock still moves everything, which is what the tower and the trace ride on.
+    channel.publish(3000, 1.5, [snapshot({ x: 5000, y: -9000 })]);
+    expect(emits).toHaveBeenCalledTimes(2);
+  });
+
   it("tracks every car, not just the first", () => {
     const { channel, emits } = withListener();
     channel.publish(1000, 1, [snapshot(), snapshot({ speed: 100 })]);

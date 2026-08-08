@@ -42,6 +42,11 @@ from FastF1 data. PRD.md holds the detail; this file holds the law.
   `auto <file> <cars>` for the per-frame draw-call structure of a real multi-car file,
   which is the half of a frame-budget check that needs no browser. Like `fps-probe.js`
   it lives outside `app/` so no gate adopts it.
+- Measure the **≤30 Hz HUD path**, which neither instrument above can see: `cd app &&
+  npx vite-node ../docs/perf/hud-tick.mjs public/data/<file>.json` — points and µs per
+  HUD tick, plus the per-focus-change cost, on a real file through the shipped engine.
+  The React render is NOT in it (that half is `fps-probe.js`'s callback p95/p99); its
+  header says so next to what it does measure.
 
 ## Architecture rules (non-negotiable — see PRD §Load-bearing decisions)
 

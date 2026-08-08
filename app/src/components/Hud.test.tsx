@@ -134,11 +134,67 @@ describe("Hud DRS indicator (rule 8)", () => {
 });
 
 describe("Hud speed trace", () => {
-  it("labels the trace with the focused car and its speed range", () => {
+  /** The fixture's lap repeated six times: 3510 samples, 351 s — a long open window. */
+  const longReplay: Replay = (() => {
+    const raw = JSON.parse(JSON.stringify(sampleLap));
+    const one = raw.cars[0].samples;
+    const many = Array.from({ length: 6 }, () => one)
+      .flat()
+      .map((s: { t: number }, k: number) => ({
+        ...s,
+        t: k / raw.meta.sampleRateHz,
+      }));
+    raw.cars[0].samples = many;
+    raw.meta.duration = many.length / raw.meta.sampleRateHz;
+    raw.meta.loop = "open";
+    return parseReplay(raw, "long.json");
+  })();
+
+  /** The rendered curve's points, and where the playhead line sits. */
+  function traceAt(target: Replay, clock: number) {
+    telemetry.reset();
+    telemetry.publish(1000, clock, [snapshot()]);
+    const view = render(<Hud replay={target} />);
+    const svg = screen.getByRole("img", { name: /Speed trace/ });
+    const d = svg.querySelector("path")?.getAttribute("d") ?? "";
+    const x1 = svg.querySelector("line")?.getAttribute("x1") ?? "";
+    view.unmount();
+    return { points: (d.match(/[ML]/g) ?? []).length, playheadX: x1 };
+  }
+
+  it("labels the trace with the focused car, the window and the speed range", () => {
     renderHud(replay);
     expect(
-      screen.getByRole("img", { name: /Speed trace for VER/ }),
+      screen.getByRole("img", {
+        name: /Speed trace for VER, the last 20 seconds, 157 to 338 km\/h/,
+      }),
     ).toBeInTheDocument();
+  });
+
+  it("draws a BOUNDED curve however deep into the window the clock runs", () => {
+    // The defect, at the integration level: the old trace put one point per sample of
+    // the whole replay into the DOM — 3510 of them here — so legibility died with
+    // window length. Slice 9b's bound test, one component up.
+    const early = traceAt(longReplay, 60);
+    const deep = traceAt(longReplay, 340);
+    expect(deep.points).toBe(early.points);
+    expect(deep.points).toBeLessThanOrEqual(202);
+    expect(longReplay.cars[0].samples.length).toBe(3510);
+  });
+
+  it("keeps the playhead FIXED while the history scrolls past it", () => {
+    expect(traceAt(longReplay, 60).playheadX).toBe(
+      traceAt(longReplay, 340).playheadX,
+    );
+  });
+
+  it("still fills in from the line at the start, on the v1 fixture", () => {
+    // Degradation the other way: a clock younger than the window has no history to
+    // show yet, so the playhead sweeps rather than sitting at the edge.
+    expect(traceAt(replay, 5).playheadX).not.toBe(
+      traceAt(replay, 30).playheadX,
+    );
+    expect(traceAt(replay, 30).playheadX).toBe(traceAt(replay, 45).playheadX);
   });
 });
 

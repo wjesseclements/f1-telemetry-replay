@@ -58,14 +58,19 @@ export const EMPTY_FRAME: TelemetryFrame = Object.freeze({
  * what the HUD RENDERS, it also changes this signature. A field added to the readout
  * without being added here fails that test.
  *
- * POSITION is in here even though no readout prints a coordinate, because the timing
- * tower's gaps are computed FROM the positions. In practice the clock term already
- * covers them — position is a function of the clock, so an unchanged clock cannot mean
- * a moved car — but that is an argument about what the engine can emit, and this file
- * would rather the guarantee not depend on one. Rounding to a whole unit keeps the
- * string short; a unit is a tenth of a metre in FastF1 data, far finer than a gap's
- * millisecond digit. It costs no extra emits either: during playback the clock changes
- * on every one, and while paused nothing changes at all.
+ * POSITION IS DELIBERATELY NOT IN HERE (Slice 9e), and the history is worth keeping.
+ * Slice 9 added a rounded `x`/`y` term because the timing tower's gaps were computed FROM
+ * the published positions. Slice 9d moved gaps onto the replay's precomputed progress read
+ * at the CLOCK and flagged the term as no longer load-bearing; Slice 9e's scrolling trace
+ * is the other thing that could have wanted it, and it does not — it is a function of the
+ * clock and the focused car's static samples. So nothing the HUD draws is a function of a
+ * published coordinate, and the term was removed rather than inherited.
+ *
+ * What makes that safe is mechanical, not careful: `Hud.test.tsx` walks EVERY snapshot
+ * field and asserts `rendered change => signature change`. The day a readout prints a
+ * coordinate, perturbing `x` starts changing the render and that suite fails until this
+ * function moves. Emit COUNTS are unchanged either way — during playback the clock term
+ * changes on every emit, and while paused nothing changes at all.
  */
 export function displaySignature(
   clock: number,
@@ -77,7 +82,7 @@ export function displaySignature(
   for (const car of cars) {
     sig += `|${formatSpeed(car.speed)},${formatGear(car.gear)},${car.brake},${Math.round(
       car.throttle,
-    )},${isDrsOpen(car.drs) ? 1 : 0},${Math.round(car.x)},${Math.round(car.y)}`;
+    )},${isDrsOpen(car.drs) ? 1 : 0}`;
   }
   return sig;
 }
