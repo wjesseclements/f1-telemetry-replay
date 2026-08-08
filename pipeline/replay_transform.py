@@ -112,7 +112,21 @@ SAMPLE_RATE_HZ = 10
 
 #: Used when a team colour is missing or malformed — the schema's hex regex rejects
 #: anything else, and a colour lookup is not worth failing a fetch over.
-DEFAULT_COLOR = "#3671C6"
+#:
+#: ACHROMATIC ON PURPOSE, and this is the whole point of the constant. It was
+#: `#3671C6` — the hex widely published as Red Bull's brand blue — so a failed lookup
+#: rendered as a plausible Red Bull lap, and that is precisely why the always-failing
+#: `fastf1.plotting` lookup (one missing import, fixed in PR #31) survived a whole
+#: slice unnoticed: the wrong output looked right.
+#:
+#: The replacement has to clear two bars at once, which exclude different things.
+#: It must not read as a LIVERY: every F1 team colour is a saturated hue, and no
+#: current livery occupies mid-grey (silver and white are high-value, near-white).
+#: And it must not read as a DELIBERATE CHOICE either, which is what rules out the
+#: loud alternatives — a magenta is unmistakably not a livery, but sat on a dark
+#: canvas beside three team colours it reads as "selected". A desaturated mid grey is
+#: what every UI already means by "no value". Pinned by test, r == g == b.
+DEFAULT_COLOR = "#888888"
 
 _HEX_COLOR = re.compile(r"^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
 
@@ -178,6 +192,33 @@ def normalise_color(value: Any, fallback: str = DEFAULT_COLOR) -> str:
     if not candidate.startswith("#"):
         candidate = "#" + candidate
     return candidate if _HEX_COLOR.match(candidate) else fallback
+
+
+def color_lookup_warning(driver: str, err: BaseException) -> str:
+    """
+    The line printed when a team-colour lookup fails, in the house tripwire format.
+
+    LOUD, NOT FATAL — the volume moved, the handling did not. A colour is still not
+    worth failing a fetch over, so the `except` in `build_replay.py` stays broad and
+    stays non-fatal. What changed is the conditions: before PR #31 this fired on every
+    single run, where a banner would have been pure noise and a quiet line was right.
+    It should now never fire, so if it does it is NEW — either FastF1 moved its API
+    again (the defect PR #31 fixed, returning) or a team is missing from the colour
+    map. Both silently paint every car in the file `DEFAULT_COLOR`.
+
+    The exception TYPE is reported alongside its message because `AttributeError` and
+    `KeyError` are those two different diagnoses, and they have different fixes.
+
+    It lives in this module, not next to the `except` that uses it, for the reason
+    Slice 8 recorded when it moved `parse_lap_range`: `build_replay.py` imports FastF1,
+    which CI does not install, so nothing in it can be tested — and a warning whose
+    text is wrong is itself a quiet failure.
+    """
+    return (
+        f"\nWARNING: {driver}: team colour lookup failed "
+        f"({type(err).__name__}: {err}); "
+        f"falling back to {DEFAULT_COLOR}, which is not a livery.\n"
+    )
 
 
 def clamp_throttle(values: Any) -> np.ndarray:

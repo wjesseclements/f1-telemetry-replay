@@ -70,6 +70,7 @@ from replay_transform import (
     build_window_replay_dict,
     check_columns,
     closing_time,
+    color_lookup_warning,
     dump_json,
     parse_lap_range,
     time_base_stretch,
@@ -141,7 +142,7 @@ def build_lap_replay(year, gp, session_id, driver, cache_dir=".f1cache"):
         team = lap["Team"]
         color = fastf1.plotting.get_team_color(team, session=session)
     except Exception as err:  # noqa: BLE001 - a colour is not worth failing a fetch
-        print(f"team colour lookup failed ({err}); falling back to the default")
+        print(color_lookup_warning(driver, err))
         team, color = "", ""
 
     meta = ReplayMeta(
@@ -222,7 +223,7 @@ def _team_and_color(session, laps, driver):
         team = laps.iloc[0]["Team"]
         return str(team), fastf1.plotting.get_team_color(team, session=session)
     except Exception as err:  # noqa: BLE001 - a colour is not worth failing a fetch
-        print(f"{driver}: team colour lookup failed ({err}); using the default")
+        print(color_lookup_warning(driver, err))
         return "", ""
 
 
