@@ -9,6 +9,14 @@ coverage/
 # --- Generated replay data (pipeline writes these; not committed) ---
 # The tiny committed fixture lives at app/src/engine/__fixtures__/ and is NOT ignored.
 app/public/data/
+#
+# app/public/gallery/ is DELIBERATELY NOT IGNORED, and the distinction is provenance
+# rather than file type. app/public/data/ is scratch: whatever session the author last
+# ran, regenerated constantly, meaningless to anyone else. app/public/gallery/ is three
+# curated, provenance-stamped excerpts that ARE the product on a site with no backend —
+# they have to deploy with the code, so they have to be committed. Kept honest by
+# app/src/data/galleryAssets.test.ts, which fails if the set exceeds its 6 MB budget.
+# See CLAUDE.md "Offline rule" and NOTICE.
 
 # --- Python pipeline ---
 pipeline/.venv/

@@ -10,6 +10,12 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: "./src/test/setup.ts",
     css: true,
+    // Restore `vi.stubGlobal` replacements after every test. Load-bearing rather
+    // than tidy: `setup.ts` installs a throwing `fetch` so an unmocked network call
+    // fails loudly, and a gallery test that stubs `fetch` would otherwise leave its
+    // own mock in place for everything that ran after it — quietly disarming the
+    // trap for the rest of the file.
+    unstubGlobals: true,
     coverage: {
       provider: "v8",
       reporter: ["text"],

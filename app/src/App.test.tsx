@@ -21,6 +21,21 @@ import {
   type RecordingContext,
 } from "./test/canvas";
 import App from "./App";
+import { TrackCanvas } from "./render/TrackCanvas";
+import { parseGalleryManifest } from "./engine/gallery";
+import galleryManifest from "./gallery/manifest.json";
+
+const SCENARIOS = parseGalleryManifest(galleryManifest).scenarios;
+
+/**
+ * How a real gallery asset is served.
+ *
+ * The content-type is load-bearing, not decoration: `loadGalleryReplay` rejects a
+ * non-JSON 200 as a missing asset, because that is what an SPA host returns for a
+ * path that is not there. A bare `new Response(string)` defaults to text/plain and
+ * would be treated as missing — correctly.
+ */
+const JSON_OK = { headers: { "content-type": "application/json" } };
 
 const replay = loadFixtureReplay();
 
@@ -371,3 +386,241 @@ describe("App reduced motion", () => {
     expect(freshTransport.getState().seekTarget).toBe(12);
   });
 });
+
+describe("the featured-replay gallery", () => {
+  let raf: ReturnType<typeof installRafDriver>;
+
+  beforeEach(() => {
+    telemetry.reset();
+    raf = installRafDriver();
+    useTransport.setState({
+      replay,
+      isPlaying: true,
+      speedMult: 1,
+      seekTarget: null,
+      focusedCarIndex: 0,
+    });
+  });
+
+  const toggle = () =>
+    screen.getByRole("button", { name: /featured replays/i });
+  const panel = () => screen.queryByRole("dialog");
+  const cardFor = (title: string) =>
+    screen.getByRole("button", { name: new RegExp(escapeRe(title)) });
+  const firstCard = () => cardFor(SCENARIOS[0].title);
+
+  /** Draw calls of the most recently painted frame. */
+  const lastFrame = (): DrawCall[] => {
+    const frames: DrawCall[][] = [];
+    for (const call of recording.calls) {
+      if (call.method === "clearRect") frames.push([]);
+      if (frames.length > 0) frames[frames.length - 1].push(call);
+    }
+    return frames[frames.length - 1] ?? [];
+  };
+
+  const markerOf = (frame: DrawCall[]) => {
+    const arc = frame.find(
+      (c) =>
+        c.method === "arc" &&
+        c.fillStyle.toLowerCase() === replay.cars[0].color.toLowerCase(),
+    );
+    if (!arc) throw new Error("no car marker drawn");
+    return { x: arc.args[0], y: arc.args[1] };
+  };
+
+  it("opens on first paint, because the boot fixture sells nothing", () => {
+    render(<App />);
+    expect(panel()).toBeInTheDocument();
+    expect(toggle()).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("renders every manifest scenario as a real button", () => {
+    render(<App />);
+    // Real <button>s, not clickable divs: native activation and tab order for free.
+    for (const scenario of SCENARIOS) {
+      const card = cardFor(scenario.title);
+      expect(card.tagName).toBe("BUTTON");
+      expect(card).toHaveAccessibleName(
+        new RegExp(escapeRe(scenario.hook.slice(0, 24))),
+      );
+      // Provenance is on the card, not buried in a tooltip.
+      expect(card).toHaveAccessibleName(
+        new RegExp(escapeRe(scenario.provenance.session)),
+      );
+    }
+  });
+
+  it("moves focus to the recommended scenario on open", () => {
+    render(<App />);
+    // One Enter away: the first card is the recommended action.
+    expect(document.activeElement).toBe(firstCard());
+  });
+
+  it("labels the panel so a screen reader announces what opened", () => {
+    render(<App />);
+    expect(panel()).toHaveAccessibleName(/start here/i);
+    expect(toggle()).toHaveAttribute("aria-controls", panel()!.id);
+  });
+
+  // The three close routes, each asserted on document.activeElement. This is the
+  // behaviour that silently rots, and the one a keyboard reviewer notices first.
+  it("returns focus to the toggle when closed by the close button", () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: /^close$/i }));
+
+    expect(panel()).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(toggle());
+    expect(toggle()).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("returns focus to the toggle when closed by Escape", () => {
+    render(<App />);
+    fireEvent.keyDown(panel()!, { key: "Escape" });
+
+    expect(panel()).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(toggle());
+  });
+
+  it("returns focus to the toggle when a scenario is chosen", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify(sampleLap), JSON_OK)),
+    );
+    render(<App />);
+
+    await act(async () => {
+      fireEvent.click(firstCard());
+    });
+
+    expect(panel()).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(toggle());
+  });
+
+  it("reopens from the same control it closed from", () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: /^close$/i }));
+    expect(panel()).not.toBeInTheDocument();
+
+    fireEvent.click(toggle());
+
+    expect(panel()).toBeInTheDocument();
+    expect(toggle()).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("applies the scenario's suggested focus, clock and speed", async () => {
+    // Scenario 1 (the finale) is used deliberately: its suggested clock is 20 s,
+    // which is INSIDE the 58.5 s fixture served here, so this exercises the
+    // pass-through. Scenario 0's real clock is 237 s and exercises the clamp — see
+    // the next test. Between them both branches are covered with real manifest data
+    // rather than a synthetic scenario.
+    const scenario = SCENARIOS[1];
+    // A two-car payload, so a resolved non-zero focus is distinguishable from the
+    // reset to 0 that `setReplay` performs.
+    const twoCar = structuredClone(sampleLap) as typeof sampleLap;
+    const second = structuredClone(twoCar.cars[0]);
+    second.driver = scenario.suggested.driver;
+    (twoCar.cars as unknown[]).push(second);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify(twoCar), JSON_OK)),
+    );
+    render(<App />);
+
+    await act(async () => {
+      fireEvent.click(cardFor(scenario.title));
+    });
+
+    const state = useTransport.getState();
+    expect(state.replay?.cars).toHaveLength(2);
+    // Resolved from the driver CODE and applied AFTER setReplay's reset to 0.
+    expect(state.focusedCarIndex).toBe(1);
+    expect(state.speedMult).toBe(scenario.suggested.speedMult);
+    expect(state.seekTarget).toBe(scenario.suggested.clock);
+    expect(scenario.suggested.clock).toBeGreaterThan(0);
+  });
+
+  it("clamps a suggested clock the payload is too short for", async () => {
+    // Drift, degrading rather than throwing. Scenario 0 suggests 237 s; the fixture
+    // served here is 58.5 s. Seeking past the end would freeze the visitor on the
+    // final frame — silently — so the resolver lands them at the start instead.
+    // The real asset IS long enough; `galleryAssets.test.ts` asserts that pairing
+    // separately, which is what keeps this from hiding a genuine mismatch.
+    const scenario = SCENARIOS[0];
+    expect(scenario.suggested.clock).toBeGreaterThan(replay.meta.duration);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify(sampleLap), JSON_OK)),
+    );
+    render(<App />);
+
+    await act(async () => {
+      fireEvent.click(cardFor(scenario.title));
+    });
+
+    expect(useTransport.getState().seekTarget).toBe(0);
+  });
+
+  it("keeps the current replay and the picker when a scenario fails to load", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () => new Response("nope", { status: 500, statusText: "Boom" }),
+      ),
+    );
+    render(<App />);
+    const before = useTransport.getState().replay;
+
+    await act(async () => {
+      fireEvent.click(firstCard());
+    });
+
+    // Degrade, never blank: the lap on screen survives, the message is shown, the
+    // panel stays open to try another, and the other way in still works.
+    expect(useTransport.getState().replay).toBe(before);
+    expect(screen.getByRole("alert").textContent).toMatch(/500/);
+    expect(panel()).toBeInTheDocument();
+    // The CONTROL, not merely the words — the panel's footer mentions it too.
+    const picker = screen.getByLabelText("Load replay JSON");
+    expect(picker).toBeEnabled();
+  });
+
+  it("keeps the replay animating behind the panel, uninterrupted", () => {
+    // The refinement that made this an overlay rather than a replacement: motion
+    // behind the scrim says "this is alive". A toggle must not remount the canvas
+    // or reset its clock, which is what `memo(TrackCanvas)` buys.
+    render(<App />);
+    const canvasBefore = document.querySelector("canvas");
+
+    act(() => raf.tick());
+    act(() => {
+      for (let i = 0; i < 20; i++) raf.tick(16);
+    });
+    const before = markerOf(lastFrame());
+
+    fireEvent.click(screen.getByRole("button", { name: /^close$/i }));
+    act(() => {
+      for (let i = 0; i < 20; i++) raf.tick(16);
+    });
+    const after = markerOf(lastFrame());
+
+    // The same DOM node: no remount, so the rAF loop and the clock ref survived.
+    expect(document.querySelector("canvas")).toBe(canvasBefore);
+    // And it kept moving across the toggle rather than restarting at the line.
+    expect(after).not.toEqual(before);
+  });
+
+  it("exports the canvas memoised, which is what makes the bailout possible", () => {
+    // Structural, and paired with the behavioural test above rather than standing
+    // in for it: without `memo`, App's panel state re-renders the canvas on every
+    // open and close.
+    expect((TrackCanvas as unknown as { $$typeof: symbol }).$$typeof).toBe(
+      Symbol.for("react.memo"),
+    );
+  });
+});
+
+/** Escape a manifest string for use inside a RegExp. */
+function escapeRe(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}

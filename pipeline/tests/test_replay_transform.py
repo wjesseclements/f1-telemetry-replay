@@ -1051,6 +1051,51 @@ def test_dump_json_is_canonical_and_round_trips():
     assert text.index('"cars"') < text.index('"meta"') < text.index('"track"')
 
 
+def test_dump_json_compact_changes_only_whitespace():
+    """
+    The compact form is for files that SHIP, not files that get read.
+
+    The invariant that makes it safe to point at gallery assets while goldens keep
+    the indented form: the two differ in whitespace and nothing else, so `json.loads`
+    cannot tell them apart — which is also exactly what `test_golden.py` compares and
+    what the schema validator sees.
+    """
+    replay = build_replay_dict(synthetic.telemetry(), synthetic.META)
+    pretty = dump_json(replay)
+    compact = dump_json(replay, compact=True)
+
+    assert json.loads(compact) == json.loads(pretty) == replay
+    assert compact.endswith("\n")
+    assert "\n" not in compact[:-1]  # one line, plus the trailing newline
+    assert ", " not in compact and ": " not in compact
+    # Keys stay sorted in BOTH forms — compactness is not licence to reorder.
+    assert compact.index('"cars"') < compact.index('"meta"') < compact.index('"track"')
+
+
+def test_dump_json_defaults_to_the_reviewable_form():
+    """
+    The default is what protects the golden path.
+
+    Every existing caller — `regenerate_golden.py`, both `--out` writers without
+    `--compact` — must emit the bytes it emitted before this parameter existed, or
+    the goldens churn for a formatting flag they never asked for.
+    """
+    replay = build_replay_dict(synthetic.telemetry(), synthetic.META)
+    assert dump_json(replay) == dump_json(replay, compact=False)
+    assert dump_json(replay) != dump_json(replay, compact=True)
+
+
+def test_dump_json_compact_is_substantially_smaller():
+    """
+    The saving is the entire reason the parameter exists, so it is measured.
+
+    Real 3-car output measured 3.74 MB -> 1.62 MB (2.3x). The synthetic lap is tiny,
+    so this asserts the direction and a conservative floor rather than that ratio.
+    """
+    replay = build_replay_dict(synthetic.telemetry(), synthetic.META)
+    assert len(dump_json(replay, compact=True)) < 0.6 * len(dump_json(replay))
+
+
 # --- covers_ground: parked vs corrupt, and the unit argument ----------------------
 #
 # The predicate that separates "a car sat in its pit box" (ordinary data in a window)

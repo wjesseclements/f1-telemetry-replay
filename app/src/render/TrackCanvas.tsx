@@ -20,7 +20,7 @@
  * to skip the DRAW when the clock and viewport are both unchanged since the last
  * frame — not to stop the rAF, which would put resuming back on a timer.
  */
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, memo } from "react";
 import { advanceClock, frameDelta } from "../engine/clock";
 import { fitTransform } from "../engine/geometry";
 import { sampleAt, wrapClock } from "../engine/interpolate";
@@ -39,7 +39,20 @@ export interface TrackCanvasProps {
   replay: Replay;
 }
 
-export function TrackCanvas({ replay }: TrackCanvasProps) {
+/**
+ * MEMOISED, and it is load-bearing rather than an optimisation.
+ *
+ * `App` gained one piece of local state in Slice 13 — whether the featured-replay
+ * panel is open — and that panel has to be a SIBLING of this canvas so the replay
+ * keeps animating behind it. But state in a common ancestor re-renders every child,
+ * and "the canvas commits exactly once" is the property `TrackCanvas.test.tsx` has
+ * pinned since Slice 5. Opening a panel is not a reason to re-render a canvas that
+ * owns its own rAF loop and reads everything else through refs.
+ *
+ * `replay` is the only prop and it is compared by identity, which is already the
+ * granularity the effects below key on. See `App.test.tsx` for the toggle test.
+ */
+function TrackCanvasImpl({ replay }: TrackCanvasProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   /**
@@ -186,3 +199,5 @@ export function TrackCanvas({ replay }: TrackCanvasProps) {
     </div>
   );
 }
+
+export const TrackCanvas = memo(TrackCanvasImpl);

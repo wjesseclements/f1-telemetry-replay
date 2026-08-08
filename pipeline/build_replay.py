@@ -382,7 +382,7 @@ def build_race_replay(year, gp, session_id, drivers, laps, cache_dir=".f1cache")
     return replay, (t0, t1), window_cars, coverage
 
 
-def report_window(replay, window, cars, coverage) -> None:
+def report_window(replay, window, cars, coverage, compact: bool = False) -> None:
     """
     Print the numbers behind a window build, for the same reason `build_lap_replay`
     prints its closing chord and time-base stretch: a deliberate approximation should
@@ -439,7 +439,7 @@ def report_window(replay, window, cars, coverage) -> None:
             f"replay; see `replay_transform.motion_fidelity`.\n"
         )
 
-    size_mb = len(dump_json(replay)) / 1e6
+    size_mb = len(dump_json(replay, compact=compact)) / 1e6
     print(f"  estimated file size: {size_mb:.1f} MB")
     if size_mb > 20.0:
         print(
@@ -487,6 +487,18 @@ def main(argv=None) -> int:
         action="store_true",
         help="skip schema validation of the output (NOT recommended)",
     )
+    # For files that ship rather than files that get read. The gallery assets in
+    # `app/public/gallery/` are committed and deployed, and nobody reviews a replay
+    # payload as a diff — measured 2.3x smaller. Validation is unaffected: the schema
+    # sees parsed JSON, which cannot tell the two forms apart.
+    ap.add_argument(
+        "--compact",
+        action="store_true",
+        help=(
+            "write minified JSON (no indentation). For deployed gallery assets; "
+            "roughly 2.3x smaller. Default is the indented, reviewable form."
+        ),
+    )
     args = ap.parse_args(argv)
 
     if args.drivers is not None and args.laps is None:
@@ -517,13 +529,13 @@ def _run_window(args) -> int:
 
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(dump_json(data))
+    out.write_text(dump_json(data, compact=args.compact))
 
     print(
         f"wrote {out}: {data['meta']['track']} · "
         f"{', '.join(car['driver'] for car in data['cars'])}"
     )
-    report_window(data, window, cars, coverage)
+    report_window(data, window, cars, coverage, compact=args.compact)
 
     if args.no_validate:
         print("WARNING: --no-validate: output was NOT checked against the schema.")
@@ -542,7 +554,7 @@ def _run_lap(args) -> int:
 
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(dump_json(data))
+    out.write_text(dump_json(data, compact=args.compact))
 
     samples = data["cars"][0]["samples"]
     has_drs = "drs" in samples[0]

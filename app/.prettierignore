@@ -1,0 +1,18 @@
+# Replay payloads are DATA, not source, and must never be reformatted.
+#
+# `public/gallery/` is committed and deployed, and it is written minified by
+# `build_replay.py --compact` — 2.3x smaller, and nobody reads a replay payload as a
+# diff. Prettier reformatting one silently undoes that: measured, pretty-printing the
+# three assets takes the gallery from 4.09 MB to 6.1 MB and over its budget.
+#
+# `src/engine/__fixtures__/` and the pipeline goldens are byte-compared by tests; a
+# formatting pass would produce phantom diffs there for the same non-reason.
+#
+# This is a second line of defence, not the first: `app/src/data/galleryAssets.test.ts`
+# fails if an asset arrives pretty-printed or the set exceeds 6 MB. The gate catches
+# it; this stops it happening.
+public/gallery/
+public/data/
+src/engine/__fixtures__/
+dist/
+coverage/
