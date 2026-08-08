@@ -1603,13 +1603,45 @@ separately because it shares neither a mechanism nor a file with the gap defect.
   - **Full field, 19 cars** (`monza_full_field.json`, clock 2:00.000, focus VER): the
     trace sits under a 19-row tower and reads the approach, plateau and brake into the
     corner VER is in. `docs/screenshots/slice-9e-full-field-19-cars.jpg`.
-- **NOT claimed: sustained fps.** The MCP browser tab reports `visibilityState:
-  "hidden"`, where rAF is throttled and `fps-probe.js` refuses to start by design — the
-  same split Slices 7, 9c and 12 recorded. The draw-call half above is exact and needs no
-  browser, and the ≤30 Hz half now has its own exact instrument; the frame-drop half is
-  the human's run against 9c's baseline (19 cars: 119.8 fps, callback mean 1.13 ms,
-  p95 2.6 / p99 2.8, 0 frames > 20 ms). The trace's cost, if it shows anywhere, shows in
-  callback p95/p99.
+- **Sustained fps: measured by the HUMAN, because it could not be measured here.** The
+  MCP browser tab reports `visibilityState: "hidden"`, where rAF is throttled and
+  `fps-probe.js` refuses to start by design — the same split Slices 7, 9c and 12
+  recorded. `monza_full_field.json` (19 cars), foregrounded, 600 frames over 5.0 s:
+
+  | | 9c baseline | 9e |
+  |---|---|---|
+  | fps | 119.8 | **120** |
+  | callback mean | 1.13 ms | **0.87 ms** |
+  | callback p95 / p99 | 2.6 / 2.8 ms | **3.1 / 3.5 ms** |
+  | max | 4.3 ms | **3.7 ms** |
+  | frames > 20 ms of 600 | 0 | **0** |
+
+  - **The tails went UP and it is recorded as measured, not rounded to "no regression":**
+    p95 +0.5 ms, p99 +0.7 ms. That is exactly where a ≤30 Hz cost must land — at 120 fps
+    only about one frame in four carries a HUD render, so the trace can only ever show in
+    the top quartile, never in the mean. The prediction Slice 12 wrote for 9e ("lands in
+    callback p95/p99 and in no canvas call count") is confirmed in both halves.
+  - **The mean improving is NOT claimed as a win.** 1.13 → 0.87 ms is not attributable to
+    anything in this diff — the removed `x`/`y` signature terms are ~30 string concats
+    per emit — and is more likely machine state between runs. Recorded because it was
+    measured, not because it means something.
+  - **The two instruments together locate the cost, which is the payoff for having both.**
+    `hud-tick.mjs` puts the pure-JS window build at **22 µs**; the browser tail moved
+    ~**0.6 ms**, ~27× that. The difference is the React render and the DOM update of a
+    200-point `d` attribute — precisely the half `hud-tick.mjs`'s header says it does not
+    measure. **The trace's cost is dominated by React, not by the geometry**, which is
+    where anyone optimising it later should start.
+  - Against the ≥50 fps bar's 20 ms budget the worst frame observed is **3.7 ms — 18%**,
+    and nothing came within a factor of five of a drop.
+- **Human acceptance (2026-08-08): PASS.** On `monza_endgame.json` the trace is readable
+  nine minutes in; the playhead is correct in **both** regimes — sweeping during the
+  fill-in while the clock is younger than the window, pinned and scrolling in steady
+  state — a scrub jumps it instantly, and closed mode reads consistently with the 4b
+  trail rules. **`TRACE_SECONDS` stays at 20.**
+  - Recorded because the sequence matters: an earlier pass reported the playhead as
+    "unpinned". That was the **fill-in phase working as designed**, not a defect. The
+    two regimes are one clamp and look different on purpose, so the next person to watch
+    the first twenty seconds of a replay does not file it again.
 
 ## Maintenance (not phase-bound — schedule after the slices above)
 
