@@ -2286,11 +2286,39 @@ weakens on the way to fixing that.
     coincidental default. Focus returns to the toggle after each choice.
   - Screenshots refreshed to the current build: `docs/screenshots/slice-13-*`.
 
+- **Amendment (this slice) — the four-minute acceptance test PASSED, with one
+  finding held open.** Run by the human on the PR's Vercel preview (2026-08-08),
+  through Vercel's SSO wall since preview deployments on this project carry
+  Deployment Protection. Confirmed in that run: the gallery assets are served with a
+  JSON content-type (the SPA-fallback fix's dependency, verified by the first click
+  loading at all); **Monza focuses LEC**, so the driver-CODE resolver is doing the work
+  rather than falling back to index 0; Escape closes and the header button reopens; and
+  every scenario's landing clock and speed multiplier are applied as manifested.
+- **OPEN FINDING — the pit-entry zigzag.** Reported during that acceptance run and
+  **classified by the human as pre-existing rendering behaviour made prominent by the
+  new content**, not as a regression introduced by this slice. It does **not** block
+  Slice 13 and did not gate the merge.
+  - Recorded here deliberately thin: at merge time the diagnosis was still in progress
+    and its detail was not available to write down. **No mechanism is asserted, because
+    none had been established** — inventing a plausible-sounding cause is exactly the
+    failure this project's records exist to avoid. Whoever picks it up starts from the
+    symptom, not from a guess.
+  - Why the new content surfaced it: two of the three featured scenarios are built
+    around pit cycles (Monza laps 13-19) and a stop-heavy rain window (Silverstone laps
+    24-28), so pit-lane excursions are now on screen by default rather than only in a
+    file someone generated on purpose. Slice 8 recorded that pit-lane excursions need
+    no special case in the PIPELINE; whether the same holds for the RENDER path is the
+    open question.
+  - See the Backlog entry, which is where the follow-up work is tracked.
+
 - **Deferred to the human (repo/host settings are the human-only boundary):** the
   GitHub social-preview image upload. It is not in the REST API, so `gh` cannot set it;
   the image is generated and committed for the human to upload.
 
 ## Backlog (ideas — not committed)
+- **Diagnose the pit-entry zigzag** — found in Slice 13's acceptance test, classified
+  as pre-existing and made prominent by the featured scenarios' pit cycles. Start from
+  the symptom; no mechanism was established at the time it was filed.
 - WebGL/3D escalation **only** if measured 20-car perf demands it (documented path).
 - Track-surface niceties: kerbs, sector coloring, mini-map.
 - Ghost/delta vs a reference lap; multi-lap stints.
