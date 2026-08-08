@@ -1025,7 +1025,7 @@ dots on a wall of colour.
     `TAIL_BANDS` and is value-independent, so the constant could have drifted to any
     value in silence.
 
-### [ ] Slice 9c — Raise the comet's colour resolution
+### [x] Slice 9c — Raise the comet's colour resolution
 
 **Found in the Slice 10 verification pass (screenshot on record, Turn 4 braking zone,
 `monza_endgame.json`).** The comet's 9-bucket thermal quantisation reads as visible
@@ -1078,6 +1078,152 @@ dots on a wall of colour.
 - **Out of scope:** `THERMAL`'s stops or the ramp itself; `SPEED_BUCKETS` for the
   circuit trail; the speed legend (it generates its gradient from `THERMAL`, so it is
   already continuous and unaffected); the unfocused tails, which are single-colour.
+
+- **Amendment (this slice) — the mechanism is a PARAMETER, so there is still exactly one
+  definition of speed→colour.** `bucketOf(kmh, buckets)` and `bucketColor(bucket,
+  buckets)` take the count as a **required** argument; `COMET_BUCKETS = 32` sits beside
+  `SPEED_BUCKETS = 9` in `color.ts`. `THERMAL`, `speedRgb`, `speedColor` and the
+  `BUCKET_MIN/MAX_KMH` domain are untouched — the comet samples the same ramp more
+  finely, and there is no second palette that can drift.
+  - **Required, not defaulted.** A default would let a wrong-resolution call happen in
+    silence: the two keys are byte-compatible `Uint8Array`s, so nothing downstream would
+    notice. That judgement was vindicated within the slice — see the mutation finding
+    below, where exactly that mix-up survived the suite.
+  - The bucketing tests now run over BOTH resolutions (`describe.each`), plus a
+    no-drift pair: every comet colour is `speedColor` of its own band's midpoint, and at
+    any speed the two resolutions land within half a band of each other **on the same
+    ramp** — an exact bound, derived, not a tolerance picked to pass.
+- **Amendment (this slice) — why 32, measured rather than rounded to.** The spec said
+  "~32"; the number is argued from `monza_endgame.json` (Monza R, 3 cars, ~7 laps):
+  - **The mechanism, quantified.** Single-step |Δv| over the whole file is p50 **1**,
+    p95 **8**, p99 **13**, max **29 km/h** — *every* step in nine minutes of racing is
+    smaller than one 30.6 km/h `SPEED_BUCKETS` band. That is why adjacent comet segments
+    are forced to share a colour: the stripe is not a tuning miss, it is arithmetic.
+  - Over the hardest 2 s braking event (315 → 108 km/h), the comet's 21 segments draw:
+
+    | buckets | band width | distinct colours | longest run |
+    |---|---|---|---|
+    | 9 | 30.6 km/h | 8 / 21 | **5** |
+    | 16 | 17.2 km/h | 13 / 21 | 3 |
+    | **32** | **8.6 km/h** | **19 / 21** | **2** |
+    | 48 | 5.7 km/h | 21 / 21 | 1 |
+
+  - **The floor is the data** (8.6 km/h is under the p95 step, so in the regime that
+    makes the stripe nearly every step crosses a boundary). **The ceiling is the comet's
+    own geometry** — it is 21 segments, so by ~48 every segment gets its own colour and
+    the batching key stops batching anything. 32 keeps a constant-speed stretch
+    collapsing to one stroke, which is what the key is FOR.
+- **Amendment (this slice) — the stroke bound is re-pinned to the SEGMENT COUNT, which
+  is tighter than what it replaced.** `strokes ≤ span + 1`, `span = min(index, length)`
+  — **21** at `COMET_SECONDS = 2` on a 10 Hz grid, independent of the bucket count and of
+  window length. The old `COMET_BANDS × SPEED_BUCKETS` (36) would have become 128 and
+  passed on anything; the slice would have deleted its own guard while appearing to keep
+  it. A companion test pins the other side: on a full-ramp braking sweep the comet
+  resolves **more distinct colours than `SPEED_BUCKETS`** while still inside the bound —
+  so "tighter bound" cannot be satisfied by the change quietly not working.
+- **Amendment (this slice) — the alpha-band question is ANSWERED BY LOOKING, and the
+  answer is "yes, but not here". `COMET_BANDS` stays at 4 in this diff, pending the
+  human's call.** Three matched renders, same file, same focus (PIA), same clock, only
+  the constant differing — `docs/screenshots/slice-9c-*`:
+  - **At Turn 4 (the acceptance site, clock 1:54.000, comet spanning 307 → 128 km/h):**
+    the fade does **not** read as banding. The colour is sweeping the whole ramp across
+    those 20 segments, and at 32 buckets it now sweeps it smoothly; the alpha steps are
+    invisible underneath it. At 9 buckets the same frame shows the photographed stripes —
+    a flat olive block, a step, a step, and a long uniform cyan block at the head.
+  - **On a constant-speed straight (clock 1:52.000, 307 km/h) it is plainly visible**,
+    and that frame is the reason to look rather than reason: with the colour essentially
+    constant, everything left is alpha, and the comet reads as **three brightness steps**
+    down its length. The no-fade variant at the same clock is one uniform bar.
+  - **So the fade bands do quantise visibly — just not at the braking zone this slice is
+    about, and not in a way 32 buckets made worse.** It is a Slice 9b property, untouched
+    here. Raising `COMET_BANDS` is a second decision on a second constant, and it is the
+    human's, so it is **not** taken inside this slice.
+- **Amendment (this slice) — the draw-call harness is COMMITTED, as
+  `docs/perf/drawcall-capture.mjs`.** Slices 9b and 10 each built it, used it and threw
+  it away; Slice 12 named that re-derivation as the thing committing `fps-probe.js` was
+  meant to stop, and this slice is the one that paid the cost. Filed as **the brief's own
+  inconsistency resolved** rather than as scope creep: the same brief that says
+  "trail.ts and its constants/tests, nothing else" also demands md5 evidence, and the
+  instrument that produces it did not exist.
+  - Outside `app/` for Slice 12's reason: it can never run in CI, so `npm run check`,
+    `eslint .` and `format:check` must never adopt it. Run through `vite-node`, so it
+    measures the shipped modules rather than a copy.
+  - **It reproduces Slice 10's recorded figures exactly on unmodified code** — closed
+    **79,213 calls / 19 `Path2D`**, open **107,010 / 1** — which is how it is known to be
+    the same capture under a different digest recipe, not a new measurement wearing the
+    old numbers.
+  - It also answers the draw-call half of a frame-budget check **without a browser** (see
+    the sweep below), which is worth having: `fps-probe.js` measures zero in a hidden tab.
+- **Amendment (this slice) — a mutation found a real hole, and the test that closes it is
+  the wiring test the slice was missing.** Handing `CometPainter` the trail's coarse key
+  (a one-word slip in `paths.ts`) **passed the entire suite**. Membership in the comet's
+  colour set cannot catch it: indices 0-8 are valid in a 32-entry table too, so the comet
+  strokes perfectly plausible colours that are simply the wrong ones. The new test asserts
+  the **mapping** — the head segment carries `bucketColor(bucketOf(speed, COMET_BUCKETS),
+  COMET_BUCKETS)` — with a companion assertion that at that sample the two resolutions
+  genuinely disagree, so it cannot pass on a lucky speed. It now fails for the `paths.ts`
+  slip and for the same slip made one level up in `scene.ts`.
+- **Verified (2026-08-07):**
+  - **CLOSED MODE IS BYTE-IDENTICAL, and the capture ordering is what makes it evidence.**
+    Captured on unmodified `main` (f9fc65d) **before any file was touched**, then
+    re-captured through the identical harness afterwards:
+
+    | mode | before | after | calls | Path2D |
+    |---|---|---|---|---|
+    | closed | `23fa7006…a816f` | **`23fa7006…a816f`** | 79,213 | 19 |
+    | open (comet) | `b8e199bd…3b543` | `f33499f3…58960` | 107,010 → 111,986 | 1 |
+
+    Open mode moving is the change. **`moveTo`, `lineTo`, `arc`, `fill` and `fillText`
+    are byte-identical across it** — the whole delta is `beginPath` +2,488 and `stroke`
+    +2,488 over 701 frames, i.e. **the same geometry in more colour batches**, which is
+    exactly what "the batching key only, not the ramp" should look like in a diff.
+  - **`28·N` DID NOT MOVE, measured on the real 19-car file** rather than argued.
+    `monza_full_field.json`, mean calls/frame over the same 701 frames, before vs after
+    the bucket change and nothing else:
+
+    | cars | 9 buckets | 32 buckets | delta |
+    |---|---|---|---|
+    | 1 | 169.49 | 175.59 | +6.10 |
+    | 3 | 225.39 | 231.49 | +6.10 |
+    | 7 | 337.18 | 343.29 | +6.11 |
+    | 13 | 504.87 | 510.98 | +6.11 |
+    | **19** | **672.56** | **678.67** | **+6.11** |
+
+    The per-car slope is **27.95 both before and after** (Slice 12's 28.0, diluted only
+    by the handful of window-start frames where a tail band is still empty). Slice 12's
+    acceptance was "`total` should move by a single-digit constant and `28·N` must not
+    move at all" — the delta is a **constant +6.1 at every car count**, **+0.9%** of the
+    frame's canvas work at 19 cars. The `field_19` subset is md5 `95bad63f…`, identical
+    to `monza_full_field.json`, so the sweep is the real file with cars removed.
+  - `npm run check` green with **0 warnings** (`grep -ciE 'warn|error'` over the full log
+    = 0): **474 tests**, engine coverage **100%** lines/branches/functions.
+  - **Mutations caught:** `COMET_BUCKETS` back to 9 fails 2; the comet stroking from the
+    trail's colour table fails 4; the coarse key passed to the comet fails 1 (the new
+    wiring test), in `paths.ts` and in `scene.ts` alike.
+  - **Sustained fps: measured by the HUMAN, because it could not be measured here.** The
+    MCP browser tab reports `visibilityState: "hidden"`, where rAF is throttled to
+    nothing and `fps-probe.js` refuses to start by design — the same split Slice 7
+    recorded. The draw-call half above is exact and needs no browser; the frame-drop half
+    needs a foreground window. Run on `monza_full_field.json` (19 cars), 600 frames over
+    5.0 s: **119.8 fps, callback mean 1.13 ms (p95 2.6 / p99 2.8 / max 4.3), 0 frames >
+    20 ms**, against Slice 12's baseline of 120 fps / 0.967 ms / p95 2.1 / p99 2.5 / 0.
+    - **Recorded with its one moved number rather than rounded to "unchanged":** callback
+      mean is **0.967 → 1.13 ms**, +0.16 ms, which is **13.6% of an 8.33 ms frame**
+      against 11.6% before. The bar is ≥50 fps — a 20 ms budget — so this is **5.6%** of
+      it, and no frame came within a factor of four of missing. The +6.1 calls/frame is
+      invisible at the frame level, which is what the two instruments agreeing means.
+  - **Human eyeball at Turn 4 on `monza_endgame.json`, clock 1:54.000, focus PIA: PASS.**
+    The comet reads as a continuous ramp; the stripes are gone. Confirmed live on the
+    preview build, not from a screenshot. **This is the slice's acceptance.**
+- **Amendment (this slice) — `COMET_BANDS` stays at 4, and the straight-line fade
+  quantisation is filed as an OBSERVATION, not a defect.** The human's ruling, recorded
+  so it is not re-opened: the stepping is real and reproducible
+  (`docs/screenshots/slice-9c-straight-4-bands.png` against `-straight-no-fade.png`), but
+  **no eye has complained about it** — it was found by deliberately constructing the
+  frame that isolates alpha from colour, which is not a frame anyone watches. The fix
+  location is documented (one constant, `COMET_BANDS`, whose alpha formula is already
+  written in terms of the band count), so if it is ever reported it is one edit. Chasing
+  it now would be optimising a thing found by looking for it.
 
 ### [x] Slice 9d — Unwrap the gap so the running order survives a full field
 
@@ -1543,6 +1689,9 @@ is open.
     left their draw-call harness uncommitted and recorded only its parameters, and **9c's
     spec now has to rebuild that harness from prose** — the re-derivation this slice
     exists to remove. The subset-derivation snippet is in its header for the same reason.
+    - **Closed by Slice 9c (2026-08-07):** it rebuilt that harness one last time and
+      committed it as `docs/perf/drawcall-capture.mjs`, where it reproduces this slice's
+      and Slice 10's figures exactly. The gap this paragraph names no longer exists.
   - It carries its own procedure, and its own **limits**, in the header: what each metric
     excludes is written next to the metric, not left for a reader to infer.
 

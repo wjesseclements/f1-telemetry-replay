@@ -12,7 +12,7 @@
  * the canvas calls and nothing else (CLAUDE.md architecture rule 4 keeps the maths
  * out of the renderer, and the renderer out of the engine).
  */
-import { bucketOf } from "../engine/color";
+import { COMET_BUCKETS, SPEED_BUCKETS, bucketOf } from "../engine/color";
 import type { CarSnapshot } from "../engine/interpolate";
 import {
   applyTransform,
@@ -46,12 +46,24 @@ export interface Scene {
   /** Every car's rotated path, in `replay.cars` order. */
   carPaths: readonly (readonly Point[])[];
   /**
-   * Per car, the speed bucket of the segment leaving each sample.
+   * Per car, the speed bucket of the segment leaving each sample, at the CIRCUIT
+   * TRAIL's resolution (`SPEED_BUCKETS`).
    *
    * `Uint8Array` because there are 9 buckets and one entry per sample: a plain array
    * would box 585 numbers per car for data that never changes after load.
    */
   carBuckets: readonly Uint8Array[];
+  /**
+   * The same, at the COMET's finer resolution (`COMET_BUCKETS`) — Slice 9c.
+   *
+   * A second key rather than one shared array, because the two wakes are read at
+   * different scales and want different quantisations of the same ramp: nine steps
+   * across a lap of track is texture, nine steps inside a 2 s comet is stripes. The
+   * honest cost is one extra byte per sample per car (~50 KB for 19 cars over a 3-lap
+   * window), built once here and never touched again — the alternative, deriving it in
+   * the painter, would put `bucketOf` back on the frame path for every segment.
+   */
+  carCometBuckets: readonly Uint8Array[];
   /** Bounds of every car's rotated path — what the viewport is fitted to. */
   bounds: Bounds;
   /** `meta.rotation`, needed per frame to bring car headings into screen space. */
@@ -130,7 +142,10 @@ export function buildScene(replay: Replay): Scene {
     // The bucket of the segment LEAVING sample k, so index k is the trail segment
     // k → k+1. The last entry is only ever used by the head segment.
     carBuckets: replay.cars.map((car) =>
-      Uint8Array.from(car.samples, (s) => bucketOf(s.speed)),
+      Uint8Array.from(car.samples, (s) => bucketOf(s.speed, SPEED_BUCKETS)),
+    ),
+    carCometBuckets: replay.cars.map((car) =>
+      Uint8Array.from(car.samples, (s) => bucketOf(s.speed, COMET_BUCKETS)),
     ),
     bounds: computeBounds(carPaths.flat()),
     rotationDeg: rotation,

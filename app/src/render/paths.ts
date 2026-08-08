@@ -110,10 +110,17 @@ export function buildScenePaths(scene: Scene, fit: FitTransform): ScenePaths {
     // The mode decides the focused car's painter once, here. A closed lap gets no
     // comet and an open window gets no retained trail — neither is built, so neither
     // can be reached by a later edit that forgets which mode it is in.
+    // Each painter takes the key at ITS OWN resolution: the trail's nine buckets are
+    // texture across a lap, the comet's finer key is what stops them reading as stripes
+    // at comet scale (Slice 9c). Same ramp, sampled twice.
     focus: screens.map((screen, i) =>
       scene.loop === "closed"
         ? new TrailPainter(screen, scene.carBuckets[i])
-        : new CometPainter(screen, scene.carBuckets[i], scene.cometSegments),
+        : new CometPainter(
+            screen,
+            scene.carCometBuckets[i],
+            scene.cometSegments,
+          ),
     ),
     tails: screens.map((screen) => new TailPainter(screen, scene.tailSegments)),
     corners: scene.corners.map((corner) => ({

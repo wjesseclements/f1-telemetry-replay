@@ -10,11 +10,24 @@ import { Profiler } from "react";
 import { render, cleanup, act } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MAX_FRAME_DT_S } from "../engine/clock";
-import { SPEED_BUCKETS, bucketColor, bucketOf } from "../engine/color";
+import {
+  COMET_BUCKETS,
+  SPEED_BUCKETS,
+  bucketColor,
+  bucketOf,
+} from "../engine/color";
 
-/** Every colour the thermal ramp can produce — used to tell a comet from a tail. */
-const BUCKET_COLOR_SET = new Set(
-  Array.from({ length: SPEED_BUCKETS }, (_, b) => bucketColor(b)),
+/**
+ * Every colour the COMET can produce — used to tell a comet from a team-coloured tail.
+ *
+ * At `COMET_BUCKETS`, not `SPEED_BUCKETS`: the comet samples the same ramp more finely
+ * than the circuit trail does (Slice 9c), so the trail's nine colours are not the set to
+ * test its strokes against.
+ */
+const COMET_COLOR_SET = new Set(
+  Array.from({ length: COMET_BUCKETS }, (_, b) =>
+    bucketColor(b, COMET_BUCKETS),
+  ),
 );
 import {
   applyTransform,
@@ -447,7 +460,10 @@ describe("TrackCanvas trail", () => {
     // screen coordinates — so a mis-bucketed or mis-projected segment fails here.
     const byColor = trailByColor(frame);
     for (let k = 0; k < 30; k++) {
-      const color = bucketColor(bucketOf(car.samples[k].speed));
+      const color = bucketColor(
+        bucketOf(car.samples[k].speed, SPEED_BUCKETS),
+        SPEED_BUCKETS,
+      );
       const from = samplePoint(k);
       const to = samplePoint(k + 1);
       const match = byColor
@@ -538,7 +554,9 @@ describe("TrackCanvas trail", () => {
       replay.meta.rotation,
     );
     const want = applyTransform(rotated, newFit);
-    const first = after.get(bucketColor(bucketOf(car.samples[0].speed)))![0];
+    const first = after.get(
+      bucketColor(bucketOf(car.samples[0].speed, SPEED_BUCKETS), SPEED_BUCKETS),
+    )![0];
     expect(first.from.x).toBeCloseTo(want.x, 6);
     expect(first.from.y).toBeCloseTo(want.y, 6);
     expect(first.from.x).not.toBeCloseTo(samplePoint(0).x, 3);
@@ -877,8 +895,32 @@ describe("TrackCanvas in an open window", () => {
     // Bucket colours, not the car's team colour — this is the trail's ramp, not a tail.
     expect(comet.some((c) => c.strokeStyle === car.color)).toBe(false);
     for (const stroke of comet) {
-      expect(BUCKET_COLOR_SET.has(stroke.strokeStyle)).toBe(true);
+      expect(COMET_COLOR_SET.has(stroke.strokeStyle)).toBe(true);
     }
+  });
+
+  it("colours the comet from the FINE key, not the trail's coarse one", () => {
+    // The wiring test, and it was written because a mutation found the hole: membership
+    // in `COMET_COLOR_SET` alone cannot catch `paths.ts` handing `CometPainter` the
+    // trail's 9-bucket key. Indices 0-8 are valid in a 32-entry table too, so the comet
+    // would stroke perfectly plausible colours that are simply the wrong ones. This
+    // asserts the MAPPING instead: the head segment carries the fine bucket of the
+    // sample it is leaving, which is the coarse bucket only by coincidence.
+    renderOpen(200);
+    const comet = lastFrame(recording).filter(
+      (c) => c.method === "stroke" && c.lineWidth === TRAIL_WIDTH && !c.path,
+    );
+    // The head is stroked last, and takes the bucket of the sample it leaves.
+    const index = sampleAt(openReplay, 20)[0].index;
+    const speed = car.samples[index].speed;
+    expect(comet[comet.length - 1].strokeStyle).toBe(
+      bucketColor(bucketOf(speed, COMET_BUCKETS), COMET_BUCKETS),
+    );
+    // …and at this speed the two resolutions genuinely disagree, so the assertion has
+    // something to catch. Without this the test could pass on a lucky sample.
+    expect(bucketColor(bucketOf(speed, SPEED_BUCKETS), SPEED_BUCKETS)).not.toBe(
+      bucketColor(bucketOf(speed, COMET_BUCKETS), COMET_BUCKETS),
+    );
   });
 
   it("draws its own bounded span, not everything the clock has covered", () => {

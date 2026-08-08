@@ -28,8 +28,49 @@ export const THERMAL: readonly Stop[] = [
   { kmh: 340, rgb: [255, 86, 48] },
 ];
 
-/** Number of discrete colours the trail is stroked in — one Path2D per bucket. */
+/**
+ * Number of discrete colours the CIRCUIT TRAIL is stroked in — one Path2D per bucket.
+ *
+ * Tuned for a whole lap of track, where a bucket boundary falls somewhere along the
+ * circuit and reads as texture. See `COMET_BUCKETS` for why the comet cannot use it.
+ */
 export const SPEED_BUCKETS = 9;
+
+/**
+ * The same ramp, sampled finely enough for the FOCUSED car's comet (Slice 9c).
+ *
+ * Not a second palette — `bucketOf` and `bucketColor` take the count as an argument, so
+ * both resolutions are the same `THERMAL` interpolation over the same
+ * `BUCKET_MIN_KMH`..`BUCKET_MAX_KMH` domain. Two samplings of one truth; there is
+ * nothing here that can drift out of step with the trail.
+ *
+ * **Why the comet needs its own count.** `SPEED_BUCKETS` is read at a scale it was not
+ * chosen for: the comet is ~2 s long, focal, and adjacent to a glowing marker, so its
+ * nine steps land within a couple of centimetres of each other in the one place the eye
+ * is already looking. A braking zone sweeps the whole ramp in about the comet's own
+ * length, so every boundary is crossed inside it at once — and it reads as stripes.
+ *
+ * **Why 32 exactly**, measured on `monza_endgame.json` (Monza R, 3 cars, ~7 laps) rather
+ * than chosen for roundness. Single-step |Δv| there is p50 1, p95 8, p99 13, max
+ * **29 km/h** — every step in the file is smaller than one 30.6 km/h `SPEED_BUCKETS`
+ * band, which is the mechanism: adjacent segments are FORCED to share a colour. Over the
+ * hardest 2 s braking event (315 → 108 km/h), the comet's 21 segments draw:
+ *
+ *   | buckets | band width | distinct colours | longest run |
+ *   |---------|------------|------------------|-------------|
+ *   | 9       | 30.6 km/h  | 8 / 21           | 5           |
+ *   | 16      | 17.2 km/h  | 13 / 21          | 3           |
+ *   | 32      | 8.6 km/h   | 19 / 21          | 2           |
+ *   | 48      | 5.7 km/h   | 21 / 21          | 1           |
+ *
+ *  - **The floor is the data.** 8.6 km/h sits under the p95 single step, so in the
+ *    regime that produces the stripe almost every step crosses a boundary.
+ *  - **The ceiling is the comet's own geometry.** It is 21 segments, so around 48 buckets
+ *    every segment gets its own colour and the batching key stops batching anything. At
+ *    32 a constant-speed stretch still collapses to one stroke, which is what the key is
+ *    FOR, while a braking sweep gets a colour per segment.
+ */
+export const COMET_BUCKETS = 32;
 
 /** Bucket domain, deliberately a little wider than the thermal stops. */
 export const BUCKET_MIN_KMH = 70;
@@ -68,23 +109,30 @@ export function speedColor(kmh: number): string {
 }
 
 /**
- * Which of the `SPEED_BUCKETS` bands a speed falls in, clamped to `[0, n-1]`.
+ * Which of `buckets` bands a speed falls in, clamped to `[0, buckets - 1]`.
  *
- * Bucketing lets the trail be stroked as a handful of batched paths instead of one
+ * Bucketing lets a wake be stroked as a handful of batched paths instead of one
  * `stroke()` per sample, which is what keeps 20 cars affordable.
+ *
+ * The count is a REQUIRED argument rather than a default, so every call site states
+ * which resolution it means — `SPEED_BUCKETS` for the circuit trail, `COMET_BUCKETS`
+ * for the comet. A default would let a wrong-resolution call happen in silence, and the
+ * two keys are byte-compatible `Uint8Array`s, so nothing else would notice.
  */
-export function bucketOf(kmh: number): number {
+export function bucketOf(kmh: number, buckets: number): number {
   const f = (kmh - BUCKET_MIN_KMH) / (BUCKET_MAX_KMH - BUCKET_MIN_KMH);
-  return Math.max(
-    0,
-    Math.min(SPEED_BUCKETS - 1, Math.floor(f * SPEED_BUCKETS)),
-  );
+  return Math.max(0, Math.min(buckets - 1, Math.floor(f * buckets)));
 }
 
-/** The colour a whole bucket is stroked in — its band's midpoint. */
-export function bucketColor(bucket: number): string {
+/**
+ * The colour a whole bucket is stroked in — its band's midpoint on the ramp.
+ *
+ * `buckets` must be the same count the index came out of `bucketOf` with: an index is
+ * meaningless without the resolution that produced it.
+ */
+export function bucketColor(bucket: number, buckets: number): string {
   const span = BUCKET_MAX_KMH - BUCKET_MIN_KMH;
-  return speedColor(BUCKET_MIN_KMH + ((bucket + 0.5) / SPEED_BUCKETS) * span);
+  return speedColor(BUCKET_MIN_KMH + ((bucket + 0.5) / buckets) * span);
 }
 
 /** The speeds the ramp spans, `[coldest, hottest]` in km/h — for legend labels. */
