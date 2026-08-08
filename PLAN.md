@@ -2147,6 +2147,149 @@ is open.
     against the real file through the real modules. **A 30 Hz cadence needs its own
     instrument; the frame harness neither covers it nor contradicts it.**
 
+### [x] Slice 13 — Portfolio polish + featured-replay gallery
+
+**An audience change, not a feature request.** Every slice before this served the
+codebase; this one serves a stranger with four minutes. Before it the repo had **no
+README at all**, no LICENSE, an empty GitHub description with zero topics, and a
+deployed site whose first frame was a one-car synthetic oval with nothing to say that
+real F1 data was the point. The constraint was that no law protecting the codebase
+weakens on the way to fixing that.
+
+- **The gallery:** three curated scenarios in a Start-here panel, one click each,
+  loading through the existing `bootstrapReplay` → `parseReplay` path. Files are
+  static assets committed to `app/public/gallery/` and deployed with the site. The
+  file picker is untouched.
+- **The polish:** README, MIT `LICENSE`, `NOTICE` data carve-out, repo description and
+  topics, fresh screenshots, and `docs/PROJECT_SUMMARY.md`.
+
+- **Amendment (this slice) — the panel OVERLAYS the canvas, and the empty state was
+  never an option.** The kickoff floated "header or empty-state panel". The empty state
+  is **unreachable**: `main.tsx` puts the fixture in the store before first render, so
+  `App.tsx`'s no-replay branch is documented as "the state that should not happen". A
+  gallery living there would never have been seen.
+  - It mounts as a third child of the canvas container, beside `SpeedLegend`, so **the
+    fixture keeps animating behind the scrim** — motion says "this is alive" in a way a
+    frozen frame cannot. The scrim is a plain wash, no backdrop blur, so the moving car
+    reads through it.
+  - **Auto-loading a scenario was rejected**, recorded so it is not re-litigated: it
+    spends megabytes and steals the choice before intent exists, and the panel's three
+    titles ARE the pitch.
+  - **`memo(TrackCanvas)` is load-bearing, not an optimisation.** `galleryOpen` is
+    local React state in `App`, and state in a common ancestor re-renders every child —
+    which `TrackCanvas.test.tsx`'s `commits === 1` exists to forbid. Pinned two ways:
+    structurally (the export is a memo component) and behaviourally (across a panel
+    toggle the canvas is the SAME DOM node and the marker keeps moving, so the rAF loop
+    and clock ref were never interrupted).
+
+- **Amendment (this slice) — the offline rule gained one exception and became
+  ENFORCED for the first time.** The exception: the app may fetch **its own committed
+  gallery assets from its own origin**. Nothing else. Argued rather than asserted — the
+  rule exists so the app cannot depend on a service that can be down, rate-limited or
+  withdrawn, and a same-origin static asset from the same deploy has none of those
+  failure modes; if it is missing, the build is broken, which is a different category.
+  The app still boots on the fixture with zero network.
+  - **Narrowness is in the contract, not in review:** `engine/gallery.ts` validates a
+    scenario's `file` as a bare lowercase filename, so a manifest entry cannot name a
+    scheme, a host, a parent directory or a nested path. Six rejection cases are tested.
+  - **And the tests half got STRICTER.** `src/test/setup.ts` replaces `globalThis.fetch`
+    with a stub that throws, so any unmocked call fails loudly and names itself instead
+    of hanging, 404ing, or quietly succeeding on a machine that happens to be online.
+    `unstubGlobals: true` restores the trap after every test so a gallery mock cannot
+    disarm it for the rest of a file. Two tests assert the trap itself works. This is
+    the same move as the `perFile` coverage threshold and `pytest.ini`'s branch gate: a
+    standard the repo already claimed, converted into something that fails when broken.
+    **Strictly more enforcement than existed before the exception.**
+
+- **Amendment (this slice) — a MISSING ASSET DOES NOT 404, and the approved
+  degradation design was wrong about it.** Found in a browser, not in jsdom, because it
+  is a property of the server rather than the DOM.
+  - The plan specified a `!response.ok` branch for a missing asset. Measured against
+    `vite preview` — and true of any SPA host, Vercel included — a request for an absent
+    path returns the **index document at 200 `text/html`**. Verified directly:
+    `{"status":200,"ok":true,"type":"text/html"}`. So `res.ok` was true, the check never
+    fired for the failure it was written for, and the visitor was told
+    *"silverstone-2024-rain.json is not valid JSON: Unexpected token '<'"* for a file
+    that was simply absent.
+  - Fixed with a content-type check; the message is now "did not return JSON (got
+    text/html) · This featured replay is missing from the deployment." The regression
+    test records why jsdom could not have caught it.
+  - The fix immediately bit two of the slice's own test stubs, which were serving JSON
+    as `text/plain`. That is the check working.
+
+- **Amendment (this slice) — the catalogue is bundled, the payloads are fetched.**
+  `app/src/gallery/manifest.json` is imported (about a kilobyte), so the panel can never
+  fail to render and a malformed entry fails a test rather than a visitor. Only the
+  megabyte payloads travel. One consequence worth stating: a network failure can cost
+  you one scenario, never the gallery.
+  - `suggested.driver` is a **driver CODE, not an index** — an index would silently mean
+    a different car after a regeneration. Resolved against the loaded replay, falling
+    back to car 0. `suggested.clock` is clamped against the loaded duration, because
+    seeking past the end freezes the visitor on the final frame, silently.
+  - Both fallbacks are safety nets, not a plan, so **`galleryAssets.test.ts` catches the
+    drift at build time**: every asset validates through `parseReplay`, every advertised
+    driver is present, and the suggested focus and clock must resolve WITHOUT the
+    fallback being exercised. This is the gallery's `pipelineContract.test.ts`.
+
+- **Amendment (this slice) — `build_replay.py --compact`, and a budget that bites.**
+  Gallery assets are deployed, not reviewed, so they are written minified: measured
+  **2.3x** (3.74 MB → 1.62 MB on a 3-car, 7-lap window). `dump_json(compact=False)`
+  defaults to today's behaviour, so the golden path is untouched — verified by
+  regenerating all three goldens **byte-identical**.
+  - A test enforces the 6 MB budget and that assets arrive minified. Mutation-checked:
+    pretty-printing one asset fails BOTH — the minified assertion, and the budget, which
+    goes 4.09 MB → 6.1 MB.
+  - `app/.prettierignore` now excludes replay payloads, fixtures and goldens. Something
+    reformatted the three gallery assets mid-slice; neither the PostToolUse hook nor
+    `validate:replay` reproduced it under test, so the cause is **unidentified** and the
+    response is a guard rather than a fix. The gate catches it; the ignore file stops it.
+
+- **Amendment (this slice) — the a11y contract is stated, not inherited.** The panel is
+  the first thing a keyboard-only visitor meets. Cards are real `<button>`s wearing the
+  house `FOCUS_RING`; focus moves to the first card on open and **returns to the header
+  toggle on all three close routes** (close control, Escape, choosing a scenario), each
+  asserted on `document.activeElement`; the toggle carries `aria-expanded` and
+  `aria-controls`; Escape stops propagation so one press does one thing.
+
+- **Verified (2026-08-08):**
+  - `npm run check` green with **0 warnings** (`grep -ciE 'warn|error'` over the full
+    log = 0): **565 tests** (up from 502), engine coverage **100%** per file including
+    the new `gallery.ts`. `pytest` green: **156 tests**, `replay_transform.py` 100%
+    lines + branches. Goldens byte-identical.
+  - **Three real assets, 4.09 MB committed** against a 6 MB budget and a 15 MB
+    escalation line — projected 4.14 MB from measured bytes-per-car-sample, so the
+    estimate was good to 1.2%. All three validate through `parseReplay`; all three
+    minified to one line; `dist/gallery/` byte-identical to source after `vite build`.
+
+    | scenario | window | samples ×3 cars | size | motion fidelity r |
+    |---|---|---|---|---|
+    | Silverstone rain, HAM laps 24-28 | 513.5 s | 5135 | 1.34 MB | 0.9993–0.9994 |
+    | Silverstone finale, HAM laps 48-52 | 448.9 s | 4489 | 1.18 MB | 0.9998–0.9999 |
+    | Monza pit cycle, VER laps 13-19 | 597.6 s | 5976 | 1.57 MB | 0.9997–0.9998 |
+
+  - **The wet weather is visible in the statistics, and that is the finding.** Same
+    pipeline, same three cars, same circuit, eleven laps apart: the rain window scores
+    **r = 0.9993 with spread ≈ 0.035**, the dry finale **r = 0.9999 with spread ≈
+    0.007** — a 5x difference in the ratio's coefficient of variation. The water is the
+    only variable. Both clear Slice 6b's r > 0.97 bar comfortably, so this is not a
+    defect; it is `motion_fidelity` picking up genuine physical noise (aquaplaning,
+    correction, spray-degraded position fixes) rather than instrument error. Recorded
+    because a future reader comparing the two files should know the difference is real.
+  - **FastF1 warnings in the build log touch none of our drivers**, confirmed against
+    the session rather than assumed: the incomplete car/position data is for **#21 (not
+    in this session at all)** and **#3 = RIC**; the lap-accuracy warning is **#10 =
+    GAS**. Our three are **#44 HAM, #4 NOR, #1 VER**. No overlap.
+  - **Browser-verified on the production build**, each scenario clicked once:
+    Silverstone rain lands at **3:57.000 = the suggested 237.0 s exactly**, 2x selected,
+    HAM focused, gaps live (NOR −3.035, VER +8.089). Monza lands with **LEC focused —
+    index 1, not 0** — which is what proves code-based resolution rather than a
+    coincidental default. Focus returns to the toggle after each choice.
+  - Screenshots refreshed to the current build: `docs/screenshots/slice-13-*`.
+
+- **Deferred to the human (repo/host settings are the human-only boundary):** the
+  GitHub social-preview image upload. It is not in the REST API, so `gh` cannot set it;
+  the image is generated and committed for the human to upload.
+
 ## Backlog (ideas — not committed)
 - WebGL/3D escalation **only** if measured 20-car perf demands it (documented path).
 - Track-surface niceties: kerbs, sector coloring, mini-map.

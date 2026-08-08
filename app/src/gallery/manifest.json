@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "scenarios": [
+    {
+      "id": "silverstone-2024-rain",
+      "title": "Silverstone 2024 \u00b7 the rain arrives",
+      "hook": "Watch the thermal trail go cold as the shower lands and the speeds collapse.",
+      "file": "silverstone-2024-rain.json",
+      "suggested": {
+        "driver": "HAM",
+        "clock": 237.0,
+        "speedMult": 2
+      },
+      "provenance": {
+        "session": "2024 British Grand Prix \u00b7 Race",
+        "laps": "24-28",
+        "drivers": ["HAM", "NOR", "VER"],
+        "generated": "2026-08-08"
+      }
+    },
+    {
+      "id": "silverstone-2024-finale",
+      "title": "Silverstone 2024 \u00b7 the last laps",
+      "hook": "Hamilton holding Verstappen off on fresher softs, with Norris in range.",
+      "file": "silverstone-2024-finale.json",
+      "suggested": {
+        "driver": "HAM",
+        "clock": 20.0,
+        "speedMult": 1
+      },
+      "provenance": {
+        "session": "2024 British Grand Prix \u00b7 Race",
+        "laps": "48-52",
+        "drivers": ["HAM", "VER", "NOR"],
+        "generated": "2026-08-08"
+      }
+    },
+    {
+      "id": "monza-2024-pit-cycle",
+      "title": "Monza 2024 \u00b7 the pit cycle",
+      "hook": "Seven laps of stops and undercuts: the timing tower reshuffles as they go.",
+      "file": "monza-2024-pit-cycle.json",
+      "suggested": {
+        "driver": "LEC",
+        "clock": 0,
+        "speedMult": 2
+      },
+      "provenance": {
+        "session": "2024 Italian Grand Prix \u00b7 Race",
+        "laps": "13-19",
+        "drivers": ["VER", "LEC", "NOR"],
+        "generated": "2026-08-08"
+      }
+    }
+  ]
+}

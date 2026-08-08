@@ -90,8 +90,46 @@ from FastF1 data. PRD.md holds the detail; this file holds the law.
 - Cover: O(1) lookup correctness, interpolation at boundaries/wrap, rotation/fit math,
   speed→color stops, schema acceptance + rejection, (v2) session-time alignment.
 - Tests use the committed `src/engine/__fixtures__/sample-lap.json` — **never the
-  network.** App, tests, and CI must run fully offline.
+  network.** App, tests, and CI must run fully offline (see the offline rule below).
 - A slice is not done until `npm run check` is green.
+
+## The offline rule, and its single exception
+
+**Tests and CI never touch the network. Full stop, no exceptions.** This is now
+*enforced* rather than promised: `src/test/setup.ts` replaces `globalThis.fetch` with
+a stub that throws, so an unmocked call fails loudly and names itself instead of
+hanging, 404ing, or quietly succeeding on a machine that happens to be online.
+`unstubGlobals: true` in `vite.config.ts` restores the trap after every test, so a
+gallery mock cannot disarm it for the rest of a file. A test that means to exercise
+the fetch path opts in with `vi.stubGlobal("fetch", …)`.
+
+**The APP has exactly one exception:** it may fetch the repo's **own committed gallery
+assets from its own origin** (`app/public/gallery/*.json`, via
+`src/data/loadGalleryReplay.ts`). Nothing else — no backend, no on-demand session
+fetching, no third-party host, no user-supplied URL. The narrowness is enforced in the
+contract, not left to review: `engine/gallery.ts` validates a scenario's `file` as a
+bare lowercase filename, so a manifest entry cannot name a scheme, a host or a parent
+directory.
+
+Why this does not erode the rule: it exists so the app cannot depend on a service that
+can be down, rate-limited or withdrawn, and so tests stay hermetic. A same-origin
+static asset shipped in the same deploy as the code has none of those failure modes —
+if it is missing, the build is broken, which is a different category of problem. The
+app still **boots** on the committed fixture with zero network; the fetch happens only
+on a human's click.
+
+Rules that come with it:
+- **A gallery failure degrades, never blanks.** Keep the replay already on screen,
+  render the message, leave the file picker working. Four failure modes are pinned in
+  `loadGalleryReplay.test.ts`.
+- **A missing asset does not 404.** `vite preview`, and any SPA host including Vercel,
+  answers an unknown path with the index document at **200 `text/html`**. Check the
+  content-type, not just `res.ok` — measured, and the regression test says so.
+- **Validation is not re-implemented.** Gallery payloads go through `bootstrapReplay`
+  → `parseReplay` like everything else (rule 7).
+- **Budget: 6 MB total** for `app/public/gallery/`, escalate above 15 MB rather than
+  committing silently. Assets are written minified (`build_replay.py --compact`);
+  `galleryAssets.test.ts` fails if the budget is exceeded.
 
 ## Gotchas
 

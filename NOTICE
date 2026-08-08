@@ -1,0 +1,53 @@
+F1 Telemetry Replay — data provenance and attribution
+=====================================================
+
+UNOFFICIAL AND UNAFFILIATED
+---------------------------
+This is an independent, non-commercial project built for personal and
+educational purposes. It is not associated with, endorsed by, or in any way
+officially connected to Formula 1, Formula One World Championship Limited,
+the FIA, or any Formula 1 team.
+
+"F1", "Formula 1", "Formula One", "FIA" and related marks are trademarks of
+their respective owners. They are used here only to describe the source and
+subject of the data, which is nominative use — no claim of ownership,
+affiliation or sponsorship is made or implied.
+
+
+WHERE THE DATA COMES FROM
+-------------------------
+Telemetry is accessed through FastF1 (https://github.com/theOehrly/Fast-F1),
+an open-source Python library that reads Formula 1's publicly available timing
+and telemetry feed. This project does not redistribute FastF1, does not proxy
+the feed, and does not operate any service that serves F1 data to third
+parties. All fetching happens on a developer's own machine, deliberately, by
+running `pipeline/build_replay.py`; the deployed web application never contacts
+the timing feed.
+
+
+THE GALLERY FILES
+-----------------
+`app/public/gallery/` contains three curated historical excerpts, committed so
+the deployed site has something to show without a backend:
+
+  silverstone-2024-rain.json      2024 British Grand Prix, race, laps 24-28
+  silverstone-2024-finale.json    2024 British Grand Prix, race, laps 48-52
+  monza-2024-pit-cycle.json       2024 Italian Grand Prix, race, laps 13-19
+
+Each is a small, transformed excerpt of a past session — three cars over a few
+laps, resampled onto a 10 Hz grid — not a reproduction of the source feed. They
+exist to demonstrate the software. They are limited in number and length on
+purpose, and the project does not offer, and will not add, on-demand access to
+arbitrary sessions.
+
+The MIT licence in LICENSE covers this project's source code. It grants no
+rights in the underlying Formula 1 data, and none are claimed. If a rights
+holder objects to the inclusion of these excerpts, open an issue and they will
+be removed.
+
+
+THIRD-PARTY SOFTWARE
+--------------------
+Dependencies are listed in `app/package.json` and `pipeline/requirements.txt`
+and remain under their own licences. FastF1 is distributed under the MIT
+licence.
