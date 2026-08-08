@@ -1441,7 +1441,7 @@ the other standing.
     Slice 7's < 2 s cold-load bar, and it buys the per-focus-change rebuild (a measured
     1.38 ms, nineteen times to cycle a field) going to zero.
 
-### [ ] Slice 9e — Scrolling speed trace
+### [x] Slice 9e — Scrolling speed trace
 
 **Also from the full-field load.** Canvas-side only, and independent of 9d — filed
 separately because it shares neither a mechanism nor a file with the gap defect.
@@ -1470,6 +1470,146 @@ separately because it shares neither a mechanism nor a file with the gap defect.
   correctly (the v1 files are the regression fixtures, as in 9 and 9b); human eyeball on
   the full-field and endgame files; `npm run check` green, coverage unmoved.
 - **Out of scope:** the HUD's other readouts; the tower; `schema.ts`; the pipeline.
+
+- **Amendment (this slice) — the degradations are the CLAMP, not branches.** One formula
+  covers every regime, and that is what keeps "a window longer than the replay" from
+  needing a letterbox case:
+
+      span = min(TRACE_SECONDS, duration)
+      t0   = clamp(clock − PLAYHEAD_FRACTION × span, 0, max(0, duration − span))
+
+  - **`duration ≤ TRACE_SECONDS`** — `span` collapses to `duration`, `t0` is 0 forever,
+    and what is drawn is the whole replay with the playhead sweeping: the pre-9e
+    behaviour, reproduced rather than approximated. Pinned by a test that asserts the
+    degraded playhead equals the old `tracePlayheadX` mapping (`clock/duration × width`).
+  - **`clock < span`** — the fill-in. The trace grows from the left and the playhead
+    sweeps up to its fraction, then pins.
+  - **End of an open window** — `t0` clamps at `duration − span` and nothing runs off.
+- **Amendment (this slice) — `PLAYHEAD_FRACTION = 1`: history only, as a named constant.**
+  The window ends at the present; what is COMING is already shown in the better
+  representation, the track itself, where a car approaches a corner spatially. Shipped as
+  a fraction rather than a hard-coded right edge so that trying 0.75 later is an eyeball
+  test rather than a layout rework — the `COMET_BANDS` precedent, where the fix location
+  is documented before anyone asks for it.
+- **Amendment (this slice) — closed replays CLAMP AT THE LINE; the window does not reach
+  back into the previous lap.** Argued from consistency rather than taste: crossing the
+  line resets the covered-portion trail (4b) as a lap-rhythm marker, and a trace that
+  fills in from the line is that same design language on the time axis — the lap starts,
+  the picture starts. Wrapping would treat the loop as continuous exactly where Slice 8's
+  hard-cut convention deliberately treats it as a fresh lap, and two visualisations
+  disagreeing about what the line means is worse than either choice alone.
+- **Amendment (this slice) — `TRACE_SECONDS = 20`, and for once the spec's band was not
+  wrong by 4×.** The spec said 30-60 s and warned (from `COMET_SECONDS`) to expect lower.
+  It lands at 20, but the argument that fixes it is arithmetic rather than the eye:
+  - **The ceiling is one sample per pixel.** The sidebar gives the trace ~192 CSS px, so
+    at 10 Hz anything past **19.2 s** asks the box for more samples than it has pixels —
+    this slice's own defect, in smaller print. 20 s sits on that ceiling.
+  - **The floor is one braking event plus its recovery.** Measured by matched render, not
+    asserted: at the same clock on `monza_endgame.json` (8:59.100, focus PIA), **10 s
+    shows a gentle wander** — the braking zone has already scrolled out and there is no
+    event in frame at all; **20 s shows plateau → brake → minimum → recovery**, one whole
+    event; **30 s shows two events** and is legible, but is 1.56 samples per pixel and is
+    throwing away detail the rasteriser then has to guess at.
+    `docs/screenshots/slice-9e-window-{10s,20s,30s}.png`, same file, same clock, only the
+    constant differing.
+  - Pinned mechanically as `TRACE_SECONDS × rate ≤ TRACE_W`, the `TAIL_SECONDS` lesson:
+    before 9b's follow-up no test could observe that constant at all. Setting 60 fails.
+    The pin is a **proxy** — `TRACE_W` user units stretch to the sidebar's real width —
+    and says so; the real bar is the eye at that width.
+- **Amendment (this slice) — the inherited `displaySignature` question is CLOSED: the
+  rounded `x`/`y` term is REMOVED.** 9d flagged it as no longer load-bearing for the
+  tower; 9e is the other thing that could have wanted it, and does not — the trace is a
+  function of the clock and the focused car's static samples, so no published coordinate
+  reaches anything the HUD draws.
+  - **The evidence that it was dead cargo is that nothing had to change.** Both
+    perturbation suites in `Hud.test.tsx` walk every `CarSnapshot` field asserting
+    *rendered change ⇒ signature change*; they pass untouched, because perturbing `x`
+    changes no pixel. That mechanical trap is also what makes removal safe going forward:
+    the day a readout prints a coordinate, the suite fails until the signature moves.
+  - **Emit cadence and change detection are untouched** — `publish`'s 30 Hz window and
+    its changed-value condition are not edited, and production emit counts cannot move,
+    since a car that moved is a clock that moved. Pinned in `channel.test.ts` by a pair
+    differing only in `x`/`y` at one clock, which is documented there as a pair
+    production cannot produce.
+- **Amendment (this slice) — the ≤30 Hz path got its own instrument, committed as
+  `docs/perf/hud-tick.mjs`.** Slice 12's addendum settled the principle in prose after a
+  brief asserted a per-frame cost for gaps that was 400× wrong — *"a 30 Hz cadence needs
+  its own instrument; the frame harness neither covers it nor contradicts it"* — and then
+  measured it with a Node benchmark it threw away. This is the second slice to want that
+  instrument, so it is committed rather than re-derived a third time (`fps-probe.js` and
+  `drawcall-capture.mjs`, same reasoning, same place outside `app/`).
+  - It reports **points per tick** (integer-exact, no measurement floor — the number that
+    carries the argument) as well as µs, because Slice 12 had to re-design its own
+    instrument mid-slice for exactly that reason.
+  - It **spans the change**: a documented compat shim reads whichever trace API is
+    shipped, so before and after come from one harness, which is what the
+    `drawcall-capture` ordering discipline requires.
+  - It states what it does not measure next to what it does: **no React**. That half is
+    `fps-probe.js`'s callback p95/p99 in a foreground window.
+- **Verified (2026-08-08):**
+  - **THE CANVAS IS UNTOUCHED, and it was captured BEFORE anything was edited.** Both
+    modes, through `drawcall-capture.mjs` on unmodified `main` (ceef25f), then re-captured
+    afterwards through the identical harness:
+
+    | mode | before | after | calls | Path2D |
+    |---|---|---|---|---|
+    | closed | `23fa7006…a816f` | **`23fa7006…a816f`** | 79,213 | 19 |
+    | open (comet) | `f33499f3…58960` | **`f33499f3…58960`** | 111,986 | 1 |
+
+    Both identical, which is the expectation this slice stated in advance rather than
+    discovered: the trace is a DOM/SVG sibling of `TrackCanvas` and no file under
+    `src/render/` is in the diff. The before-capture also reproduces 9c's recorded
+    figures exactly, so the harness had not drifted.
+  - **The ≤30 Hz cost, measured through `hud-tick.mjs` on the real files.** Before is the
+    pre-9e API on unmodified `main`; after is the shipped one, same harness, 6000 ticks:
+
+    | file | samples/car | points in DOM | points/tick | µs/tick | µs/focus change |
+    |---|---|---|---|---|---|
+    | sample-lap 58.5 s | 585 | 585 → **202** | 0 → 157.1 | 0.22 → **16.2** | 58.4 → **5.4** |
+    | monza_race 260.7 s | 2607 | 2607 → **202** | 0 → 186.6 | 0.21 → **21.4** | 289.0 → **4.7** |
+    | monza_full_field 260.7 s | 2607 | 2607 → **202** | 0 → 186.6 | 0.20 → **22.3** | 352.2 → **4.0** |
+    | monza_endgame 579.2 s | 5792 | 5792 → **202** | 0 → 186.6 | 0.18 → **22.0** | 607.7 → **8.0** |
+
+    - **The trade is stated rather than buried: per-tick work went UP** (a division became
+      a ~200-point string build), **and the DOM went down 28×** on the endgame file. At
+      22 µs a tick that is **0.066% of the 33.3 ms tick budget** and 0.66 ms per second of
+      wall time; the per-focus-change cost fell **76×** because the O(samples) path build
+      is gone and only the min/max scan remains.
+    - **Independence from window length is MEASURED, not claimed:** points/tick is
+      **186.63 on both the 260.7 s and the 579.2 s file** — 2.22× the window, identical
+      figure — which is how Slice 12 proved 9b's bound. The fixture reads 157.06 because
+      it is a closed 58.5 s lap that fills in again after every wrap, which is the
+      fill-in showing up in a number.
+    - Node through `vite-node`, so the µs are a bound on the pure-JS half, not a browser
+      measurement.
+  - `npm run check` green with **0 warnings** (`grep -ciE 'warn|error'` over the full log
+    = 0): **502 tests**, engine coverage **100%** lines/branches/functions per file.
+  - **Mutations caught:** unbounding the window (drawing from sample 0) fails **7**;
+    pinning the playhead at the edge unconditionally fails **5**; `TRACE_SECONDS = 60`
+    fails **7** (the density pin plus the bound tests); dropping the interpolated head
+    fails **2**; scaling y to the visible window instead of the replay fails **1** — the
+    "same sample, same y at two clocks" test, which exists for that mutation alone.
+  - **Before/after are a matched pair**: `monza_endgame.json`, clock **8:59.100**, focus
+    PIA, same gaps (LEC −6.341 / 393 m, NOR +3.883 / 242 m), same speed (253 km/h, 6th).
+    The only difference is the trace. `docs/screenshots/slice-9e-before-full-window-`
+    `sparkline.jpg` is a **picket fence** — 5792 samples in ~192 px, the finding's
+    "texture, not signal" photographed — against `slice-9e-after-scrolling-20s.jpg`,
+    where nine minutes in the trace reads plateau → brake → minimum → recovery.
+  - **Closed one-car regression, live** (`monza_ver.json`, 1:19.700): at clock 10 s the
+    trace is **filling in from the line** with the playhead halfway across
+    (`slice-9e-closed-lap-fill-in.png`); by 40 s it is a full 20 s window scrolling with
+    the playhead pinned (`slice-9e-closed-lap-scrolling.jpg`). The canvas is
+    indistinguishable, which the md5 above already proved.
+  - **Full field, 19 cars** (`monza_full_field.json`, clock 2:00.000, focus VER): the
+    trace sits under a 19-row tower and reads the approach, plateau and brake into the
+    corner VER is in. `docs/screenshots/slice-9e-full-field-19-cars.jpg`.
+- **NOT claimed: sustained fps.** The MCP browser tab reports `visibilityState:
+  "hidden"`, where rAF is throttled and `fps-probe.js` refuses to start by design — the
+  same split Slices 7, 9c and 12 recorded. The draw-call half above is exact and needs no
+  browser, and the ≤30 Hz half now has its own exact instrument; the frame-drop half is
+  the human's run against 9c's baseline (19 cars: 119.8 fps, callback mean 1.13 ms,
+  p95 2.6 / p99 2.8, 0 frames > 20 ms). The trace's cost, if it shows anywhere, shows in
+  callback p95/p99.
 
 ## Maintenance (not phase-bound — schedule after the slices above)
 

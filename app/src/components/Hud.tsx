@@ -139,6 +139,7 @@ export function Hud({ replay }: HudProps) {
           car={replay.cars[focusedCarIndex]}
           clock={clock}
           duration={replay.meta.duration}
+          sampleRateHz={replay.meta.sampleRateHz}
         />
       </div>
     </aside>
