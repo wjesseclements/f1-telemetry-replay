@@ -12,6 +12,7 @@ descriptions.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import math
 
@@ -32,6 +33,7 @@ from replay_transform import (
     check_columns,
     clamp_throttle,
     closing_time,
+    color_lookup_warning,
     cumulative_arclength,
     cumulative_travel,
     dump_json,
@@ -87,22 +89,65 @@ def test_check_columns_does_not_require_drs():
 # --- value hygiene ----------------------------------------------------------------
 
 
+def test_default_color_cannot_be_mistaken_for_a_livery():
+    """
+    The fallback must read as "no data", never as a plausible team colour.
+
+    A regression test, not a description. `DEFAULT_COLOR` was `#3671C6` — the hex
+    widely published as Red Bull's — so a failed lookup rendered as a plausible Red
+    Bull lap, which is exactly how the always-failing `fastf1.plotting` lookup
+    survived a whole slice unnoticed. The invariant is ACHROMATIC: every F1 livery is
+    a saturated hue, so r == g == b is the property that makes the value unmistakable,
+    and the literal is pinned alongside it so a "neutral-ish" brand hex cannot slip in
+    under a passing equality.
+    """
+    assert DEFAULT_COLOR == "#888888"
+    r, g, b = (int(DEFAULT_COLOR[i : i + 2], 16) for i in (1, 3, 5))
+    assert r == g == b
+
+
 @pytest.mark.parametrize(
     "value,expected",
     [
+        # Valid input is passed THROUGH. These four are only meaningful because they
+        # differ from `DEFAULT_COLOR`: while the fallback was itself `#3671C6`, a
+        # pass-through and a fallback were indistinguishable here.
         ("#3671C6", "#3671C6"),
         ("#abc", "#abc"),
         ("3671C6", "#3671C6"),  # FastF1 has returned bare hex
         ("  #3671C6  ", "#3671C6"),
+        # Everything the schema's hex regex would reject falls back instead.
         ("rebeccapurple", DEFAULT_COLOR),
         ("#12345", DEFAULT_COLOR),
         ("", DEFAULT_COLOR),
         (None, DEFAULT_COLOR),
+        # An int, so → fallback. This row is the one that changed meaning: with the
+        # old fallback it passed both if the fallback fired AND if `normalise_color`
+        # had coerced the int to that same hex string. It now discriminates.
         (0x3671C6, DEFAULT_COLOR),
     ],
 )
 def test_normalise_color(value, expected):
     assert normalise_color(value) == expected
+
+
+def test_color_lookup_warning_says_who_failed_and_what_went_wrong():
+    """
+    Loud, not fatal — and actionable, which needs three things in the line.
+
+    The driver, because in a multi-car build it is what says whether one seat or the
+    whole field went grey; the exception TYPE, because `AttributeError` (FastF1 moved
+    its API) and `KeyError` (the team is not in the colour map) are different fixes;
+    and the `WARNING:` marker, because this prints into the middle of FastF1's own
+    INFO log, where an unadorned line is invisible.
+    """
+    line = color_lookup_warning("LEC", KeyError("Ferrari"))
+
+    assert "WARNING" in line
+    assert "LEC" in line
+    assert "KeyError" in line
+    assert "Ferrari" in line
+    assert DEFAULT_COLOR in line
 
 
 def test_clamp_throttle_pulls_both_ends_into_range():
@@ -931,7 +976,26 @@ def test_build_replay_dict_always_emits_cars_as_an_array():
     assert isinstance(replay["cars"], list)
     assert len(replay["cars"]) == 1
     assert replay["cars"][0]["driver"] == "SYN"
+    # A genuine PASS-THROUGH assertion: `synthetic.META` supplies this explicitly and
+    # it is not `DEFAULT_COLOR`, so a fallback here would fail the equality.
     assert replay["cars"][0]["color"] == "#3671C6"
+
+
+def test_build_replay_dict_emits_the_neutral_when_the_colour_lookup_failed():
+    """
+    What a failed lookup looks like in the FILE, end to end.
+
+    `build_replay.py`'s `except` hands back an empty team and colour, and the
+    resolution happens in exactly one place — `normalise_color` — so this is the whole
+    of the fallback path as an emitted replay. Asserting the neutral rather than
+    merely "it did not crash" is the point of the slice: the old value made a failed
+    lookup indistinguishable from a Red Bull lap.
+    """
+    meta = dataclasses.replace(synthetic.META, team="", color="")
+    replay = build_replay_dict(synthetic.telemetry(), meta)
+
+    assert replay["cars"][0]["color"] == "#888888"
+    assert replay["cars"][0]["color"] != "#3671C6"
 
 
 def test_build_replay_dict_omits_drs_for_a_season_without_it():
@@ -1145,6 +1209,26 @@ def test_window_puts_every_car_on_one_shared_grid():
         assert [s["t"] for s in car["samples"]] == [
             round(k / rate, 3) for k in range(n)
         ]
+
+
+def test_window_greys_only_the_car_whose_colour_lookup_failed():
+    """
+    A per-car failure stays per-car, and it is visible next to cars that resolved.
+
+    `_team_and_color` fails one driver at a time, so the multi-car form of the check
+    is a file in which one car is obviously undecorated while its neighbours keep
+    their liveries — the shape a human would see on the canvas. It is also what makes
+    the neutral do its job: grey only reads as "no data" when there is a real colour
+    beside it to be compared against.
+    """
+    lead, chase = _two_car_window()
+    blanked = dataclasses.replace(chase, team="", color="")
+    replay = build_window_replay_dict(
+        [lead, blanked], synthetic.SESSION_META, WINDOW
+    )
+
+    assert replay["cars"][0]["color"] == synthetic.TEAMS["AAA"][1]
+    assert replay["cars"][1]["color"] == "#888888"
 
 
 def test_window_sample_k_is_the_same_instant_for_every_car():

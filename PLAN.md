@@ -1783,7 +1783,7 @@ forced a source edit.
     **No production dependency moved**: react, react-dom, zod and zustand are absent
     from the added, removed and changed lists alike.
 
-### [ ] Slice 11 — Make the pipeline's colour fallback honest
+### [x] Slice 11 — Make the pipeline's colour fallback honest
 
 Two halves of one idea, filed together from PR #31 and **not** done there — that PR was
 deliberately one import. **A default that impersonates a plausible answer is the same
@@ -1810,6 +1810,82 @@ nicety.
   re-read, not just re-run); `npm run check` green; and a real lap built for a driver
   whose team colour cannot be confused with the new fallback — **not VER**, whose blue
   is what made the original bug invisible.
+
+- **Amendment (this slice) — the neutral is `#888888`, and ACHROMATIC is the property,
+  not the hex.** Two bars had to clear at once and they exclude different things:
+  - **Not a livery.** Every F1 team colour is a saturated hue and no current livery
+    occupies mid-grey (silver and white are high-value, near-white). So the constant's
+    invariant is `r == g == b`, and that is what the test asserts alongside the literal
+    — a "neutral-ish" brand hex cannot slip in under a passing equality.
+  - **Not a DELIBERATE CHOICE either**, which is what rules out the loud alternatives.
+    A magenta is unmistakably not a livery, but sat on a dark canvas beside three team
+    colours it reads as *selected*. A desaturated mid grey is what every UI already
+    means by "no value" — and it is the one thing the old value could never be, since
+    a failed lookup that renders as a plausible Red Bull lap is invisible by
+    construction.
+- **Amendment (this slice) — the warning is ruled IN, loud, and names the driver. The
+  volume moved; the handling did not.** A colour is still not worth failing a fetch
+  over, so the `except` stays broad and stays non-fatal — the same shape as Slice 7's
+  closing-time tripwire. What changed is the conditions, and that is the whole argument:
+  - Before PR #31 the path fired on **every single run**. A banner there would have
+    been pure noise and the quiet one-liner was correct **for those conditions**.
+  - It should now never fire. If it does it is NEW — FastF1 moved its API again (the
+    defect PR #31 fixed, returning) or a team is missing from the colour map — and both
+    silently paint every car in the file grey. A never-exercised path firing is news.
+  - It prints into the middle of FastF1's own INFO log, so it joins the house
+    `\nWARNING: …\n` format already used by the motion-fidelity, file-size and
+    closing-time tripwires. The exception **type** is reported next to its message,
+    because `AttributeError` and `KeyError` are those two diagnoses and they have
+    different fixes.
+  - **`color_lookup_warning` lives in `replay_transform.py`, not next to the `except`**
+    that calls it, for the reason Slice 8 recorded when it moved `parse_lap_range`:
+    `build_replay.py` imports FastF1, which CI does not install, so nothing in it can
+    be tested — and a warning whose text is wrong is itself a quiet failure. Both call
+    sites (`build_lap_replay`, `_team_and_color`) now print the same line; the lap one
+    did not name the driver before.
+- **Amendment (this slice) — the golden ratchet DID NOT FIRE, checked rather than
+  assumed.** All three goldens are generated from `tests/synthetic.py`, which passes
+  **explicit** colours (`META`/`META_NO_DRS` carry `#3671C6`; `TEAMS` carries three
+  literals), so the fallback branch is never taken on the golden path.
+  `regenerate_golden.py` rewrote all three files and `git diff` came back **empty** —
+  byte-identical, which also confirms the canonical `dump_json` path is untouched.
+  `synthetic.py` deliberately keeps `#3671C6` as its explicit colour: changing it would
+  churn three goldens for nothing, and keeping it is what turns
+  `test_build_replay_dict_always_emits_cars_as_an_array`'s colour assertion into a
+  genuine **pass-through** check.
+- **Amendment (this slice) — `test_normalise_color` re-read, and one row changed
+  MEANING.** The parameterisation stays valid (invalid inputs still expect
+  `DEFAULT_COLOR`, whatever it is), but `(0x3671C6, DEFAULT_COLOR)` was **ambiguous**
+  while the fallback was itself `#3671C6`: it passed both if the fallback fired and if
+  `normalise_color` had coerced the int to that hex string. It now discriminates the
+  two, and tests what its comment always claimed. The same latent ambiguity sat in the
+  emitted-colour assertion above. Both are annotated in place rather than rewritten —
+  the rows were never wrong, they were unfalsifiable.
+- **Verified (2026-08-08):**
+  - `pytest` green: **153 tests** (149 + 4), `replay_transform.py` still **100% lines +
+    branches**. The four are the achromatic pin, the warning's content, and the fallback
+    exercised end-to-end on both builders — the window one asserting one car grey while
+    its two neighbours keep their liveries, because grey only reads as "no data" when
+    there is a real colour beside it.
+  - `npm run check` green with **0 warnings** (`grep -ciE 'warn|error'` over the full
+    log = 0): 502 tests, engine coverage 100%. The app is untouched this slice.
+  - **A colour that RESOLVES still resolves — 2024 Monza Q LEC, rebuilt from the warm
+    cache** (deliberately not VER): `color` = **`#e8002d`**, team `Ferrari`, no warning
+    printed, `validate:replay` green. Against the pre-slice `monza_lec.json` the only
+    field that differs anywhere in the file is `meta.loop` — added by Slice 8 — with all
+    795 samples and every other `meta` field identical.
+  - **A colour that FAILS now looks failed.** With `fastf1.plotting.get_team_color`
+    forced to raise (a throwaway harness, not committed — the committed form is the
+    pytest pair above), the same real lap emits `#888888` with an empty team, and prints
+    `WARNING: LEC: team colour lookup failed (AttributeError: …); falling back to
+    #888888, which is not a livery.` — legible against FastF1's log rather than lost in
+    it. A 3-car race window with **only NOR's** lookup failing exercised the other call
+    site: `#0600ef` / `#e8002d` / `#888888`, one warning naming NOR, motion fidelity
+    unchanged at r = 0.9998–0.9999.
+  - **Rendered in the browser**, which is where the claim actually lives: in that
+    3-car window NOR's marker and HUD tower chip are plainly undecorated grey beside
+    VER's blue and LEC's red — it reads as missing data, not as a team and not as a
+    highlight. The old value could not have produced that image.
 
 ### [x] Slice 12 — Measure the 20-car frame budget — **answered at 19 cars**
 
