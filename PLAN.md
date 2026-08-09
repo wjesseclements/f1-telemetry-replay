@@ -2419,6 +2419,15 @@ to be the discriminator that identified the mechanism.
     both circuits, as-shipped vs flipped, with direction-of-travel arrows.
 
 ## Backlog (ideas — not committed)
+- **Fixture asymmetry overhaul** — rebuild the committed fixture with no symmetries,
+  distinct angles, and no near-cancellations, so it can express handedness,
+  orientation, and angle-sensitivity defect classes. **Three blindness instances
+  recorded:** 9d's circle (every lap passed at exactly zero distance, so a
+  spatially-nearest bug tied with the right answer and won by luck), 9f's oval (its
+  mirror image is itself, so no assertion against it can express handedness), and 9f's
+  S/F cancellation (`startFinish.angle` 0.2066 nearly cancels `meta.rotation` −0.2443
+  rad, so a mirror moved the line only 4.3° and an absolute negative control went
+  soft). Each was patched at the assertion; the fixture itself is the common cause.
 - **Diagnose the pit-entry zigzag** — found in Slice 13's acceptance test, classified
   as pre-existing and made prominent by the featured scenarios' pit cycles. Start from
   the symptom; no mechanism was established at the time it was filed.
