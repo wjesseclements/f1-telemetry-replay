@@ -2417,6 +2417,44 @@ to be the discriminator that identified the mechanism.
     the top toward 10-11 at 0:51.7. Both correct, both matching the official maps.
   - `docs/screenshots/slice-9f-orientation-diagnosis.png` keeps the diagnostic plot:
     both circuits, as-shipped vs flipped, with direction-of-travel arrows.
+- **Amendment (post-merge) — `null` IS NOT A TIMELINE; TIMESTAMPS ARE.** Filed with
+  the instrument-first findings (Slice 12's refresh cap, Slice 10's truncated version
+  list, Slice 11's grep), because it is the same lesson wearing a different costume:
+  this time the faulty instrument was the assistant's own query.
+  - **The claim.** After merging PRs #51 and #52 the assistant reported, twice, that
+    auto-merge had "fired immediately rather than queuing", so the required check had
+    not actually gated the final commit — and recommended a ruleset change on that
+    basis. The human asked for the change to be prepared.
+  - **The evidence, which says the opposite.** #51 merged at 22:02:38Z with head
+    `9d3c7ec`, whose own `verify` run started 22:00:34Z — a gap of **2m04s**. #52
+    merged at 12:40:40Z with head `b8d9089`, run started 12:36:32Z — **4m08s**. A
+    `verify` run takes 70-85 s. **Both PRs waited for their own head commit's run and
+    merged after it passed.** The gate held every time.
+  - **The faulty reading.** `gh pr view` was run straight after `gh pr merge --auto`,
+    returned `autoMergeRequest: null` with `state: MERGED`, and that pair was read as
+    a timeline. It is not one: `gh pr merge --auto` returns immediately while the
+    merge happens later, the follow-up query ran minutes afterwards, and
+    `autoMergeRequest` is `null` on ANY merged PR because the request has been
+    consumed. A field that is null after the fact says nothing about when the fact
+    occurred.
+  - **The near-miss worth recording.** The recommended setting,
+    `strict_required_status_checks_policy`, was **already `true`** — in the committed
+    `.github/ruleset.json` and live in the repo. The change would have been a no-op
+    dressed as a fix. Worse, the framing was also wrong: strict means "the branch is
+    up to date with its base", not "the check is bound to the head SHA", and both
+    branches were already up to date, so it could not have caught the imagined race
+    either.
+  - **The rule.** Before reporting that a gate did not hold, read the timestamps.
+    Absence of a field is not evidence about ordering.
+- **Amendment (post-merge) — two ruleset facts settled while checking the above.**
+  - **Squash is now pinned in the RULESET**, not only in the repo's merge settings.
+    Linear history is law here and it was being held by a repo setting the ruleset
+    would have happily contradicted — two sources of truth that happened to agree.
+  - **The admin bypass stays `always`, chosen rather than defaulted.** One admin, solo
+    repo, and the bypass is the break-glass for repairing `main` when the gate itself
+    is what is broken. Narrowing it would spend the emergency hatch to defend against
+    the only party the repo already trusts. Reasoning recorded in `setup-repo.sh` so
+    it reads as a decision; revisit only if a second admin is ever added.
 
 ## Backlog (ideas — not committed)
 - **Fixture asymmetry overhaul** — rebuild the committed fixture with no symmetries,
