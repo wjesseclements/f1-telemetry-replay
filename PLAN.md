@@ -264,6 +264,13 @@ built **into** the slice that introduces them — never deferred to a late audit
   CORRECT as-is** (FastF1 gave 95.0° for Monza; `geometry.rotateWorld` consumes it
   unchanged). No negation needed — this was the slice's one open question and it is
   closed. Slice 6 is done.
+  - **SUPERSEDED IN PART by Slice 9f (2026-08-08).** The rotation SIGN is still
+    correct and the pipeline still passes `ci.rotation` through unchanged — that half
+    stands and Slice 9f re-confirmed it. What this eyeball could not see is that the
+    RENDERER was also MIRRORING every circuit, because it never negated y for a
+    y-down canvas. "Layout recognisably Monza" was the wrong question: a mirrored
+    Monza is still recognisably Monza. Read this verdict as "the rotation is right",
+    not as "the orientation is right".
 
 ### [x] Slice 6b — Arc-length reparameterization (dot velocity agrees with speed)
 
@@ -375,7 +382,9 @@ small and known; and it should land **before any real-data lap becomes someone's
 
 ### [x] Slice 7 — v1 acceptance & polish (measure built-in concerns)
 - ~~Carried in from Slice 6: verify `meta.rotation`'s sign against a real lap.~~
-  **Settled 2026-07-28 — the convention agrees, no change needed.** FastF1's
+  **Settled 2026-07-28 — the convention agrees, no change needed.** *(Still true, and still
+  only about the SIGN — see Slice 9f, which found the renderer mirroring on top of a
+  correctly-signed rotation.)* FastF1's
   `circuit_info.rotation` (95.0° for Monza) feeds `geometry.rotateWorld` unchanged and
   the circuit renders true. Recorded here so nobody re-opens it: the pipeline must pass
   `ci.rotation` through **as-is**, and a future circuit rendering sideways is a bug in
@@ -2315,7 +2324,110 @@ weakens on the way to fixing that.
   GitHub social-preview image upload. It is not in the REST API, so `gh` cannot set it;
   the image is generated and committed for the human to upload.
 
+### [x] Slice 9f — The track was drawn mirrored (hotfix)
+
+**Found in production by the Slice 13 four-minute test, not by the suite.** Silverstone
+rendered upside down; the suspicion that cars also circulated the wrong way turned out
+to be the discriminator that identified the mechanism.
+
+- **VERDICT: a mirror, not a rotation.** A rotation cannot reverse circulation — it
+  preserves the sign of a polygon's signed area — so the shoelace sign settles it:
+
+  | circuit | `meta.rotation` | signed area (raw) | y-up sense | as shipped (y-down) |
+  |---|---|---|---|---|
+  | Silverstone | 92.0° | −4.069e8 | **CW** | **CCW** ✗ |
+  | Monza | 95.0° | −6.798e8 | **CW** | **CCW** ✗ |
+
+  Both circuits run clockwise in reality. FastF1's data, read in its own y-UP frame, is
+  correct. The renderer drew it counter-clockwise.
+- **ROOT CAUSE: a comment that asserted a falsehood.** `geometry.fitTransform` said
+  *"y is not flipped: world y grows downward on screen, matching the source data's
+  orientation."* FastF1's X/Y are y-UP — its own documentation plots them straight into
+  matplotlib — and a canvas is y-down. `fitTransform` applies only a positive scale and
+  a translation, so **every real circuit was drawn mirrored, and every car circulated
+  backwards, from Slice 4a to here.**
+- **Why it read as a 2× rotation error, which is a genuine and instructive red
+  herring.** `M·R(r) = R(−r)·M`, verified numerically. A mirrored render is therefore
+  *indistinguishable from* a 2×rotation offset if you assume the error must be
+  rotational: 184° at Silverstone, 190° at Monza. The predicted number was right and
+  the predicted mechanism was wrong — and only the circulation test can tell them
+  apart, which is why it is the one that got committed.
+- **Amendment (this slice) — the approved plan said "fix in the pipeline"; the
+  evidence moved it to the renderer, and the divergence was ratified before building.**
+  The pipeline is innocent: it emits FastF1's coordinates faithfully and passes
+  `ci.rotation` through unchanged, exactly as Slices 6 and 7 concluded. Fixing in the
+  app instead is better on every axis, which is why it was worth stopping to argue:
+  - **no regeneration** — all three gallery assets stay byte-identical;
+  - **no golden implications** — the pipeline is not touched;
+  - **every previously generated file on disk is fixed too**, not just the three we
+    would have rebuilt;
+  - **the schema contract holds.** `schema.ts` already says stored x/y are never
+    transformed and rotation is a presentation concern. A y-flip is the same category;
+    negating y at emit time would push presentation into the data.
+- **Amendment (this slice) — the rename IS the second half of the fix.** A comment
+  asserting a false fact caused this, so a function called `rotateWorld` that also
+  mirrors would rebuild the same trap. `rotatePoint`/`rotateWorld`/`rotateHeading`
+  became **`toScreenPoint`/`toScreenPoints`/`toScreenHeading`**, applying `M·R(r)`.
+  Because the flip rides with the rotation, everything downstream — `centroid`,
+  `labelDirection`, `fitTransform`, `paths.ts`, the trail painters — works in one
+  consistent screen-oriented frame and needed no correction of its own.
+  `fitTransform`'s "no flip, no shear" is now TRUE rather than asserted.
+  - Headings get the same mirror: `toScreenHeading` returns **−(h + r)**, because
+    negating y negates the angle. That is the car's heading tick and the start/finish
+    line, both of which were also mirrored.
+- **Amendment (this slice) — the generalized fixture lesson, and it is the SECOND
+  occurrence.** `app/src/render/orientation.test.ts` is the class fix, not one more
+  test.
+  - **Symmetric fixtures are structurally blind to handedness.** The committed fixture
+    is a symmetric oval: its mirror image is *itself*, so no assertion written against
+    it can express handedness. Slice 9d hit the same wall from the other side — its
+    perfect circle made every lap pass at exactly zero distance, so a
+    "spatially-nearest" bug tied with the right answer and won by luck. Twice now, a
+    fixture chosen for tractability has been unable to express the property under test.
+  - **Hand-computing from the formula does not save you.** `geometry.test.ts`'s header
+    claimed expected values were hand-computed "so a sign flip fails here rather than
+    showing up as a mirrored track". Every one of those expectations was internally
+    consistent AND WRONG for four months: hand-computing from a formula cannot catch a
+    formula that is MISSING a term.
+  - **The fix is to test a PROPERTY the defect must violate, on a deliberately
+    asymmetric path.** The new file builds a closed lap with angle-varying radius,
+    offset from the origin, traversed clockwise, and asserts circulation direction via
+    the shoelace sign at nine rotations; that the transform reverses circulation
+    relative to the source (a rotation cannot); that it is an isometry (guarding the
+    opposite error of a non-uniform y-scale); and — executably — that the symmetric
+    oval maps onto itself under reflection while the asymmetric lap does not.
+- **Amendment (this slice) — a second near-degenerate fixture case, found while
+  fixing the first.** `paths.test.ts`'s start/finish negative control read `> 0.2` and
+  measured 0.162 after the fix. Not a defect: the fixture's `startFinish.angle`
+  (0.2066) nearly cancels its `meta.rotation` (−0.2443 rad), so the mirror moves that
+  line by only **4.3°**. The control is now a RATIO against the correct value rather
+  than an absolute threshold, with the degeneracy recorded in place. Same family as
+  the symmetric oval: a fixture can be blind to the very property a test aims at.
+- **Verified (2026-08-08):**
+  - `npm run check` green with **0 warnings**: **572 tests** (566 + 6 new), engine
+    coverage **100%** per file. `pytest` untouched at 156. Gallery assets and goldens
+    **byte-identical** — nothing was regenerated, because nothing needed to be.
+  - **Both circuits, before and after, at identical clocks** (`docs/screenshots/
+    slice-9f-{silverstone,monza}-{before,after}.jpg`): Silverstone at 3:57.000 with
+    NOR −3.035 / VER +8.089 in both frames, Monza at 0:00.000 with NOR +0.386 /
+    VER +7.200 — so the pair differs only in orientation.
+  - **Live circulation, both tracks.** Monza: LEC leaves the main straight and reaches
+    Lesmo (turn 7) at 0:37.6 doing 163 km/h in 4th — bottom straight leftward, then up
+    the left side, which is clockwise. Silverstone: HAM is through turn 9 heading along
+    the top toward 10-11 at 0:51.7. Both correct, both matching the official maps.
+  - `docs/screenshots/slice-9f-orientation-diagnosis.png` keeps the diagnostic plot:
+    both circuits, as-shipped vs flipped, with direction-of-travel arrows.
+
 ## Backlog (ideas — not committed)
+- **Fixture asymmetry overhaul** — rebuild the committed fixture with no symmetries,
+  distinct angles, and no near-cancellations, so it can express handedness,
+  orientation, and angle-sensitivity defect classes. **Three blindness instances
+  recorded:** 9d's circle (every lap passed at exactly zero distance, so a
+  spatially-nearest bug tied with the right answer and won by luck), 9f's oval (its
+  mirror image is itself, so no assertion against it can express handedness), and 9f's
+  S/F cancellation (`startFinish.angle` 0.2066 nearly cancels `meta.rotation` −0.2443
+  rad, so a mirror moved the line only 4.3° and an absolute negative control went
+  soft). Each was patched at the assertion; the fixture itself is the common cause.
 - **Diagnose the pit-entry zigzag** — found in Slice 13's acceptance test, classified
   as pre-existing and made prominent by the featured scenarios' pit cycles. Start from
   the symptom; no mechanism was established at the time it was filed.

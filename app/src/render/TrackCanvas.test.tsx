@@ -32,7 +32,7 @@ const COMET_COLOR_SET = new Set(
 import {
   applyTransform,
   fitTransform,
-  rotateWorld,
+  toScreenPoints,
   type Point,
 } from "../engine/geometry";
 import { sampleAt } from "../engine/interpolate";
@@ -61,7 +61,7 @@ const fit = fitTransform(scene.bounds, WIDTH, HEIGHT, PAD_PX);
 /** Where the marker for `car` belongs on screen at a given clock. */
 function expectedMarker(clock: number): Point {
   const snapshots = sampleAt(replay, clock);
-  const [rotated] = rotateWorld(snapshots, replay.meta.rotation);
+  const [rotated] = toScreenPoints(snapshots, replay.meta.rotation);
   return applyTransform(rotated, fit);
 }
 
@@ -427,7 +427,7 @@ describe("TrackCanvas trail", () => {
 
   /** Screen position of sample `k` — where a trail vertex belongs. */
   function samplePoint(k: number): Point {
-    const [p] = rotateWorld(
+    const [p] = toScreenPoints(
       [{ x: car.samples[k].x, y: car.samples[k].y }],
       replay.meta.rotation,
     );
@@ -549,7 +549,7 @@ describe("TrackCanvas trail", () => {
     // ...but at the NEW scale: a rebuild that reused the old projection would leave
     // the trail sitting where the smaller viewport put it.
     const newFit = fitTransform(scene.bounds, 1000, 700, PAD_PX);
-    const [rotated] = rotateWorld(
+    const [rotated] = toScreenPoints(
       [{ x: car.samples[0].x, y: car.samples[0].y }],
       replay.meta.rotation,
     );
@@ -676,7 +676,7 @@ describe("TrackCanvas trail", () => {
     const refit = fitTransform(scene.bounds, 1000, 700, PAD_PX);
     const snapshots = sampleAt(replay, 0.2);
     const want = applyTransform(
-      rotateWorld(snapshots, replay.meta.rotation)[0],
+      toScreenPoints(snapshots, replay.meta.rotation)[0],
       refit,
     );
     const at = markers(lastFrame(recording))[0];

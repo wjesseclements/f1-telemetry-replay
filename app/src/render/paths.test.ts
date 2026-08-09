@@ -9,7 +9,11 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadFixtureReplay } from "../data/fixture";
-import { fitTransform, applyTransform, rotatePoint } from "../engine/geometry";
+import {
+  fitTransform,
+  applyTransform,
+  toScreenPoint,
+} from "../engine/geometry";
 import { installCanvasEnvironment } from "../test/canvas";
 import {
   buildScenePaths,
@@ -46,7 +50,7 @@ describe("buildScenePaths corners", () => {
     const paths = buildScenePaths(scene, fit);
     replay.track.corners.forEach((corner, i) => {
       const want = applyTransform(
-        rotatePoint({ x: corner.x, y: corner.y }, replay.meta.rotation),
+        toScreenPoint({ x: corner.x, y: corner.y }, replay.meta.rotation),
         fit,
       );
       expect(paths.corners[i].on.x).toBeCloseTo(want.x, 9);
@@ -104,7 +108,7 @@ describe("buildScenePaths startFinish", () => {
   it("centres the line on the start/finish point", () => {
     const { startFinish } = buildScenePaths(scene, fit);
     const want = applyTransform(
-      rotatePoint(
+      toScreenPoint(
         { x: replay.track.startFinish.x, y: replay.track.startFinish.y },
         replay.meta.rotation,
       ),
@@ -143,11 +147,21 @@ describe("buildScenePaths startFinish", () => {
     // they differ by about 0.3°, which is data precision, not a wiring error.
     expect(Math.abs(Math.cos(lineAngle - travel))).toBeLessThan(0.01);
 
-    // And the WORLD angle would not have been perpendicular — it is off by exactly
-    // `meta.rotation`, giving |cos| ≈ sin(14°) ≈ 0.24, twenty times the tolerance
-    // above. This is the same world-vs-screen trap the heading tick fell into, so it
-    // is pinned negatively too.
+    // Negative control: the raw stored angle, used as if it were already in screen
+    // space, is markedly LESS perpendicular than the transformed one. Stated as a
+    // ratio rather than an absolute threshold, because an absolute one is not sound
+    // on this fixture — see below.
     const worldAngle = replay.track.startFinish.angle + Math.PI / 2;
-    expect(Math.abs(Math.cos(worldAngle - travel))).toBeGreaterThan(0.2);
+    const wrong = Math.abs(Math.cos(worldAngle - travel));
+    const right = Math.abs(Math.cos(lineAngle - travel));
+    expect(wrong).toBeGreaterThan(10 * Math.max(right, 1e-3));
+
+    // WHY NOT AN ABSOLUTE THRESHOLD. This control used to read `> 0.2` and it broke
+    // on Slice 9f's y-flip, measuring 0.162 — not because the fix was wrong but
+    // because the FIXTURE is nearly degenerate for it: `startFinish.angle` (0.2066)
+    // very nearly cancels `meta.rotation` (-14° = -0.2443 rad), so the mirror moves
+    // this line by only 4.3° and the two candidate angles sit close together. Same
+    // family as the symmetric oval that hid the mirror itself: a fixture can be
+    // blind to the very property a test is aiming at. The ratio survives it.
   });
 });

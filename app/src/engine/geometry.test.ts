@@ -1,9 +1,19 @@
 /**
- * Geometry tests — rotation, bounds and viewport fit.
+ * Geometry tests — world→screen orientation, bounds and viewport fit.
  *
  * Expected values are hand-computed from the formulas, not snapshotted from the
- * implementation, so a sign flip or a transposed term fails here rather than showing
- * up as a mirrored track in Slice 4a.
+ * implementation, so a sign flip or a transposed term fails here.
+ *
+ * That claim was not enough on its own, and Slice 9f is why. Every expectation below
+ * was internally consistent AND WRONG for four months: they all encoded a rotation
+ * with no y negation, so the hand-computed values agreed perfectly with an
+ * implementation that drew every real circuit mirrored. Hand-computing from the
+ * formula cannot catch a formula that is missing a term.
+ *
+ * What catches it is a test of a PROPERTY the defect must violate rather than of the
+ * arithmetic: `reverses circulation, which no rotation can do`. Signed area's sign is
+ * circulation direction; rotations preserve it, reflections invert it. See
+ * `PLAN.md` §Slice 9f.
  */
 import { describe, it, expect } from "vitest";
 import sampleLap from "./__fixtures__/sample-lap.json";
@@ -14,9 +24,9 @@ import {
   computeBounds,
   fitTransform,
   labelDirection,
-  rotateHeading,
-  rotatePoint,
-  rotateWorld,
+  toScreenHeading,
+  toScreenPoint,
+  toScreenPoints,
   type Point,
 } from "./geometry";
 
@@ -27,55 +37,99 @@ const lapPoints: Point[] = replay.cars[0].samples.map((s) => ({
 }));
 const rotation = replay.meta.rotation;
 
-describe("rotateWorld", () => {
-  it("is the identity at 0 degrees", () => {
+/**
+ * Twice the signed area of a closed polygon (the shoelace sum).
+ *
+ * Only its SIGN is used, and that sign is the polygon's circulation direction — the
+ * one property a rotation cannot change and a reflection always does. Doubling is
+ * left in because halving it would add a division that no assertion needs.
+ */
+function signedArea(pts: readonly Point[]): number {
+  let sum = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i];
+    const b = pts[(i + 1) % pts.length];
+    sum += a.x * b.y - b.x * a.y;
+  }
+  return sum;
+}
+
+describe("toScreenPoints", () => {
+  // Every expectation here carries the y NEGATION as well as the rotation. That is
+  // the whole of Slice 9f: FastF1's frame is y-up, the canvas is y-down, and these
+  // tests previously encoded the missing flip as if it were correct.
+
+  it("negates y even at 0 degrees — the flip is not part of the rotation", () => {
     const pts: Point[] = [
       { x: 3, y: -7 },
       { x: 0, y: 0 },
     ];
-    expect(rotateWorld(pts, 0)).toEqual(pts);
+    // NOT the identity, and that is the point: a zero-rotation circuit still has to
+    // be turned the right way up for the canvas.
+    expect(toScreenPoints(pts, 0)).toEqual([
+      { x: 3, y: 7 },
+      { x: 0, y: -0 },
+    ]);
   });
 
-  it("rotates 90 degrees as x' = -y, y' = x", () => {
-    const [p] = rotateWorld([{ x: 1, y: 0 }], 90);
+  it("rotates 90 degrees, then flips: x' = -y, y' = -x", () => {
+    const [p] = toScreenPoints([{ x: 1, y: 0 }], 90);
     expect(p.x).toBeCloseTo(0, 12);
-    expect(p.y).toBeCloseTo(1, 12);
+    expect(p.y).toBeCloseTo(-1, 12);
 
-    const [q] = rotateWorld([{ x: 0, y: 1 }], 90);
+    const [q] = toScreenPoints([{ x: 0, y: 1 }], 90);
     expect(q.x).toBeCloseTo(-1, 12);
     expect(q.y).toBeCloseTo(0, 12);
   });
 
-  it("rotates 180 degrees to the negation", () => {
-    const [p] = rotateWorld([{ x: 5, y: -2 }], 180);
+  it("rotates 180 degrees to the negation in x only, y coming back round", () => {
+    const [p] = toScreenPoints([{ x: 5, y: -2 }], 180);
     expect(p.x).toBeCloseTo(-5, 12);
-    expect(p.y).toBeCloseTo(2, 12);
+    expect(p.y).toBeCloseTo(-2, 12);
   });
 
   it("matches the hand-computed value at the fixture's -14 degrees", () => {
     const rad = (-14 * Math.PI) / 180;
-    const [p] = rotateWorld([{ x: 152.4, y: 1092.2 }], replay.meta.rotation);
+    const [p] = toScreenPoints([{ x: 152.4, y: 1092.2 }], replay.meta.rotation);
     expect(replay.meta.rotation).toBe(-14);
     expect(p.x).toBeCloseTo(152.4 * Math.cos(rad) - 1092.2 * Math.sin(rad), 9);
-    expect(p.y).toBeCloseTo(152.4 * Math.sin(rad) + 1092.2 * Math.cos(rad), 9);
+    expect(p.y).toBeCloseTo(
+      -(152.4 * Math.sin(rad) + 1092.2 * Math.cos(rad)),
+      9,
+    );
   });
 
-  it("round-trips: rotating by -theta undoes theta", () => {
-    const back = rotateWorld(rotateWorld(lapPoints, -14), 14);
+  it("is its own inverse in y: applying it twice restores the world frame", () => {
+    // `M·R(r)` twice is `M·R(r)·M·R(r)` = `R(-r)·R(r)` = identity, because M is an
+    // involution and `M·R(r)·M = R(-r)`. A round trip therefore needs the SAME
+    // angle twice, not opposite angles — which is the algebraic signature of a
+    // reflection and would be false for a pure rotation.
+    const back = toScreenPoints(toScreenPoints(lapPoints, -14), -14);
     for (const k of [0, 1, 200, lapPoints.length - 1]) {
       expect(back[k].x, `x at ${k}`).toBeCloseTo(lapPoints[k].x, 9);
       expect(back[k].y, `y at ${k}`).toBeCloseTo(lapPoints[k].y, 9);
     }
   });
 
+  it("reverses circulation, which no rotation can do", () => {
+    // The discriminator that caught the defect, as a test. Signed area's SIGN is
+    // circulation direction; a rotation preserves it and a reflection inverts it.
+    // An asymmetric path is required — see the `signedArea` helper's note.
+    const before = signedArea(lapPoints);
+    const after = signedArea(toScreenPoints(lapPoints, -14));
+    expect(Math.sign(after)).toBe(-Math.sign(before));
+    // ...and the magnitude is untouched, because a reflection is an isometry.
+    expect(Math.abs(after)).toBeCloseTo(Math.abs(before), 6);
+  });
+
   it("preserves length — one output point per input point", () => {
-    expect(rotateWorld(lapPoints, -14)).toHaveLength(lapPoints.length);
-    expect(rotateWorld([], 42)).toEqual([]);
+    expect(toScreenPoints(lapPoints, -14)).toHaveLength(lapPoints.length);
+    expect(toScreenPoints([], 42)).toEqual([]);
   });
 
   it("does not mutate its input", () => {
     const pts: Point[] = [{ x: 1, y: 2 }];
-    rotateWorld(pts, 90);
+    toScreenPoints(pts, 90);
     expect(pts).toEqual([{ x: 1, y: 2 }]);
   });
 });
@@ -152,9 +206,9 @@ describe("fitTransform", () => {
   });
 
   it("keeps the fixture lap inside the padded viewport", () => {
-    const b = computeBounds(rotateWorld(lapPoints, replay.meta.rotation));
+    const b = computeBounds(toScreenPoints(lapPoints, replay.meta.rotation));
     const t = fitTransform(b, 900, 600, 46);
-    for (const p of rotateWorld(lapPoints, replay.meta.rotation)) {
+    for (const p of toScreenPoints(lapPoints, replay.meta.rotation)) {
       const s = applyTransform(p, t);
       expect(s.x).toBeGreaterThanOrEqual(46 - 1e-9);
       expect(s.x).toBeLessThanOrEqual(900 - 46 + 1e-9);
@@ -211,21 +265,23 @@ describe("applyTransform", () => {
   });
 });
 
-describe("rotateHeading", () => {
-  it("adds the rotation to the angle", () => {
-    expect(rotateHeading(0, 90)).toBeCloseTo(Math.PI / 2, 12);
-    expect(rotateHeading(Math.PI / 2, -90)).toBeCloseTo(0, 12);
+describe("toScreenHeading", () => {
+  it("negates the sum of heading and rotation, because the frame is mirrored", () => {
+    expect(toScreenHeading(0, 90)).toBeCloseTo(-Math.PI / 2, 12);
+    expect(toScreenHeading(Math.PI / 2, -90)).toBeCloseTo(0, 12);
   });
 
-  it("leaves a heading alone at zero rotation", () => {
-    expect(rotateHeading(0.206591, 0)).toBeCloseTo(0.206591, 12);
+  it("still negates at zero rotation — the flip is not part of the rotation", () => {
+    // The angle counterpart of `toScreenPoints`' zero-degree case: a circuit with no
+    // rotation still has its headings mirrored, because the canvas is still y-down.
+    expect(toScreenHeading(0.206591, 0)).toBeCloseTo(-0.206591, 12);
   });
 
   it("normalises into atan2's range so it can be compared with a measured angle", () => {
-    const r = rotateHeading(3.0, 45);
+    const r = toScreenHeading(3.0, 45);
     expect(r).toBeGreaterThan(-Math.PI);
     expect(r).toBeLessThanOrEqual(Math.PI);
-    expect(r).toBeCloseTo(3.0 + Math.PI / 4 - 2 * Math.PI, 12);
+    expect(r).toBeCloseTo(-(3.0 + Math.PI / 4) + 2 * Math.PI, 12);
   });
 
   it("matches the direction of travel measured in the DRAWN frame", () => {
@@ -236,18 +292,19 @@ describe("rotateHeading", () => {
     const { rotation } = replay.meta;
     const samples = replay.cars[0].samples;
     const fit = fitTransform(
-      computeBounds(rotateWorld(lapPoints, rotation)),
+      computeBounds(toScreenPoints(lapPoints, rotation)),
       800,
       600,
       40,
     );
 
+    const gaps: number[] = [];
     for (const i of [0, 137, 400, samples.length - 2]) {
       const worldHeading = Math.atan2(
         samples[i + 1].y - samples[i].y,
         samples[i + 1].x - samples[i].x,
       );
-      const [a, b] = rotateWorld(
+      const [a, b] = toScreenPoints(
         [
           { x: samples[i].x, y: samples[i].y },
           { x: samples[i + 1].x, y: samples[i + 1].y },
@@ -256,34 +313,40 @@ describe("rotateHeading", () => {
       ).map((p) => applyTransform(p, fit));
       const drawnHeading = Math.atan2(b.y - a.y, b.x - a.x);
 
-      expect(rotateHeading(worldHeading, rotation)).toBeCloseTo(
+      expect(toScreenHeading(worldHeading, rotation)).toBeCloseTo(
         drawnHeading,
         10,
       );
-      // And the unadjusted world heading does NOT match — i.e. this test would
-      // have caught the bug rather than passing either way.
-      expect(Math.abs(worldHeading - drawnHeading)).toBeGreaterThan(0.2);
+      // Negative control, measured ACROSS the sampled points rather than at each
+      // one. Per-index it is not sound: the discrepancy is |2h + r|, which passes
+      // through zero when h approaches -r/2, so an honest implementation can agree
+      // with the unadjusted heading at an isolated point by coincidence. At -14°
+      // that happens near h = 7°, and it is what this control tripped on.
+      gaps.push(Math.abs(worldHeading - drawnHeading));
     }
+    // Somewhere in the lap the unadjusted heading must be plainly wrong, or this
+    // test would pass against an implementation that did nothing at all.
+    expect(Math.max(...gaps)).toBeGreaterThan(0.2);
   });
 });
 
-describe("rotatePoint", () => {
-  it("agrees with rotateWorld point for point", () => {
+describe("toScreenPoint", () => {
+  it("agrees with toScreenPoints point for point", () => {
     const pts = replay.cars[0].samples
       .slice(0, 50)
       .map((s) => ({ x: s.x, y: s.y }));
-    const batch = rotateWorld(pts, rotation);
+    const batch = toScreenPoints(pts, rotation);
     pts.forEach((p, i) => {
-      const one = rotatePoint(p, rotation);
+      const one = toScreenPoint(p, rotation);
       expect(one.x).toBeCloseTo(batch[i].x, 12);
       expect(one.y).toBeCloseTo(batch[i].y, 12);
     });
   });
 
-  it("turns +x into +y at 90 degrees", () => {
-    const p = rotatePoint({ x: 1, y: 0 }, 90);
+  it("turns +x into -y at 90 degrees (rotation, then the flip)", () => {
+    const p = toScreenPoint({ x: 1, y: 0 }, 90);
     expect(p.x).toBeCloseTo(0, 12);
-    expect(p.y).toBeCloseTo(1, 12);
+    expect(p.y).toBeCloseTo(-1, 12);
   });
 });
 
@@ -369,12 +432,12 @@ describe("labelDirection", () => {
   });
 
   it("returns a unit vector perpendicular to the track at every fixture corner", () => {
-    const ribbon = rotateWorld(lapPoints, rotation);
+    const ribbon = toScreenPoints(lapPoints, rotation);
     const centre = centroid(ribbon);
     expect(replay.track.corners.length).toBeGreaterThan(0);
 
     for (const corner of replay.track.corners) {
-      const at = rotatePoint({ x: corner.x, y: corner.y }, rotation);
+      const at = toScreenPoint({ x: corner.x, y: corner.y }, rotation);
       const dir = labelDirection(at, ribbon, centre);
       expect(Math.hypot(dir.x, dir.y), `corner ${corner.number}`).toBeCloseTo(
         1,

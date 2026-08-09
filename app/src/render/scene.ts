@@ -19,9 +19,9 @@ import {
   centroid,
   computeBounds,
   labelDirection,
-  rotateHeading,
-  rotatePoint,
-  rotateWorld,
+  toScreenHeading,
+  toScreenPoint,
+  toScreenPoints,
   type Bounds,
   type FitTransform,
   type Point,
@@ -131,7 +131,7 @@ const toPoints = (samples: Replay["cars"][number]["samples"]): Point[] =>
 export function buildScene(replay: Replay): Scene {
   const { rotation } = replay.meta;
   const carPaths = replay.cars.map((car) =>
-    rotateWorld(toPoints(car.samples), rotation),
+    toScreenPoints(toPoints(car.samples), rotation),
   );
   const ribbon = carPaths[0];
   const centre = centroid(ribbon);
@@ -160,7 +160,7 @@ export function buildScene(replay: Replay): Scene {
     ),
     loop: replay.meta.loop,
     corners: replay.track.corners.map((corner) => {
-      const at = rotatePoint({ x: corner.x, y: corner.y }, rotation);
+      const at = toScreenPoint({ x: corner.x, y: corner.y }, rotation);
       return {
         at,
         dir: labelDirection(at, ribbon, centre),
@@ -180,13 +180,13 @@ function startFinishOf(
   centre: Point,
 ): Scene["startFinish"] {
   const { x, y, angle } = replay.track.startFinish;
-  const at = rotatePoint({ x, y }, rotation);
+  const at = toScreenPoint({ x, y }, rotation);
   return {
     at,
     // The schema stores a WORLD-space angle, and the track is drawn rotated, so it
     // needs the same correction the car's heading tick does — otherwise the line
-    // sits across the track at `rotation` degrees off square. See `rotateHeading`.
-    angle: rotateHeading(angle, rotation),
+    // sits across the track at `rotation` degrees off square. See `toScreenHeading`.
+    angle: toScreenHeading(angle, rotation),
     dir: labelDirection(at, ribbon, centre),
   };
 }
@@ -235,7 +235,7 @@ export function drawFrame(
     // Rotation is linear, so rotating the interpolated position is identical to
     // interpolating between rotated positions.
     const p = applyTransform(
-      rotatePoint(snapshot, scene.rotationDeg),
+      toScreenPoint(snapshot, scene.rotationDeg),
       view.fit,
     );
     at[i * 2] = p.x;
@@ -264,8 +264,8 @@ export function drawFrame(
   for (let i = 0; i < snapshots.length; i++) {
     // The heading arrives in WORLD space; the points around it were rotated. Without
     // this the marker points `rotationDeg` off the direction it is visibly travelling
-    // — see `rotateHeading`.
-    const heading = rotateHeading(snapshots[i].heading, scene.rotationDeg);
+    // — see `toScreenHeading`.
+    const heading = toScreenHeading(snapshots[i].heading, scene.rotationDeg);
     const draw = i === focusedIndex ? drawFocusedCar : drawUnfocusedCar;
     draw(ctx, at[i * 2], at[i * 2 + 1], heading, scene.carColors[i], colors);
   }
