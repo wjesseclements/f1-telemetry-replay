@@ -37,6 +37,10 @@ from replay_transform import (
     cumulative_arclength,
     cumulative_travel,
     dump_json,
+    fix_rejection_report,
+    reject_impossible_fixes,
+    IMPOSSIBLE_RATIO,
+    IMPOSSIBLE_MAX_RUN,
     forward_fill,
     interp_continuous,
     normalise_brake,
@@ -1731,3 +1735,229 @@ def test_parse_lap_range_rejects_anything_else(text):
     """A mis-parsed range is a different window, silently — so it fails loudly."""
     with pytest.raises(TelemetryShapeError, match="lap range"):
         parse_lap_range(text)
+
+
+# --- reject_impossible_fixes: cleaning, not smoothing ------------------------------
+#
+# The defect: on 2024 Silverstone R the recorded polyline jumps to a parallel branch
+# ~88 m away, runs backwards along it and returns - 142.6 m of arclength for 55.7 m of
+# net displacement at a steady 257 km/h. `resample_positions_by_travel` traverses it
+# faithfully BECAUSE the excursion has real arclength, so the car visibly doubles back.
+#
+# These tests use a straight constant-speed run with faults injected, because the fault
+# has to be the only variable. Every threshold is a MULTIPLE of the car's own median
+# ratio, so none of them assumes a position unit.
+
+
+def _clean_run(n=60, dt=0.25, speed_kmh=144.0, step=100.0):
+    """A straight line at constant speed: 100 units per 0.25 s, forever."""
+    t = np.arange(n, dtype=float) * dt
+    x = np.arange(n, dtype=float) * step
+    y = np.zeros(n, dtype=float)
+    v = np.full(n, speed_kmh, dtype=float)
+    return t, x, y, v
+
+
+def test_reject_leaves_clean_data_completely_alone():
+    t, x, y, v = _clean_run()
+    r = reject_impossible_fixes(t, x, y, v)
+    assert r.n_rejected == 0
+    assert r.surrendered_runs == 0
+    assert not r.seed_retracted
+    assert r.keep.all()
+
+
+def test_reject_removes_an_out_and_back_excursion():
+    """The measured defect, in miniature: three fixes leap sideways and return."""
+    t, x, y, v = _clean_run()
+    for i in (30, 31, 32):
+        y[i] = 4000.0  # ~40x a normal step off the line, then back
+    r = reject_impossible_fixes(t, x, y, v)
+
+    assert list(np.where(~r.keep)[0]) == [30, 31, 32]
+    assert r.worst_ratio > IMPOSSIBLE_RATIO
+    # Cleaning, not smoothing: every other fix is untouched.
+    assert r.keep.sum() == len(t) - 3
+
+
+def test_reject_bridges_rather_than_smooths():
+    """
+    The surviving polyline is the RECORDED shape with points removed, never moved.
+
+    This is the whole of the 6b argument in one assertion: position still supplies
+    the shape, and what is left of it is exactly what was recorded.
+    """
+    t, x, y, v = _clean_run()
+    clean_x, clean_y = x.copy(), y.copy()
+    y[30] = 4000.0
+    r = reject_impossible_fixes(t, x, y, v)
+
+    assert np.array_equal(x[r.keep], clean_x[r.keep])
+    assert np.array_equal(y[r.keep], clean_y[r.keep])
+
+
+def test_reject_is_scale_invariant_so_no_position_unit_is_assumed():
+    """6b's rule, in Slice 8's regression-test style: scale x/y and nothing changes."""
+    t, x, y, v = _clean_run()
+    y[30] = 4000.0
+    base = reject_impossible_fixes(t, x, y, v)
+    for factor in (0.1, 10.0, 1000.0):
+        scaled = reject_impossible_fixes(t, x * factor, y * factor, v)
+        assert np.array_equal(scaled.keep, base.keep), factor
+        assert scaled.worst_ratio == pytest.approx(base.worst_ratio, rel=1e-9)
+
+
+def test_reject_leaves_a_parked_car_alone():
+    """
+    A car in its pit box has a speed channel at zero and positions still jittering.
+
+    Dividing by ~0 makes the ratio meaningless, which is why the speed floor exists;
+    every false positive in the real-data survey sat at 3-11 km/h.
+    """
+    n = 40
+    t = np.arange(n, dtype=float) * 0.25
+    x = np.random.default_rng(7).normal(0, 15, n)  # metres-scale jitter, no travel
+    y = np.random.default_rng(8).normal(0, 15, n)
+    v = np.zeros(n)
+    r = reject_impossible_fixes(t, x, y, v)
+    assert r.n_rejected == 0
+
+
+def test_reject_surrenders_on_a_run_too_long_to_be_a_cluster():
+    """
+    A step change - the polyline relocates and STAYS - is kept, not bridged.
+
+    Measured on real data at Silverstone pit entry: 87.3 m of net displacement over
+    0.68 s at 79 km/h, with arclength equal to net. Bridging that means deciding which
+    side of the discontinuity is real, which is reconstruction rather than cleaning and
+    needs evidence this function does not have. So it surrenders, loudly.
+    """
+    t, x, y, v = _clean_run()
+    x[35:] += 9000.0  # everything after 35 relocates and stays
+    r = reject_impossible_fixes(t, x, y, v)
+
+    assert r.surrendered_runs == 1
+    start, end, arc_over_net = r.surrendered[0]
+    # ~1.0 is the signature of a step change, and it is what the report prints.
+    assert arc_over_net == pytest.approx(1.0, abs=0.05)
+    # Nothing after the discontinuity was deleted.
+    assert r.keep[36:].all()
+
+
+def test_surrendered_excursion_is_distinguishable_from_a_step_change():
+    """The arc/net ratio has to separate the two classes, or the log cannot classify."""
+    t, x, y, v = _clean_run()
+    for i in range(30, 30 + IMPOSSIBLE_MAX_RUN + 2):
+        y[i] = 6000.0 if i % 2 else -6000.0  # a long, violent out-and-back
+    r = reject_impossible_fixes(t, x, y, v)
+    if r.surrendered:
+        assert r.surrendered[0][2] > 1.8
+
+
+def test_a_wild_first_fix_does_not_condemn_the_genuine_tail():
+    """
+    THE SEEDING BOUNDARY. The anchor starts at fix 0, so a wild fix 0 would make every
+    genuine fix after it unreachable from a bad anchor.
+
+    Resolution: fix 0 is trusted only PROVISIONALLY. If the pending run exceeds the
+    bound while fix 0 is still uncorroborated, the minority is the anchor rather than
+    the run - fix 0 is retracted, the run restored, and the scan re-anchors. That can
+    happen at most once, which is what guarantees termination.
+    """
+    t, x, y, v = _clean_run()
+    x[0], y[0] = 500000.0, 500000.0  # fix 0 is nonsense
+
+    r = reject_impossible_fixes(t, x, y, v)
+
+    assert not r.keep[0], "the wild first fix must be the one rejected"
+    assert r.seed_retracted, "and the report must name what happened"
+    assert r.keep[1:].all(), "the genuine tail must survive intact"
+    assert r.n_rejected == 1
+
+
+def test_reject_needs_no_decision_on_data_too_short_to_calibrate():
+    for n in (0, 1, 2):
+        t = np.arange(n, dtype=float)
+        r = reject_impossible_fixes(t, t, t, np.full(n, 100.0))
+        assert r.n_rejected == 0
+        assert r.worst_ratio == 0.0
+
+
+def test_reject_keeps_everything_when_it_cannot_calibrate():
+    """All-slow data has no usable steps to take a median from; it is not evidence."""
+    n = 30
+    t = np.arange(n, dtype=float) * 0.25
+    r = reject_impossible_fixes(t, np.arange(n) * 3.0, np.zeros(n), np.full(n, 2.0))
+    assert r.n_rejected == 0
+
+
+def test_reject_keeps_everything_when_the_median_ratio_degenerates():
+    """
+    Usable steps that all imply zero movement give a zero median, and dividing by it
+    would make every ratio infinite. Not evidence of anything - keep the data.
+    """
+    n = 30
+    t = np.arange(n, dtype=float) * 0.25
+    x = np.zeros(n)
+    x[::2] = 1e-12  # movement below any meaningful scale, but non-zero
+    r = reject_impossible_fixes(t, x, np.zeros(n), np.full(n, 100.0))
+    assert r.n_rejected == 0
+
+
+def test_reject_drops_a_nan_position_and_keeps_the_rest():
+    """
+    A NaN coordinate is an unusable fix, and dropping it is the right answer.
+
+    It does NOT poison the calibration: a NaN makes its own steps NaN, `NaN > 0` is
+    False, so `usable` excludes them and the median stays finite. The scan then finds
+    the NaN fix unreachable from its anchor and the next fix reachable, so exactly one
+    fix goes. Asserted because the alternative - a NaN quietly reaching the emitted
+    polyline - is what the schema would reject at load.
+    """
+    t, x, y, v = _clean_run()
+    x[10] = float("nan")
+    r = reject_impossible_fixes(t, x, y, v)
+    assert list(np.where(~r.keep)[0]) == [10]
+    assert r.keep.sum() == len(t) - 1
+
+
+def test_fix_rejection_report_names_a_retracted_seed():
+    """The seeding retraction has to be legible in the log, not just in the mask."""
+    t, x, y, v = _clean_run()
+    x[0], y[0] = 500000.0, 500000.0
+    line = fix_rejection_report("VER", reject_impossible_fixes(t, x, y, v))
+    assert "first fix was itself wild" in line
+    assert "re-seeded" in line
+
+
+def test_fix_rejection_report_says_zero_out_loud():
+    t, x, y, v = _clean_run()
+    line = fix_rejection_report("VER", reject_impossible_fixes(t, x, y, v))
+    # Silence is indistinguishable from a detector that never ran.
+    assert "0 position fixes rejected" in line
+
+
+def test_fix_rejection_report_names_times_and_the_surrender_class():
+    t, x, y, v = _clean_run()
+    y[30] = 4000.0
+    line = fix_rejection_report("VER", reject_impossible_fixes(t, x, y, v))
+    assert "VER" in line and "rejected" in line and "t=" in line
+
+    t2, x2, y2, v2 = _clean_run()
+    x2[35:] += 9000.0
+    line2 = fix_rejection_report("LEC", reject_impossible_fixes(t2, x2, y2, v2))
+    assert "SURRENDERED" in line2
+    assert "arc/net=" in line2
+    assert "step change" in line2
+
+
+def test_build_replay_dict_drops_an_impossible_fix_from_the_emitted_path():
+    """End to end: a wild fix must not reach the emitted polyline."""
+    channels = synthetic.telemetry()
+    channels["X"] = channels["X"].copy()
+    channels["X"][15] += 50000.0
+
+    replay = build_replay_dict(channels, synthetic.META)
+    xs = [s["x"] for s in replay["cars"][0]["samples"]]
+    # The excursion's coordinates are nowhere in the output.
+    assert max(xs) < 20000.0

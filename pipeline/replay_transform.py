@@ -479,6 +479,226 @@ PARKED_TRAVEL_M = 5.0
 KMH_S_PER_METRE = 3.6
 
 
+#: How far a fix may outrun its own speed channel before it is judged impossible,
+#: as a multiple of the car's OWN median implied-vs-channel ratio.
+#:
+#: Measured, not chosen. Over 35,869 source steps across all three gallery windows
+#: (above `IMPOSSIBLE_MIN_SPEED`): p99 = 1.76, p99.9 = 2.24, and cars with no known
+#: defect top out at 2.23-2.77. The three cars in the Silverstone rain window — the
+#: ones carrying the excursion this slice removes — reach 6.85, 11.16 and 12.46.
+#: The empty band is therefore 2.8-6.8, and 3.0 sits in it.
+#:
+#: An earlier draft proposed 2.0 from a 79-step slice of EMITTED data. Over the full
+#: source windows that would flag 76 steps, most of them in clean cars. The number
+#: had to come from the distribution it is applied to.
+IMPOSSIBLE_RATIO = 3.0
+
+#: Below this speed the ratio is a division by nearly nothing and means nothing.
+#: Every false positive in the survey sat at 3-11 km/h; a car in its pit box has a
+#: speed channel at zero and a position channel still jittering by a metre or two.
+IMPOSSIBLE_MIN_SPEED = 15.0
+
+#: The most consecutive fixes that may be rejected before the scan gives up and keeps
+#: them. A handful of bad fixes is a cluster to bridge; a long run is a different
+#: disease — a broken position channel, or a speed channel reading far too low — and
+#: bridging it would invent a racing line rather than repair one. Surrender is
+#: reported and warned about, never silent.
+IMPOSSIBLE_MAX_RUN = 6
+
+
+@dataclass(frozen=True)
+class FixRejection:
+    """What `reject_impossible_fixes` decided, and enough to report it honestly."""
+
+    #: Boolean mask over the input fixes: True = keep.
+    keep: np.ndarray
+    #: Source times of the rejected fixes, for the per-run report.
+    rejected_times: "tuple[float, ...]"
+    #: Largest implied-vs-channel ratio seen, rejected or not. 0.0 if uncalibrated.
+    worst_ratio: float
+    #: Runs that hit `IMPOSSIBLE_MAX_RUN` and were KEPT rather than rejected, as
+    #: `(t_start, t_end, arc_over_net)`.
+    #:
+    #: The RATIO is the point, and it is the discriminator this slice's diagnosis
+    #: turned on: arclength over net displacement across the run. **~1.0 is a STEP
+    #: CHANGE** — the polyline relocates and stays, a coordinate discontinuity that
+    #: cannot be bridged without deciding which side is real. **Much greater than 1
+    #: is an EXCURSION** that doubles back but ran longer than the bound, which is a
+    #: bridging problem rather than a reconstruction one. Measured on 2024
+    #: Silverstone R VER: the out-and-back at t=286.2 scores 2.56, the pit-entry step
+    #: at t=290.2 scores 1.00. A future reader classifies a surrender from the log
+    #: alone, without re-deriving the distinction.
+    surrendered: "tuple[tuple[float, float, float], ...]"
+    #: True when the FIRST fix was retracted as the bad one. See the seeding note.
+    seed_retracted: bool
+
+    @property
+    def n_rejected(self) -> int:
+        return int((~self.keep).sum())
+
+    @property
+    def surrendered_runs(self) -> int:
+        return len(self.surrendered)
+
+
+def reject_impossible_fixes(
+    t: Any,
+    x: Any,
+    y: Any,
+    speed: Any,
+    *,
+    max_ratio: float = IMPOSSIBLE_RATIO,
+    min_speed: float = IMPOSSIBLE_MIN_SPEED,
+    max_run: int = IMPOSSIBLE_MAX_RUN,
+) -> FixRejection:
+    """
+    Drop position fixes the speed channel says the car could not have reached.
+
+    WHY THIS IS CLEANING AND NOT SMOOTHING
+    --------------------------------------
+    Slice 6b's rule is that POSITION supplies the shape and SPEED supplies the
+    progress along it. That rule presumes the recorded polyline is ground the car
+    covered. Measured on 2024 Silverstone R, VER's polyline jumps to a parallel branch
+    ~88 m away, runs backwards along it and returns: 127.9 m of arclength consumed for
+    40.2 m of real travel, with steps implying 1802 km/h against a channel reading a
+    steady 257 km/h. That is not ground the car covered, and no amount of correct
+    arclength reasoning rescues it — `resample_positions_by_travel` traverses it
+    faithfully precisely BECAUSE the excursion has real arclength.
+
+    So this removes points that are provably not on the shape, and leaves every point
+    that is. The surviving polyline is still the recorded shape; speed still supplies
+    progress; the existing interpolation bridges the gap, exactly as it already does
+    for the dropped fix sitting beside this one. Smoothing would be the violation,
+    because it would move points the data got right. The precedent is `clamp_throttle`:
+    clamp what is dirty, fail loudly on what is impossible — and now, drop what is
+    impossible and let the interpolation span it.
+
+    DIMENSIONLESS, so no position unit is assumed (6b's standing rule). The test is
+    each step's implied displacement rate divided by the speed channel, normalised by
+    the car's OWN median of that quantity. Scaling every x/y by any factor leaves every
+    decision identical, which is pinned by test.
+
+    REACHABILITY, NOT PER-STEP THRESHOLDING. A run of consecutive bad fixes is mutually
+    reachable, so a per-step test flags an excursion's entry and exit but not its
+    interior. This carries the last ACCEPTED fix as an anchor and asks whether each
+    candidate is reachable from it over the accumulated dt — one rule that handles an
+    isolated spike, a four-point run, and a genuine data gap (which passes, because dt
+    grows with it).
+
+    SEEDING, and the boundary it creates
+    ------------------------------------
+    The anchor starts at fix 0, which is trusted only PROVISIONALLY. If fix 0 is itself
+    wild, every genuine fix after it is unreachable from a bad anchor and the scan would
+    reject the entire tail. So:
+
+    * fix 0 is CORROBORATED the first time any candidate is reachable from it, after
+      which it is trusted for good;
+    * if the pending run exceeds `max_run` while fix 0 is still uncorroborated, the
+      minority is the anchor rather than the run: fix 0 is RETRACTED, the pending fixes
+      are restored, and the scan re-anchors on the first of them. This can happen at
+      most once, which is what makes the scan terminate.
+    * a run exceeding `max_run` from a CORROBORATED anchor is a surrender, not a
+      retraction: the fixes are KEPT and the run is counted, because at that length the
+      diagnosis is a broken channel rather than a bad cluster.
+
+    :returns: a `FixRejection`; `keep` is a mask over the input fixes.
+    """
+    ts = np.asarray(t, dtype=float)
+    px = np.asarray(x, dtype=float)
+    py = np.asarray(y, dtype=float)
+    vs = np.asarray(speed, dtype=float)
+    n = len(ts)
+    keep = np.ones(n, dtype=bool)
+    if n < 3:
+        # Nothing to compare against; two points cannot disagree about a path.
+        return FixRejection(keep, (), 0.0, (), False)
+
+    step = np.hypot(np.diff(px), np.diff(py))
+    dt = np.diff(ts)
+    v = vs[1:]
+    usable = (dt > 0.0) & (v >= min_speed) & (step > 0.0)
+    if usable.sum() < 3:
+        # Too little moving data to calibrate a median against. A window that is all
+        # pit lane is not evidence of anything; keep it all.
+        return FixRejection(keep, (), 0.0, (), False)
+    # No guard on `scale` here, and that is deliberate rather than an omission.
+    # `usable` already requires `step > 0` and `dt > 0`, so the median is a median of
+    # positive values and cannot be zero or negative. It cannot be NaN either: a NaN
+    # coordinate makes its own steps NaN, `NaN > 0` is False, and `usable` drops them —
+    # if every step were NaN the count check above would have returned already. A
+    # defensive branch here would be unreachable code pretending to be care.
+    scale = float(np.median((step[usable] / dt[usable]) / v[usable]))
+
+    def ratio(i: int, j: int) -> float:
+        """Implied rate from fix `i` to fix `j`, over the channel, over the median."""
+        span = ts[j] - ts[i]
+        # The faster of the two endpoints, so a car accelerating out of a corner is
+        # judged against the speed it reached rather than the one it left.
+        chan = max(vs[i], vs[j])
+        if span <= 0.0 or chan < min_speed:
+            return 0.0
+        reach = np.hypot(px[j] - px[i], py[j] - py[i]) / span
+        return float(reach / chan / scale)
+
+    anchor = 0
+    corroborated = False
+    pending: "list[int]" = []
+    rejected: "list[int]" = []
+    surrendered: "list[tuple[float, float, float]]" = []
+    worst = 0.0
+    i = 1
+    while i < n:
+        r = ratio(anchor, i)
+        worst = max(worst, r)
+        if r <= max_ratio:
+            # Reachable: this fix stands, and everything skipped to get here does not.
+            rejected.extend(pending)
+            pending = []
+            anchor = i
+            corroborated = True
+            i += 1
+            continue
+
+        pending.append(i)
+        if len(pending) <= max_run:
+            i += 1
+            continue
+
+        if not corroborated:
+            # The anchor is the minority. Retract it, restore the run, re-anchor.
+            # At most once per call: `corroborated` is set below and never cleared.
+            keep[anchor] = False
+            rejected.append(anchor)
+            anchor = pending[0]
+            i = pending[0] + 1
+            pending = []
+            corroborated = True
+            continue
+
+        # Surrender: too many to be a cluster. Keep them, and record the ratio that
+        # says what KIND of surrender it is (see `FixRejection.surrendered`).
+        a, b = anchor, pending[-1]
+        arc = float(np.hypot(np.diff(px[a : b + 1]), np.diff(py[a : b + 1])).sum())
+        net = float(np.hypot(px[b] - px[a], py[b] - py[a]))
+        surrendered.append((float(ts[a]), float(ts[b]), arc / net if net > 0 else 0.0))
+        anchor = pending[-1]
+        i = pending[-1] + 1
+        pending = []
+
+    # A trailing run never corroborated by a later fix is rejected, same as any other.
+    rejected.extend(pending)
+    for k in rejected:
+        keep[k] = False
+
+    return FixRejection(
+        keep=keep,
+        rejected_times=tuple(float(ts[k]) for k in sorted(set(rejected))),
+        worst_ratio=worst,
+        surrendered=tuple(surrendered),
+        seed_retracted=not keep[0],
+    )
+
+
 def covers_ground(t: Any, x: Any, y: Any, speed: Any) -> bool:
     """
     True when this car moved far enough for its positions to be placed by travelled
@@ -543,7 +763,12 @@ def hold_positions(
 
 
 def resample_positions_by_travel(
-    times: np.ndarray, t: np.ndarray, x: Any, y: Any, speed: Any
+    times: np.ndarray,
+    t: np.ndarray,
+    x: Any,
+    y: Any,
+    speed: Any,
+    keep: "np.ndarray | None" = None,
 ) -> "tuple[np.ndarray, np.ndarray]":
     """
     Place each sample at the point along the recorded path where the speed integral
@@ -602,7 +827,18 @@ def resample_positions_by_travel(
     misplacement, and nothing measured on real data comes close (Monza's worst
     shortfall is 24 ms against a 100 ms step).
     """
-    s = cumulative_arclength(x, y)
+    # `keep` drops fixes the speed channel says the car could not have reached, so
+    # their spurious arclength never enters `s` (see `reject_impossible_fixes`). It
+    # filters the POLYLINE only: `d` still integrates every speed reading, because
+    # only the positions were corrupt. The two sides never need matching lengths —
+    # the mapping below is by FRACTION of each, which is the same property that makes
+    # this function unit-agnostic.
+    kx = np.asarray(x, dtype=float)
+    ky = np.asarray(y, dtype=float)
+    if keep is not None:
+        kx, ky = kx[keep], ky[keep]
+
+    s = cumulative_arclength(kx, ky)
     d = cumulative_travel(t, speed)
 
     # Both are failures of the source data rather than dirt to be tidied: a lap that
@@ -629,11 +865,9 @@ def resample_positions_by_travel(
     travelled = interp_continuous(times, t, d)
     target = np.clip(travelled / d[-1] * s[-1], 0.0, s[-1])
 
-    px = np.asarray(x, dtype=float)[moved]
-    py = np.asarray(y, dtype=float)[moved]
     return (
-        interp_continuous(target, s[moved], px),
-        interp_continuous(target, s[moved], py),
+        interp_continuous(target, s[moved], kx[moved]),
+        interp_continuous(target, s[moved], ky[moved]),
     )
 
 
@@ -758,9 +992,18 @@ def build_replay_dict(
 
     # The lap the app LOOPS is the recorded path plus the chord back to its start, so
     # that is the lap the grid has to cover. See `closing_time`.
-    lap_time = float(t[-1]) + closing_time(
+    # Impossible fixes are dropped BEFORE anything measures the path: `closing_time`
+    # reads the last recorded fix, and an excursion sitting on it would set the whole
+    # lap's time base from a point the car was never at.
+    rejection = reject_impossible_fixes(
         t, telemetry["X"], telemetry["Y"], telemetry["Speed"]
     )
+    kx = np.asarray(telemetry["X"], dtype=float)[rejection.keep]
+    ky = np.asarray(telemetry["Y"], dtype=float)[rejection.keep]
+    kt = t[rejection.keep]
+    kv = np.asarray(telemetry["Speed"], dtype=float)[rejection.keep]
+
+    lap_time = float(t[-1]) + closing_time(kt, kx, ky, kv)
     grid = uniform_grid(lap_time, rate)
     # Sample times are EMITTED as `grid` (k / rate, what the schema requires) but READ
     # at `src` (k * lap / n), which lays the whole lap over the whole grid so the app's
@@ -773,7 +1016,7 @@ def build_replay_dict(
     # covers no ground is corrupt, so this is the call that RAISES rather than
     # tolerating it — the window builder is where a car legitimately sits still.
     gx, gy = resample_positions_by_travel(
-        src, t, telemetry["X"], telemetry["Y"], telemetry["Speed"]
+        src, t, telemetry["X"], telemetry["Y"], telemetry["Speed"], rejection.keep
     )
     ch = resample_channels(src, t, telemetry)
 
@@ -967,13 +1210,16 @@ def build_window_replay_dict(
     )
 
     built = []
+    rejections: "list[tuple[str, FixRejection]]" = []
     for car, t, ch in per_car:
         x, y = car.telemetry["X"], car.telemetry["Y"]
+        rejection = reject_impossible_fixes(t, x, y, car.telemetry["Speed"])
+        rejections.append((str(car.driver), rejection))
         # Parked or moving — the one place a window differs from a lap in how
         # positions are placed. See `covers_ground`.
         if covers_ground(t, x, y, car.telemetry["Speed"]):
             gx, gy = resample_positions_by_travel(
-                src, t, x, y, car.telemetry["Speed"]
+                src, t, x, y, car.telemetry["Speed"], rejection.keep
             )
         else:
             gx, gy = hold_positions(src, t, x, y)
@@ -1052,6 +1298,43 @@ def _window_time_axis(car: WindowCar) -> np.ndarray:
             "are out of order"
         )
     return t
+
+
+def fix_rejection_report(
+    driver: str, r: "FixRejection", offset: float = 0.0
+) -> str:
+    """
+    One line per car, in the same family as the time-base stretch and motion fidelity.
+
+    A clean car prints `0 rejected` rather than nothing: silence is indistinguishable
+    from a detector that never ran.
+
+    A SURRENDER carries its arc-over-net ratio, because that ratio is what says which
+    KIND of problem was declined. ~1.0 is a step change — the polyline relocates and
+    stays, and bridging it would mean deciding which side is real, which is
+    reconstruction rather than cleaning. Much greater than 1 is an excursion that
+    doubles back but ran longer than the bound. Measured on 2024 Silverstone R VER:
+    2.56 for the out-and-back, 1.00 for the pit-entry step.
+    """
+    if r.n_rejected == 0 and not r.surrendered:
+        return f"  {driver}: 0 position fixes rejected"
+    at = ", ".join(f"{t - offset:.1f}" for t in r.rejected_times[:6])
+    more = "..." if len(r.rejected_times) > 6 else ""
+    line = (
+        f"  {driver}: {r.n_rejected} position fix(es) rejected "
+        f"(worst {r.worst_ratio:.1f}x implied vs channel)"
+    )
+    if at:
+        line += f" at t={at}{more}"
+    if r.seed_retracted:
+        line += "\n      first fix was itself wild; anchor retracted and re-seeded"
+    for a, b, ratio in r.surrendered:
+        kind = "step change: relocates and stays" if ratio < 1.8 else "excursion"
+        line += (
+            f"\n      SURRENDERED t={a - offset:.1f}-{b - offset:.1f}s arc/net={ratio:.2f} ({kind}) "
+            f"- kept, not bridged"
+        )
+    return line
 
 
 def window_car_report(
