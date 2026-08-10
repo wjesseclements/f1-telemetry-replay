@@ -71,6 +71,8 @@ from replay_transform import (
     check_columns,
     closing_time,
     color_lookup_warning,
+    fix_rejection_report,
+    reject_impossible_fixes,
     dump_json,
     parse_lap_range,
     time_base_stretch,
@@ -215,6 +217,11 @@ WINDOW_PAD_S = 2.0
 #: applied per car on every window build. 6b measured 0.70 before its fix and 0.9998
 #: after, against this target.
 MOTION_FIDELITY_TARGET_R = 0.97
+
+#: Above this share of a car's position fixes rejected, the diagnosis stops being "a
+#: bad cluster" and becomes "a broken channel". Loud, not fatal - the same posture as
+#: the closing-chord tripwire. Real data measures 6-9 fixes of 3967 (0.2%).
+REJECTED_FIX_WARN_SHARE = 0.02
 
 
 def _team_and_color(session, laps, driver):
@@ -437,6 +444,31 @@ def report_window(replay, window, cars, coverage, compact: bool = False) -> None
             f"reports — the defect Slice 6b removed for laps. Check the source "
             f"telemetry for those drivers over this window before using the "
             f"replay; see `replay_transform.motion_fidelity`.\n"
+        )
+
+    # Position fixes the speed channel says were unreachable. Recomputed here for
+    # REPORTING from the same pure function and the same inputs the builder applied,
+    # so the two agree by construction. See `reject_impossible_fixes`.
+    print("  position-fix screening:")
+    worst_share = 0.0
+    for car in cars:
+        r = reject_impossible_fixes(
+            car.telemetry["Time"], car.telemetry["X"],
+            car.telemetry["Y"], car.telemetry["Speed"],
+        )
+        # Rebased onto the WINDOW so the times line up with the app's transport clock.
+        # Session seconds are what the transform works in and are useless to anyone
+        # comparing against a screenshot.
+        print(fix_rejection_report(str(car.driver), r, offset=window[0]))
+        worst_share = max(worst_share, r.n_rejected / max(len(car.telemetry["Time"]), 1))
+    if worst_share > REJECTED_FIX_WARN_SHARE:
+        print(
+            f"\nWARNING: a car lost {worst_share*100:.1f}% of its position fixes, over "
+            f"the {REJECTED_FIX_WARN_SHARE*100:.1f}% bar.\n"
+            f"  A handful of bad fixes is a cluster to bridge; this many is a different "
+            f"disease - a broken position channel, or a speed channel reading far too "
+            f"low - and bridging it invents a racing line rather than repairing one.\n"
+            f"  Check the source telemetry before using this replay.\n"
         )
 
     size_mb = len(dump_json(replay, compact=compact)) / 1e6

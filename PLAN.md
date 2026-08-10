@@ -2456,7 +2456,121 @@ to be the discriminator that identified the mechanism.
     the only party the repo already trusts. Reasoning recorded in `setup-repo.sh` so
     it reads as a decision; revisit only if a second admin is ever added.
 
+### [x] Slice 9g — reject fixes that fail physics
+
+**The pit-entry zigzag, diagnosed and half-fixed — deliberately half.** Re-observed at
+0.5×, the artifact is POSITIONAL: the comet's history reverses with the marker, so the
+emitted x/y genuinely double back.
+
+- **The defect.** VER, Silverstone rain window, t = 286.2–286.9 s: the recorded polyline
+  jumps to a parallel branch ~88 m away, runs backwards along it and returns.
+  **142.6 m of arclength consumed for 55.7 m of net displacement**, against a speed
+  channel steady at 257 km/h and implying 47.1 m. `resample_positions_by_travel`
+  traverses it faithfully *because the excursion has real arclength*.
+- **ENDEMIC, not one car's luck — the detector's strongest argument.** Run across the
+  whole rain window: **HAM 7 fixes rejected (worst 6.5×), NOR 6 (worst 12.5×), VER 9
+  (worst 9.7×)**. All three cars in the wet window carry the same class of fault. The
+  two dry windows reject **zero** fixes across six cars.
+
+- **Amendment (this slice) — THREE DETECTORS FAILED IDENTICALLY, and that is the
+  lesson.** Filed beside the instrument-first findings.
+  1. **Residual of emitted samples against the raw polyline** returned a median of
+     **0.0055 m** and exonerated the transform. Blind by construction: the corruption is
+     *in* the reference, so measuring agreement with it proves only that the transform
+     is faithful — which it is.
+  2. **The map-scale plot** showed the two series indistinguishable, because at
+     0.0696 px/unit the structure was drawn at map scale.
+  3. **The output-side ratio scan** saw the 128 m excursion as **one** emitted step at
+     2.1×, because resampling onto 10 Hz spreads it over 18 samples of ~6.4 m each. On
+     the source it fires **8 of 79 steps**.
+  - **Detectors run where the defect lives, upstream of anything that redistributes
+    it.** Downstream of a resampler, an averager or a normaliser, a real defect is not
+    absent — it is diluted below the detector's own threshold, which reads identically
+    to clean. The first of these was reported as an exoneration; it was a blind spot.
+
+- **Amendment (this slice) — the threshold came from the distribution, and the first
+  guess was wrong.** The plan proposed 2.0, taken from a 79-step slice of EMITTED data.
+  Measured across **35,869 source steps** over all three windows: p99 = 1.76,
+  p99.9 = 2.24, and cars with no known defect top out at **2.23–2.77**. A 2.0 threshold
+  would have flagged 76 steps, most of them clean. The rain-window cars reach 6.85,
+  11.16 and 12.46, so the empty band is **2.8–6.8** and `IMPOSSIBLE_RATIO = 3.0` sits
+  in it.
+
+- **Amendment (this slice) — TWO DEFECT CLASSES, and this slice claims only one.**
+  The arc-over-net ratio separates them, and it is now part of the instrument:
+
+  | cluster | span | net | arclength | speed implies | arc/net | class |
+  |---|---|---|---|---|---|---|
+  | 286.18–286.84 | 0.66 s @ 257 km/h | 55.7 m | 142.6 m | 47.1 m | **2.56** | out-and-back |
+  | 290.16–290.84 | 0.68 s @ 79 km/h | 87.3 m | 87.3 m | 14.9 m | **1.00** | step change |
+
+  - **Out-and-back is REJECTED and bridged.** Arclength far exceeds net displacement:
+    the fixes are provably not ground the car covered, and dropping them leaves the
+    recorded shape intact.
+  - **Step change is SURRENDERED — kept, and reported loudly.** Arclength *equals* net
+    displacement: the polyline relocates 87 m and stays. Bridging it means deciding
+    which side of the discontinuity is real, which is **reconstruction, not cleaning**,
+    and needs evidence this slice has not gathered. Raising `IMPOSSIBLE_MAX_RUN` to
+    swallow it would delete 7 consecutive real fixes and invent a racing line — the
+    exact thing the design argues against, so the constant was NOT tuned to make a
+    verification criterion pass.
+  - The surrender line prints its arc/net ratio, so the class is readable from the log
+    alone without re-deriving the distinction.
+
+- **Amendment (this slice) — the seeding boundary, raised in review and better for it.**
+  The anchor starts at fix 0, so a wild fix 0 would make every genuine fix after it
+  unreachable and the scan would reject the whole tail. Resolution: fix 0 is trusted
+  only **provisionally**, is **corroborated** the first time anything is reachable from
+  it, and if the pending run exceeds the bound while still uncorroborated **the minority
+  is the anchor** — fix 0 is retracted, the run restored, the scan re-anchors. At most
+  once per call, which is what guarantees termination. `seed_retracted` is on the report
+  so the log names it. Pinned by a test that a wild fix at index 0 costs exactly one fix.
+
+- **Amendment (this slice) — a dead branch removed rather than exempted.** A
+  `scale <= 0.0` guard was written, then found unreachable: `usable` already requires
+  `step > 0`, so the median of positive values cannot be zero, and a NaN coordinate is
+  excluded by that same filter (`NaN > 0` is False). A reasoned attempt to replace it
+  with `isfinite` was also wrong for the same reason. It was deleted, with the argument
+  recorded in place — a defensive branch that cannot be reached is unreachable code
+  pretending to be care. What a NaN actually does is now pinned by test: exactly one fix
+  is dropped, which is correct.
+
+- **Verified (2026-08-10):**
+  - `pytest` green: **172 tests**, `replay_transform.py` **100% lines + branches**.
+    `npm run check` green with 0 warnings (572 tests) — the app is untouched.
+  - **Goldens byte-identical.** Synthetic data is clean, so nothing was rejected.
+  - **Clean data is provably untouched, which is the false-positive proof:** the
+    Silverstone finale and Monza windows reject **0 fixes across all six cars**, and
+    their motion-fidelity figures are **identical to the pre-slice values** to four
+    decimals (0.9999/0.9998/0.9999 and 0.9997/0.9998/0.9998).
+  - **The reversal is gone.** VER's emitted path over 286.18–286.84 s: arc/net
+    **2.56 → 1.00**, arclength **142.6 m → 49.9 m**, against 49.8 m implied by speed.
+    The pit-entry span likewise reads 15.3 m against 15.4 m implied.
+  - **`motion_fidelity` did NOT uniformly improve, and that is recorded rather than
+    smoothed.** The rain window moved r 0.9993→0.9991 (HAM), 0.9993→0.9990 (NOR),
+    0.9994→0.9990 (VER); spread improved for VER (0.0340→0.0309) and worsened slightly
+    for HAM and NOR. All six values remain ≥0.999, far above 6b's 0.97 bar. The cause is
+    that removing ~88 m of spurious arclength shortens `s_total` by ~0.3%, and the
+    fraction-based normalisation shifts every sample slightly. **The verification
+    criterion "motion fidelity holds or improves" was written before this was known and
+    is not what happened** — the metric is an aggregate over 5135 samples and cannot see
+    a local defect, which is the slice's own lesson applied to its own acceptance test.
+  - Three assets regenerated, **4.09 MB total** (unchanged), all validating through
+    `parseReplay`, all minified.
+
 ## Backlog (ideas — not committed)
+- **Position step-change / branch-swap handling** — data-quality polish, non-blocking.
+  Slice 9g rejects out-and-back excursions and deliberately SURRENDERS on step changes:
+  at Silverstone pit entry the polyline relocates **87.3 m in 0.68 s at 79 km/h** with
+  arclength equal to net displacement (arc/net = 1.00) against 14.9 m implied by speed.
+  Bridging it means deciding which side of the discontinuity is real, which is
+  reconstruction rather than cleaning and needs evidence not yet gathered. The two-class
+  table is in the Slice 9g entry; the human's pit-entry screenshots are the visual
+  reference. **Note the original observation — "switches back, then switches back again
+  INTO THE PIT LANE" — plausibly describes BOTH clusters**, the reversal and the step
+  change, so the on-screen symptom may not fully vanish with 9g; the residue should read
+  as a fast lateral slide around t = 290 s, reported in the build log rather than
+  silently bridged.
 - **Fixture asymmetry overhaul** — rebuild the committed fixture with no symmetries,
   distinct angles, and no near-cancellations, so it can express handedness,
   orientation, and angle-sensitivity defect classes. **Three blindness instances
