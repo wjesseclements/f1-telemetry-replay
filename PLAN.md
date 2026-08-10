@@ -2558,8 +2558,87 @@ emitted x/y genuinely double back.
   - Three assets regenerated, **4.09 MB total** (unchanged), all validating through
     `parseReplay`, all minified.
 
+- **Amendment (post-merge) — THE ASSETS WERE REVERTED. The cure was worse than the
+  disease, and the browser caught it.** The code, the detector and its tests stay
+  merged; the three gallery assets are back to their pre-9g bytes.
+  - **The reported symptom, and what the data said.** The human's browser acceptance
+    FAILED on two observations. The first — the pit-entry sequence reading worse — is
+    **CONFIRMED as a regression**, though not by the mechanism proposed. The second —
+    "the pit-entry TRACK GEOMETRY is now more angular and less realistic" — **could not
+    be reproduced in the data** and is recorded as an **unconfirmed perception**: the
+    ribbon is drawn from `cars[0]` = HAM, whose emitted path changed by **1.6 m over
+    29 km (−0.006%)** with a maximum sample shift of **1.1 m ≈ 0.8 px**. The drawn track
+    did not materially move. The record keeps both: the eyes were right that something
+    had got worse, and may not have been right about what.
+  - **The real defect is a GLOBAL RE-PARAMETERISATION, not a local repair.**
+
+    | car | emitted path | change | max sample shift | samples moved >1 m |
+    |---|---|---|---|---|
+    | HAM (`cars[0]`) | 29072.1 → 29070.4 m | −1.6 m | 1.1 m | 2 |
+    | NOR | 29052.4 → 29049.3 m | −3.1 m | 0.7 m | 0 |
+    | **VER** | 29271.5 → 29220.2 m | **−51.3 m (−0.175%)** | **30.3 m** | **4926 of 5135** |
+
+    VER's displacement against time is a smooth arch — 3.1 m mean at t = 0-60,
+    **25.6 m at t = 240-300**, 1.6 m at t = 480-540 — zero at both anchored ends and
+    maximal in the middle.
+  - **The mechanism is 6b's own normalisation.** `target = (d_k / d_total) * s_total`.
+    Removing 51.3 m of spurious arclength shrinks `s_total` while travel `d` is
+    unchanged, so **every sample re-maps**. A 0.7-second repair displaced one car by up
+    to 30 m across the whole 513-second window.
+  - **And it corrupts the GAPS**, which is the product. VER moved tens of metres while
+    HAM and NOR moved 1-3 m, so every gap involving VER is falsified by up to ~30 m —
+    **0.4 s at 257 km/h** — in the timing tower Slice 9d exists to make honest.
+  - **The chord was not the main problem.** Bridging 88 m of a 29 km path is a 0.175%
+    change in shape; it is that 0.175% change in `s_total` moving every sample by up to
+    30 m that does the damage. Recorded because the first hypothesis (chord-flattening
+    of the ribbon) was reasonable, specific, and wrong — and the numbers, not the
+    argument, settled it.
+  - **REGENERATION IS BLOCKED.** The detector code is still merged and still applied by
+    both builders, so **any rebuild of any asset reships this displacement**. Do not run
+    `build_replay.py` for a committed gallery asset until Slice 9h lands. The committed
+    assets and the pipeline are deliberately out of step until then, and this paragraph
+    is the reason.
+
+### [ ] Slice 9h — anchor the placement, then re-treat the whole defect
+
+**BLOCKS regeneration of every committed gallery asset** (see Slice 9g's revert
+amendment). Filed with tonight's two tables as founding evidence, and deliberately not
+started in the same session that produced them.
+
+- **The core question: when arclength is removed, what anchors the remaining samples?**
+  Two candidates, to be argued rather than assumed:
+  - **Local re-normalisation between surviving anchors** — map travel onto path
+    piecewise, so a removal only redistributes samples between the fixes either side of
+    it. **`closing_time` is the precedent**: it absorbs a correction where the
+    correction belongs rather than spreading it globally, and Slice 6b rejected a raw
+    metric mapping for exactly the trade of "a small global bias for a large local one"
+    — this is that trade inverted, and the same reasoning points at local.
+  - **Hold `s_total` and absorb the removal across the gap alone** — cheaper, but it
+    keeps a total that is known to include phantom distance.
+  - Neither is obviously right, and the arch above is the shape any candidate must
+    flatten.
+- **The independent adjudicator, with its caveat checked FIRST.** FastF1 carries
+  `Distance` and `DistanceToDriverAhead`. If those are genuinely independent of the
+  position stream, acceptance becomes **measurement instead of reasoning** — they say
+  which placement is closer to truth. **Verify that independence before relying on
+  them**, specifically at pit entry: a channel derived from the same corrupted positions
+  it is being asked to adjudicate is not a reference, it is an echo. This check is the
+  slice's first task, and a negative result is a real finding that changes the plan.
+- **Scope honesty: rejection, shape-preserving placement AND the cluster-2 step change
+  must be treated together.** Tonight's lesson is that fixing one leg at a time moves
+  the defect around instead of removing it — the excursion was removed and the
+  displacement appeared. A slice that repairs placement without deciding the step change
+  will produce a third symptom.
+- **Verify:** the arch flattened (VER's mean shift under a car length across the whole
+  window, not just at the excursion); gaps involving a repaired car unchanged beyond
+  measurement noise against the adjudicator; both clusters dispositioned; the dry
+  windows still rejecting zero and byte-identical; and a browser pass at 0.5x on
+  4:45.7 AND ~290 s.
+
+
 ## Backlog (ideas — not committed)
-- **Position step-change / branch-swap handling** — data-quality polish, non-blocking.
+- **Position step-change / branch-swap handling** — FOLDED INTO SLICE 9h, which must
+  treat it together with rejection and placement; left here for its evidence.
   Slice 9g rejects out-and-back excursions and deliberately SURRENDERS on step changes:
   at Silverstone pit entry the polyline relocates **87.3 m in 0.68 s at 79 km/h** with
   arclength equal to net displacement (arc/net = 1.00) against 14.9 m implied by speed.
