@@ -29,7 +29,21 @@ echo "  ✓ merge settings (squash-only, auto-delete, auto-merge)"
 
 # 2) Branch ruleset on the default branch: PR required, CI 'verify' must pass
 #    (strict = branch up to date), linear history, no force-push, no deletion.
-#    Admins may bypass for emergencies (bypass_actors).
+#
+#    SQUASH IS PINNED IN THE RULESET, not only in the merge settings above.
+#    Linear history is law here, and it was previously held by the repo setting
+#    alone while the ruleset would have accepted a merge commit — two sources of
+#    truth that happened to agree. One source is this repo's whole posture, so the
+#    ruleset now states it too (`allowed_merge_methods: ["squash"]`).
+#
+#    ADMIN BYPASS IS `always`, AND THAT IS A DECISION RATHER THAN A DEFAULT.
+#    This is a solo repo with exactly one admin, who is also the only person the
+#    protection is defending against. Narrowing the bypass to `pull_request` would
+#    remove the break-glass hatch to protect the repo from the one party it already
+#    trusts completely — cost with no corresponding risk retired. The hatch is the
+#    point: it exists so a broken `main` can be repaired when the gate itself is
+#    what is broken. Reconsider only if a second admin is ever added, at which
+#    point the trust assumption stops holding.
 gh api -X POST "repos/${REPO}/rulesets" --input .github/ruleset.json >/dev/null
 echo "  ✓ ruleset 'main-protection' applied"
 
