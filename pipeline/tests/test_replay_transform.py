@@ -2170,21 +2170,42 @@ def test_repair_runs_before_the_fix_screen_and_leaves_it_nothing_to_do():
 # --- anchors: where the travel-to-path map is pinned --------------------------------
 
 
+def _varying_ratio_run(half=20, dt=0.25, speed_kmh=144.0):
+    """
+    A straight run whose second half covers twice the ground per step at the SAME
+    channel speed: path and travel are no longer proportional.
+
+    That is Slice 9h's F3 condition in miniature, and it is the only shape on which
+    an anchored map and the global one can disagree. On a run where the two ARE
+    proportional every scheme agrees, which is how the first version of the test
+    below passed with the anchors ignored entirely.
+    """
+    n = 2 * half + 1
+    t = np.arange(n, dtype=float) * dt
+    step = np.where(np.arange(1, n) <= half, 100.0, 200.0)
+    x = np.concatenate(([0.0], np.cumsum(step)))
+    y = np.zeros(n, dtype=float)
+    v = np.full(n, speed_kmh, dtype=float)
+    return t, x, y, v
+
+
 def test_anchors_pin_the_map_at_the_fix_they_name():
     """
     An anchored map reads the anchor fix's own arc length at the anchor fix's own
     travel. That is what confines a repair's arithmetic to the stretch it repaired.
+
+    The negative control is the point: with no anchor, half the travel maps to half
+    the PATH, which on this run is 1000 units past where the car actually was.
     """
-    t, x, y, v = _clean_run(n=40)
-    d = cumulative_travel(t, v)
-    s = cumulative_arclength(x, y)
-    # Read the emitted path exactly at the travel the anchor fix sits at.
-    ax, ay = resample_positions_by_travel(
-        np.array([t[20]]), t, x, y, v, None, (20,)
-    )
-    assert ax[0] == pytest.approx(x[20], abs=1e-6)
-    assert ay[0] == pytest.approx(y[20], abs=1e-6)
-    assert d[20] > 0 and s[20] > 0
+    t, x, y, v = _varying_ratio_run()
+    at_midpoint = np.array([t[20]])
+
+    anchored, _ = resample_positions_by_travel(at_midpoint, t, x, y, v, None, (20,))
+    plain, _ = resample_positions_by_travel(at_midpoint, t, x, y, v)
+
+    assert anchored[0] == pytest.approx(x[20])  # 2000: the fix it was pinned to
+    assert plain[0] == pytest.approx(3000.0)  # half of a 6000-unit path
+    assert x[20] == 2000.0 and x[-1] == 6000.0
 
 
 def test_no_anchors_is_the_original_global_expression_bit_for_bit():
@@ -2205,28 +2226,35 @@ def test_an_anchor_that_was_rejected_is_dropped_rather_than_trusted():
     The two screens are independent and neither may assume the other's verdict: a
     rejected fix has no arc length left to pin to.
     """
-    t, x, y, v = _clean_run(n=40)
+    t, x, y, v = _varying_ratio_run()
     keep = np.ones(len(t), dtype=bool)
     keep[20] = False
-    times = np.linspace(0.0, t[-1], 97)
-    with_anchor = resample_positions_by_travel(times, t, x, y, v, keep, (20,))
-    without = resample_positions_by_travel(times, t, x, y, v, keep, ())
-    assert np.array_equal(with_anchor[0], without[0])
+    at_midpoint = np.array([t[20]])
+
+    with_anchor, _ = resample_positions_by_travel(at_midpoint, t, x, y, v, keep, (20,))
+    without, _ = resample_positions_by_travel(at_midpoint, t, x, y, v, keep, ())
+
+    assert np.array_equal(with_anchor, without)
+    # And it really is the global answer, not a coincidence of a proportional run.
+    assert with_anchor[0] == pytest.approx(3000.0, rel=1e-3)
 
 
-@pytest.mark.parametrize("anchor", [0, 39])
+@pytest.mark.parametrize("anchor", [0, 40])
 def test_an_anchor_at_either_end_pins_nothing(anchor):
     """
     `np.interp` needs both axes strictly increasing, so a node that advances neither
     travel nor arc past its neighbour is dropped - which is exactly what an anchor on
     the first or last fix is. Dropping both leaves the global map, bit for bit.
     """
-    t, x, y, v = _clean_run(n=40)
+    t, x, y, v = _varying_ratio_run()
     times = np.linspace(0.0, t[-1], 97)
     anchored = resample_positions_by_travel(times, t, x, y, v, None, (anchor,))
     plain = resample_positions_by_travel(times, t, x, y, v)
     assert np.array_equal(anchored[0], plain[0])
     assert np.array_equal(anchored[1], plain[1])
+    # Not vacuous: an anchor in the middle of this run moves the answer by 1000 units.
+    moved = resample_positions_by_travel(times, t, x, y, v, None, (20,))
+    assert not np.array_equal(moved[0], plain[0])
 
 
 def test_a_collinear_displacement_sits_exactly_on_the_bound():
