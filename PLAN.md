@@ -2722,7 +2722,9 @@ evidence, and deliberately not started in the same session that produced them.
   - The residual is **spread evenly across the jumps** rather than dumped on the last
     one. That is what forces the first and last regions to offset zero exactly, so
     **every fix before the first jump and after the last is untouched, bit for bit**.
-  - `DISPLACEMENT_TOLERANCE = 1.0` is not a distribution. What a true out-and-back
+  - `DISPLACEMENT_TOLERANCE = 1.0` is not a distribution. **RATIFIED**: a threshold
+    that is not a fitted constant cannot be accused of tuning, which is the charge
+    every constant in 9g's family has to answer. What a true out-and-back
     leaves over is the ground the car covered during the jump steps as a VECTOR sum;
     the bound is the same ground as a SCALAR sum, so the residual can never exceed it
     and reaches it exactly when the two jumps' genuine motion is collinear — a
@@ -2781,6 +2783,31 @@ evidence, and deliberately not started in the same session that produced them.
     "movement outside the repair is corruption" — is what the loops refute: the
     movement outside the repair IS the correction. Reported as a miss rather than
     argued away, and the number is in the results table below.
+  - **RULED (2026-08-13): `anchored` accepted, and the two missed criteria are
+    recorded as WRONGLY PRE-REGISTERED rather than as failures to excuse.** Both
+    embedded F3's refuted premise — that placement outside the repair zone was already
+    correct — so a build could only satisfy them by preserving an error the
+    independent reference can see. The reasoning, kept whole so the ruling is not
+    re-litigated from the verdict alone:
+    - **The loops adjudicate, not the previous build.** That is the constitution this
+      slice opened with, and it is what makes "the criterion was wrong" a finding
+      rather than a rationalisation. A criterion written against a baseline can only
+      ever ask "did this change?"; the instrument asks "is this right?".
+    - **VER lands at 17.8 m, about twice the 6.6–11.7 m noise floor**, from 148.8 m.
+      B cannot resolve better than ~12 m and does not pretend to, so this is at the
+      instrument's floor rather than short of a reachable target.
+    - **HAM's 33.8 m residual is F3's, with a control.** Monza LEC and NOR score 40.3
+      and 35.1 m with **zero** jump steps and no repair of any kind — the same
+      magnitude, from the same mechanism, in a window this slice did not touch. HAM's
+      own S/F mark reads **3.3 m**, inside the noise floor. Nothing in 9h's mechanism
+      is failing to fire.
+    - **The HAM-NOR gap worsening is broken error-cancellation, not new error.** Two
+      correlated errors used to cancel in the tower; repairing one and declining the
+      other uncorrelated them. **Truth improved while the display worsened** — which
+      is 9i's rider (a) observed in the wild rather than predicted, and the reason it
+      was written before this slice ran. **Inherited by Slice 9i explicitly**, along
+      with NOR's uncancelled relocation, which is the half that would restore the
+      correlation by fixing it rather than by preserving it.
   - **What DOES hold, and is the more useful statement:** the drawn TRACK changes only
     at pit entry. C mixes shape change with along-track slide; projecting each build's
     samples onto the other's polyline separates them. HAM (`cars[0]`, the ribbon
@@ -2861,13 +2888,17 @@ stop is where it breaks.
 ## Backlog (ideas — not committed)
 - **Fixture asymmetry overhaul** — rebuild the committed fixture with no symmetries,
   distinct angles, and no near-cancellations, so it can express handedness,
-  orientation, and angle-sensitivity defect classes. **Three blindness instances
+  orientation, and angle-sensitivity defect classes. **Four blindness instances
   recorded:** 9d's circle (every lap passed at exactly zero distance, so a
   spatially-nearest bug tied with the right answer and won by luck), 9f's oval (its
-  mirror image is itself, so no assertion against it can express handedness), and 9f's
+  mirror image is itself, so no assertion against it can express handedness), 9f's
   S/F cancellation (`startFinish.angle` 0.2066 nearly cancels `meta.rotation` −0.2443
   rad, so a mirror moved the line only 4.3° and an absolute negative control went
-  soft). Each was patched at the assertion; the fixture itself is the common cause.
+  soft), and **9h's straight constant-speed line** (path is exactly proportional to
+  travel on it, so every anchoring scheme agrees and the anchor tests could not lose —
+  replacing the anchored branch with the global one left all 191 tests passing, and
+  only mutation testing during `/review` caught it). Each was patched at the
+  assertion; the fixture itself is the common cause.
 - ~~**Diagnose the pit-entry zigzag**~~ — **CLOSED by Slice 9h.** Filed from Slice 13's
   acceptance test with no mechanism. The mechanism is a bounded displacement of the
   position channel's frame at pit entry, out and back, and it is now translated rather
