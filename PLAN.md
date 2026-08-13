@@ -2593,17 +2593,21 @@ emitted x/y genuinely double back.
     30 m that does the damage. Recorded because the first hypothesis (chord-flattening
     of the ribbon) was reasonable, specific, and wrong — and the numbers, not the
     argument, settled it.
-  - **REGENERATION IS BLOCKED.** The detector code is still merged and still applied by
-    both builders, so **any rebuild of any asset reships this displacement**. Do not run
-    `build_replay.py` for a committed gallery asset until Slice 9h lands. The committed
-    assets and the pipeline are deliberately out of step until then, and this paragraph
-    is the reason.
+  - **~~REGENERATION IS BLOCKED.~~ RESCINDED by Slice 9h (2026-08-13)**, in the PR that
+    earned it. The clause read: the detector is still merged and applied by both
+    builders, so any rebuild reships this displacement — do not run `build_replay.py`
+    for a committed gallery asset until 9h lands. 9h landed, the assets are
+    regenerated, and the two are back in step. What lifted it is measurement rather
+    than argument: the placement instrument scores the rebuilt rain window at
+    **17.8 m** for VER against the 148.8 m it was blocked at, and the two dry windows
+    come back **byte-identical**. The clause is kept struck through rather than
+    deleted, because the reason it existed is the reason 9h could not be rushed.
 
-### [ ] Slice 9h — anchor the placement, then re-treat the whole defect
+### [x] Slice 9h — anchor the placement, then re-treat the whole defect
 
-**BLOCKS regeneration of every committed gallery asset** (see Slice 9g's revert
-amendment). Filed with tonight's two tables as founding evidence, and deliberately not
-started in the same session that produced them.
+**BLOCKED regeneration of every committed gallery asset** until it landed (see Slice
+9g's revert amendment, now rescinded). Filed with 9g's two tables as founding
+evidence, and deliberately not started in the same session that produced them.
 
 - **The core question: when arclength is removed, what anchors the remaining samples?**
   Two candidates, to be argued rather than assumed:
@@ -2635,33 +2639,272 @@ started in the same session that produced them.
   windows still rejecting zero and byte-identical; and a browser pass at 0.5x on
   4:45.7 AND ~290 s.
 
+- **Amendment (this slice) — the ADJUDICATOR, with its caveat checked first as the
+  entry required.** The answer changed the plan, which is what the check was for.
+  - **`Distance` / `DistanceToDriverAhead`: independent, and unusable for placement.**
+    The feared echo is disproven — both are `cumsum(Speed/3.6 · dt)` on `car_data`
+    *before* the position merge, so neither function reads X/Y, and where VER's
+    polyline claims **142.6 m** they report **47.1 m**. But they agree with our own
+    `cumulative_travel` to **0.036–0.059%**, so scoring placement against them asks
+    our own progress measure whether our own progress measure is right. They are kept
+    for GAPS, which are position-free by the same argument.
+  - **The timing loops replace them.** Lap-start and sector times are transponder
+    data, independent of Speed and X/Y alike. Each mark type is one FIXED point on the
+    track, so the same mark across laps must land in the same place and the spread is
+    placement error in along-track metres. The window carries 4–6 lap starts and 15–18
+    sector marks per car.
+  - `docs/instruments/placement-error.py` is committed **before** the remedy, on the
+    `docs/perf/fps-probe.js` precedent. Three components: **A** scanned reversal, **B**
+    transponder-mark placement, **C** displacement from a named baseline. Only A and B
+    judge; C is a ship criterion and never evidence of correctness. Measured noise
+    floor, on the dry finale: **A 1.04–1.08 with zero windows above 2.0; B 6.6 / 11.7 /
+    8.4 m.** B cannot resolve a defect smaller than ~12 m and does not pretend to.
+
+- **Amendment (this slice) — three findings from the instrument, before any remedy.**
+  - **F1 — 9g did not remove the zigzag; it MOVED it.** Component A finds VER's
+    reversal at **8.40 @ t=285.6 s** before and **7.32 @ t=286.1 s** after. Scored over
+    9g's own fixed 286.18–286.84 s window **both** assets read a clean **1.00** —
+    including the asset that demonstrably has the zigzag on screen. 9g's "2.56 → 1.00"
+    figures were measured on the SOURCE polyline, not the emitted path. Fifth instance
+    of the recorded failure mode, caught before the remedy this time.
+  - **F2 — the 30 m arch was a PARTIAL CORRECTION, not a regression.** Against the
+    timing loops the reverted 9g build scored **108.1 m** for VER where the asset that
+    replaced it scores **148.8 m**. The eyes were right that pit entry got worse; the
+    cause was that 9g kept the zigzag *and* moved everything else by up to 30 m. **A
+    build 40 m closer to the loops was reverted**, which is exactly what an instrument
+    that measures against the last build instead of against the track will do.
+  - **F3 — the dominant defect is not rejection-related at all.** HAM (61.2 m) and NOR
+    (48.3 m) are badly misplaced with almost no rejected fixes, and it correlates
+    perfectly with pit stops across nine car-windows: every car that stops scores
+    **31–149 m**, every car that does not scores **6.6–11.7 m**. Cause: the global
+    fraction mapping `target = (d/d_total)·s_total` assumes a constant path/travel
+    ratio and the ratio drifts. Independently confirmed on the source channels — the
+    disagreement `s(t) − (d(t)/d_total)·s_total` is a smooth hump peaking at the pit
+    stop: **+20 m (LEC) and +23 m (NOR) at Monza with zero jump steps between them**,
+    against ±13 m for every clean car. Out of scope here; filed as **Slice 9i**.
+
+- **Amendment (this slice) — the census REFRAMED the defect, and voided the approved
+  mechanism before it was built.** 9g's two-class table said an out-and-back EXCURSION
+  at t=286 and, four seconds later, a STEP CHANGE that "relocates and stays". They are
+  the same event. Every jump step over ratio 3.0, with no speed gate, across all three
+  windows:
+
+  | car | jump steps | offset reached | vector sum | verdict |
+  |---|---|---|---|---|
+  | VER (rain) | 8, in three bursts at t=286.5 / 290.2 / 292.8 | **99.1 m** | **9.8 m** | cancels |
+  | HAM (rain) | 5, in two bursts at t=381.9 / 386.1 | **53.3 m** | **6.8 m** | cancels |
+  | NOR (rain) | 1, at t=383.0 | 41.7 m | **41.7 m** | does NOT cancel |
+  | all six dry-window cars | 0 | — | — | nothing to do |
+
+  - **The jumps are the out and the back of ONE bounded frame displacement.** What
+    lies between them is the recorded shape, correct in every respect except that it
+    is somewhere else — 30 to 50 fixes through a pit entry, which is precisely where
+    the interesting thing is happening.
+  - **So the approved mechanism was void, not merely improvable.** The plan said to
+    extend the surrender path and REJECT the displaced run. Rejecting it removes
+    **0.0 m** of phantom arclength — the run's own length is real — and deletes those
+    fixes. Recorded rather than quietly replaced, because the plan was specific and
+    wrong for a reason worth keeping.
+  - **HAM and NOR carry the same defect at their own pit entries**, so this was never
+    one car's luck. The two dry windows carry a single isolated 28–31 m step each, at
+    280–320 km/h, below 9g's ratio threshold and with no partner — they are the
+    "cars with no known defect top out at 2.23–2.77" population from 9g's own study.
+
+- **Amendment (this slice) — TRANSLATE, and the bound is the triangle inequality
+  rather than a fitted constant.** `replay_transform.repair_frame_displacements` runs
+  BEFORE `reject_impossible_fixes`, and that order is load-bearing: a displacement is
+  MADE of individually impossible steps, so the fix screen would reject the very jumps
+  whose cancellation proves it bounded, and gain no arclength for it.
+  - A **running** offset is accumulated over the jumps, not a single out-and-back
+    pair — VER's frame returns in two stages 2.3 s apart and sits at an intermediate
+    21.7 m offset between them. One rule covers that, an isolated spike, and a car
+    with two separate displacements.
+  - The residual is **spread evenly across the jumps** rather than dumped on the last
+    one. That is what forces the first and last regions to offset zero exactly, so
+    **every fix before the first jump and after the last is untouched, bit for bit**.
+  - `DISPLACEMENT_TOLERANCE = 1.0` is not a distribution. **RATIFIED**: a threshold
+    that is not a fitted constant cannot be accused of tuning, which is the charge
+    every constant in 9g's family has to answer. What a true out-and-back
+    leaves over is the ground the car covered during the jump steps as a VECTOR sum;
+    the bound is the same ground as a SCALAR sum, so the residual can never exceed it
+    and reaches it exactly when the two jumps' genuine motion is collinear — a
+    straight line, which real telemetry is not. Real pit entries measure **0.31–0.35**
+    of the bound; a synthetic straight run sits exactly on it, and a test pins that so
+    the reasoning cannot be mistaken for tuning.
+  - **NOR is the fail-safe exercised on real data.** One jump, no partner, so the
+    channel relocated and stayed; deciding which side is real is reconstruction, which
+    is 9g's argument and still stands. Nothing is translated, the fix screen runs
+    exactly as before, and the build log says **DECLINED** with the offset and the
+    reason.
+  - Fixes bridged with a straight chord across all three cars fell from **22 to 7**
+    (HAM 7→1, VER 9→0, NOR 6→6): translation keeps what rejection deleted.
+
+- **Amendment (this slice) — the anchor question, and the pre-registered prediction
+  it refuted.** Four schemes scored on repaired data through the real window grid,
+  with the committed instrument. `global` and `hold` reproduce the shipped 9g and
+  pre-9g assets, which is what validates the harness.
+
+  | scheme | B placement H / N / V | A max (VER) | C vs pre-9g (VER) | dry windows |
+  |---|---|---|---|---|
+  | shipped pre-9g | 61.2 / 48.3 / **148.8** | 8.40 | baseline | — |
+  | shipped 9g (reverted) | 60.7 / 47.6 / **108.1** | 7.32 | 30.3 m max | byte-identical |
+  | translate + `global` | 42.2 / 47.5 / 45.2 | 1.34 | 86.8 m max, mean 38.4 | byte-identical |
+  | translate + `hold` | 62.3 / 47.5 / **149.5** | 1.33 | 98.6 m max, **mean 0.7, 70 samples > 1 m** | byte-identical |
+  | **translate + `anchored`** | **30.8 / 47.5 / 17.4** | 1.35 | 116.2 m max, mean 29.8 | byte-identical |
+
+  - **The prediction was that `hold` would be the surgical winner. It is refuted.**
+    `hold` is surgical — 70 samples move by more than a metre, against 5,000 — and it
+    is the *worst* build in the table against the loops, because it keeps the
+    pre-repair global slope everywhere outside the gap and therefore keeps pre-9g's
+    placement. **Smallest diff is not most correct**, which is the same confusion that
+    reverted 9g, arriving from the opposite direction.
+  - **`anchored` pins the travel→path map at the two fixes bounding the repair**, so
+    the removed phantom length is absorbed where it was removed. It also splits the
+    window at the pit entry, which is exactly where F3's ratio breaks — that is why it
+    recovers so much, and it is a partial F3 fix arriving as a side effect rather than
+    a designed one. Said out loud so 9i is not surprised by it.
+  - A car with nothing to repair has no interior anchors, so the map is the original
+    two-point expression **evaluated unchanged** — not the equivalent `np.interp`,
+    because the two are the same mathematics and not the same floating point.
+
+- **Amendment (this slice) — the acceptance criteria were amended TWICE, and both are
+  recorded with what voided them.**
+  - **Original:** HAM / NOR per-sample move (C) **≤ 1.5 m max**. Premise: HAM and NOR
+    are clean bystanders, so any movement is collateral. **Voided by the census** —
+    both carry the same defect at their own pit entries, so HAM is a patient, not a
+    bystander.
+  - **Consented replacement (mid-slice):** displacement confined to each car's own
+    pit-entry window, **mean shift < 5 m** across the window, and placement must
+    IMPROVE against the loops (HAM 61.2→≤25, NOR 48.3→≤25 or surrendered-and-reported,
+    VER 148.8→≤25).
+  - **What the measurement then said about the replacement: the confinement half is
+    unsatisfiable by any build that improves placement.** The only scheme that confines
+    movement is `hold`, and `hold` is the worst build in the table. The premise —
+    "movement outside the repair is corruption" — is what the loops refute: the
+    movement outside the repair IS the correction. Reported as a miss rather than
+    argued away, and the number is in the results table below.
+  - **RULED (2026-08-13): `anchored` accepted, and the two missed criteria are
+    recorded as WRONGLY PRE-REGISTERED rather than as failures to excuse.** Both
+    embedded F3's refuted premise — that placement outside the repair zone was already
+    correct — so a build could only satisfy them by preserving an error the
+    independent reference can see. The reasoning, kept whole so the ruling is not
+    re-litigated from the verdict alone:
+    - **The loops adjudicate, not the previous build.** That is the constitution this
+      slice opened with, and it is what makes "the criterion was wrong" a finding
+      rather than a rationalisation. A criterion written against a baseline can only
+      ever ask "did this change?"; the instrument asks "is this right?".
+    - **VER lands at 17.8 m, about twice the 6.6–11.7 m noise floor**, from 148.8 m.
+      B cannot resolve better than ~12 m and does not pretend to, so this is at the
+      instrument's floor rather than short of a reachable target.
+    - **HAM's 33.8 m residual is F3's, with a control.** Monza LEC and NOR score 40.3
+      and 35.1 m with **zero** jump steps and no repair of any kind — the same
+      magnitude, from the same mechanism, in a window this slice did not touch. HAM's
+      own S/F mark reads **3.3 m**, inside the noise floor. Nothing in 9h's mechanism
+      is failing to fire.
+    - **The HAM-NOR gap worsening is broken error-cancellation, not new error.** Two
+      correlated errors used to cancel in the tower; repairing one and declining the
+      other uncorrelated them. **Truth improved while the display worsened** — which
+      is 9i's rider (a) observed in the wild rather than predicted, and the reason it
+      was written before this slice ran. **Inherited by Slice 9i explicitly**, along
+      with NOR's uncancelled relocation, which is the half that would restore the
+      correlation by fixing it rather than by preserving it.
+  - **What DOES hold, and is the more useful statement:** the drawn TRACK changes only
+    at pit entry. C mixes shape change with along-track slide; projecting each build's
+    samples onto the other's polyline separates them. HAM (`cars[0]`, the ribbon
+    source) differs from the previous ribbon by more than 5 m **only over
+    t=381.7–386.7 s**, max **14.9 m**, mean **0.12 m** across the whole window; VER
+    only over t=286.7–294.6 s, max 18.7 m. The rest of HAM's 25.7 m mean C is the car
+    sliding along a curve that did not move.
+
+- **Verified (2026-08-13) — the pre-registered table, misses included.**
+
+  | criterion | threshold | before | after |
+  |---|---|---|---|
+  | VER placement (B) | ≤ 25 m | 148.8 m | **17.8 m** ✓ |
+  | VER reversal (A), scanned | ≤ 2.0 | 8.40, 6 windows > 2 | **1.48, 0 windows > 2** ✓ |
+  | HAM placement (B) | ≤ 25 m | 61.2 m | **33.8 m** ✗ (F3 floor — see below) |
+  | NOR placement (B) | ≤ 25 m *or* declined-and-reported | 48.3 m | 47.6 m, **DECLINED in the log** ✓ |
+  | dry windows | byte-identical | — | **byte-identical, both** ✓ |
+  | displacement confined, mean < 5 m | — | — | **✗ 25.7 / 43.2 m mean** (criterion refuted above) |
+  | gaps vs the loops, pairs involving VER | no worsening | HAM-VER 2.20 s mean / 6.11 s max | **0.32 / 0.44 s** ✓ |
+  | pipeline + app gates | green | — | **191 pytest, `replay_transform.py` 100% lines+branches; `npm run check` green, 0 warnings, 572 tests** ✓ |
+
+  - **HAM's 33.8 m is the F3 floor, not a failed repair.** Its S/F mark scores **3.3 m**
+    — inside the noise floor — and the error is in the sector marks. Monza LEC and NOR
+    score 40.3 and 35.1 m with **zero** jump steps, which is the same magnitude from
+    F3 alone. HAM's anchor also falls at 74% through the window against VER's 56%, so
+    it splits off a shorter tail; that is an argument for periodic anchoring, which is
+    9i.
+  - **One gap pair WORSENED and it is the expected one: HAM-NOR, 0.23 → 0.61 s mean
+    (0.55 → 1.75 s max).** HAM was repaired and NOR was declined, so two errors that
+    used to be correlated — same window, same global map, same drift — no longer
+    cancel in the tower. This is 9i's rider (a) firing before 9i exists, and it is the
+    strongest argument for NOR's uncancelled relocation being the next thing to treat.
+  - **Motion fidelity improved** where it was repaired: HAM r 0.9991→0.9997 (spread
+    0.0432→0.0404), VER 0.9990→0.9992 (0.0309→0.0279), NOR unchanged at 0.9990.
+  - **At the watched moment (4:45.7 = t≈285.7 s) the emitted path is closer to its own
+    speed channel than before**: the only sample outside ±20% across t=285–292 s is
+    t=287.0, at 210 km/h against a 239 km/h channel where the previous build read 182.
+    The residual is two samples at **t=292.6 and 292.8 reading 52 km/h against an
+    80 km/h pit-lane channel** — 0.2 s at pit speed, against the 1.8 s at racing speed
+    that disqualified `hold`.
+  - The render path is untouched, proved rather than asserted: `drawcall-capture.mjs`
+    md5s captured before the first edit and re-captured after are identical
+    (`closed 04506b72f177b7447ecb7d230998d506`, `open 0aea33a376958344b1be15033399e8ec`).
+  - Three assets regenerated, **3.9 MB** total, all validating through `parseReplay`,
+    all minified; only the rain asset's bytes changed.
+
+### [ ] Slice 9i — the global fraction mapping drifts, and pit stops are where
+
+**Filed by Slice 9h with its numbers, so it cannot be lost.** F3 above: placement error
+against the timing loops is **31–149 m for every car that pits** and **6.6–11.7 m for
+every car that does not**, across nine car-windows — with no rejected fixes and no frame
+displacement involved. `resample_positions_by_travel` maps travel onto path as one
+global fraction, which assumes a constant path/travel ratio; the ratio drifts, and a pit
+stop is where it breaks.
+
+- **The residual after 9h:** HAM 33.8 m and NOR 47.6 m in the rain window, LEC 40.3 m
+  and NOR 35.1 m at Monza. 9h's boundary anchors recover part of it by accident (they
+  split the window at the pit entry, which is where the ratio breaks); periodic
+  anchoring recovers nearly all of it — scored at **8.7 / 8.4 / 11.7 m, the noise
+  floor** — at the cost of moving clean dry-window samples by up to 31 m.
+- **Two riders, both carried from 9h's plan and both now with evidence:**
+  - **(a) Record the GAP-level impact alongside absolute placement.** Correlated
+    misplacement partially cancels in the tower, so the two numbers can disagree about
+    priority. 9h measured this happening: repairing HAM while declining NOR broke the
+    correlation and moved the HAM-NOR gap error from 0.23 s to 0.61 s mean even though
+    HAM's absolute placement nearly halved.
+  - **(b) Re-verify the timing-loop reference's noise floor and independence** in 9i's
+    own context before designing any rewrite. 9h's floor was measured on one dry
+    window; a rewrite that touches every window needs its own.
+- **NOR's uncancelled relocation belongs here too** — the one real defect 9h declined.
+  41.7 m at t=383.0 in the rain window, one jump with no partner, reported in the build
+  log. It is the residual reason NOR still scores 47.6 m.
+- **Do not tune `DISPLACEMENT_TOLERANCE` or `IMPOSSIBLE_RATIO` to reach these numbers.**
+  Neither detector is what is wrong here; both read zero on the dry windows that carry
+  30–40 m of this error.
+
 
 ## Backlog (ideas — not committed)
-- **Position step-change / branch-swap handling** — FOLDED INTO SLICE 9h, which must
-  treat it together with rejection and placement; left here for its evidence.
-  Slice 9g rejects out-and-back excursions and deliberately SURRENDERS on step changes:
-  at Silverstone pit entry the polyline relocates **87.3 m in 0.68 s at 79 km/h** with
-  arclength equal to net displacement (arc/net = 1.00) against 14.9 m implied by speed.
-  Bridging it means deciding which side of the discontinuity is real, which is
-  reconstruction rather than cleaning and needs evidence not yet gathered. The two-class
-  table is in the Slice 9g entry; the human's pit-entry screenshots are the visual
-  reference. **Note the original observation — "switches back, then switches back again
-  INTO THE PIT LANE" — plausibly describes BOTH clusters**, the reversal and the step
-  change, so the on-screen symptom may not fully vanish with 9g; the residue should read
-  as a fast lateral slide around t = 290 s, reported in the build log rather than
-  silently bridged.
 - **Fixture asymmetry overhaul** — rebuild the committed fixture with no symmetries,
   distinct angles, and no near-cancellations, so it can express handedness,
-  orientation, and angle-sensitivity defect classes. **Three blindness instances
+  orientation, and angle-sensitivity defect classes. **Four blindness instances
   recorded:** 9d's circle (every lap passed at exactly zero distance, so a
   spatially-nearest bug tied with the right answer and won by luck), 9f's oval (its
-  mirror image is itself, so no assertion against it can express handedness), and 9f's
+  mirror image is itself, so no assertion against it can express handedness), 9f's
   S/F cancellation (`startFinish.angle` 0.2066 nearly cancels `meta.rotation` −0.2443
   rad, so a mirror moved the line only 4.3° and an absolute negative control went
-  soft). Each was patched at the assertion; the fixture itself is the common cause.
-- **Diagnose the pit-entry zigzag** — found in Slice 13's acceptance test, classified
-  as pre-existing and made prominent by the featured scenarios' pit cycles. Start from
-  the symptom; no mechanism was established at the time it was filed.
+  soft), and **9h's straight constant-speed line** (path is exactly proportional to
+  travel on it, so every anchoring scheme agrees and the anchor tests could not lose —
+  replacing the anchored branch with the global one left all 191 tests passing, and
+  only mutation testing during `/review` caught it). Each was patched at the
+  assertion; the fixture itself is the common cause.
+- ~~**Diagnose the pit-entry zigzag**~~ — **CLOSED by Slice 9h.** Filed from Slice 13's
+  acceptance test with no mechanism. The mechanism is a bounded displacement of the
+  position channel's frame at pit entry, out and back, and it is now translated rather
+  than rejected. Scanned reversal on the emitted rain window: VER 8.40 → **1.48**,
+  HAM 10.39 → **1.35**, zero windows over 2.0 for both. NOR's is declined and reported,
+  and carries into Slice 9i.
 - WebGL/3D escalation **only** if measured 20-car perf demands it (documented path).
 - Track-surface niceties: kerbs, sector coloring, mini-map.
 - Ghost/delta vs a reference lap; multi-lap stints.

@@ -699,6 +699,191 @@ def reject_impossible_fixes(
     )
 
 
+#: How far the jump vectors bounding a displacement may fail to cancel, as a multiple
+#: of the travel the SPEED channel allows during those jump steps themselves.
+#:
+#: Principled rather than fitted, and said plainly because the corpus cannot supply a
+#: measured empty band here. The residual of a genuine out-and-back is the ground the
+#: car really covered while the two jumps happened — nothing else is left over — so
+#: the ground the channel allows over exactly those steps is the natural bound, and
+#: 1.0 means "they cancel to within a distance the car could actually have moved".
+#:
+#: The two real bounded displacements sit three times inside it: 2024 Silverstone R,
+#: HAM residual 7.6 m against 21.6 m allowed (0.35x) and VER 9.0 m against 29.5 m
+#: (0.31x). The corpus's one NON-cancelling car, NOR, is not a measurement of the
+#: far side of the band — its single jump never finds a partner at all, so it is
+#: declined by the `< 2` test below rather than by this one. A future car that jumps
+#: twice without cancelling is what would calibrate the upper side; until then this
+#: constant is an argument, not a distribution, and is labelled as one.
+DISPLACEMENT_TOLERANCE = 1.0
+
+
+@dataclass(frozen=True)
+class FrameDisplacement:
+    """What `repair_frame_displacements` decided, and the polyline it decided on."""
+
+    #: The repaired coordinates. Identical objects' VALUES to the input when nothing
+    #: was repaired, so callers can use these unconditionally.
+    x: np.ndarray
+    y: np.ndarray
+    #: Source times of the steps judged to be jumps.
+    jump_times: "tuple[float, ...]"
+    #: True when the jumps cancelled and the enclosed fixes were translated back.
+    repaired: bool
+    #: Fix indices bounding the translated region: the last fix before the first jump
+    #: and the first fix after the last one. Empty when nothing was repaired. These
+    #: are the anchors `resample_positions_by_travel` pins its map at, which is what
+    #: keeps the removal of the phantom arclength from re-placing the whole window.
+    anchors: "tuple[int, ...]"
+    #: Largest frame offset reached, in metres.
+    offset_m: float
+    #: How far the jumps failed to cancel, in metres, and the travel the channel
+    #: allows over the jump steps — the two sides of the `DISPLACEMENT_TOLERANCE`
+    #: test, reported whether it passed or failed.
+    residual_m: float
+    allowed_m: float
+    #: Source times bounding the translated region, for the log.
+    span: "tuple[float, float] | None"
+
+
+def repair_frame_displacements(
+    t: Any,
+    x: Any,
+    y: Any,
+    speed: Any,
+    *,
+    max_ratio: float = IMPOSSIBLE_RATIO,
+    min_speed: float = IMPOSSIBLE_MIN_SPEED,
+    tolerance: float = DISPLACEMENT_TOLERANCE,
+) -> FrameDisplacement:
+    """
+    Translate a bounded displacement of the position channel's frame back into frame.
+
+    THE DEFECT, as the census found it rather than as it was first described
+    ---------------------------------------------------------------------------
+    Slice 9g classified the Silverstone pit-entry fault as two things: an out-and-back
+    EXCURSION at t=286 and, 4 s later, a STEP CHANGE that "relocates and stays". The
+    census that opened this slice found they are the same event. The polyline leaves
+    its frame in one impossible step and returns in another, and the jump VECTORS
+    cancel: over 2024 Silverstone R the sum of every jump is 9.8 m for VER and 6.8 m
+    for HAM against offsets that reach 99 m and 53 m. What sits in between is the
+    recorded shape, correct in every respect except that it is somewhere else.
+
+    So the remedy is not rejection. Rejecting the displaced run removes **0.0 m** of
+    phantom arclength — the run's own length is real — and throws away 30 to 50
+    genuine fixes through a pit entry, which is precisely where the interesting thing
+    is happening. Translation keeps every fix and puts it back where it belongs.
+
+    WHY THE OFFSETS ARE CUMULATIVE AND THE RESIDUAL IS SPREAD
+    ---------------------------------------------------------
+    The frame does not always return in one step: VER's returns in two, 2.3 s apart,
+    so between them the polyline sits at an intermediate offset of 21.7 m. Tracking a
+    RUNNING offset over the jumps handles that, an isolated spike, and a car with two
+    separate displacements, with one rule.
+
+    The running offset does not come back to exactly zero, because a jump step also
+    contains the ground the car genuinely covered during it. That leftover is the
+    `residual`, and it is distributed evenly across the jumps rather than dumped on
+    the last one — which is what makes the first and last regions come out at offset
+    zero exactly. **Fixes before the first jump and after the last are therefore
+    untouched, bit for bit**, and a car with no displacement is untouched entirely.
+
+    WHAT IT DECLINES, and why declining is the safe direction
+    ---------------------------------------------------------
+    If the jumps do not cancel, the polyline genuinely relocated and there is no
+    displacement to undo; deciding which side is real would be reconstruction, which
+    is 9g's argument and still stands. Nothing is translated, the fixes are left for
+    `reject_impossible_fixes` to screen exactly as before, and the decision is
+    REPORTED (see `frame_repair_report`). NOR's single 41.7 m jump in the rain window
+    is that case on real data.
+
+    A return jump made below `min_speed` — a frame that comes back while the car is
+    stopped in its box — is invisible to the ratio test and lands in the same place:
+    declined and reported, never silently half-repaired.
+
+    DIMENSIONLESS, so no position unit is assumed (6b's standing rule). The jump test
+    is `reject_impossible_fixes`'s own: implied displacement rate over the speed
+    channel, normalised by the car's OWN median of that quantity, calibrated the same
+    way so the two detectors cannot disagree about what "impossible" means. The
+    cancellation test is a ratio of two lengths in position units. Only the REPORT
+    converts to metres, through the car's own scale bridge.
+    """
+    ts = np.asarray(t, dtype=float)
+    px = np.asarray(x, dtype=float)
+    py = np.asarray(y, dtype=float)
+    vs = np.asarray(speed, dtype=float)
+    n = len(ts)
+    if n < 3:
+        return FrameDisplacement(px, py, (), False, (), 0.0, 0.0, 0.0, None)
+
+    dxs = np.diff(px)
+    dys = np.diff(py)
+    step = np.hypot(dxs, dys)
+    dt = np.diff(ts)
+    # Two conventions, both `reject_impossible_fixes`'s: the median is calibrated on
+    # the arriving sample's speed, and a single step is judged against the FASTER of
+    # its two endpoints so a car accelerating out of a corner is not judged by the
+    # speed it left. Sharing them is what stops the two detectors from disagreeing.
+    usable = (dt > 0.0) & (vs[1:] >= min_speed) & (step > 0.0)
+    if usable.sum() < 3:
+        return FrameDisplacement(px, py, (), False, (), 0.0, 0.0, 0.0, None)
+    scale = float(np.median((step[usable] / dt[usable]) / vs[1:][usable]))
+
+    chan = np.maximum(vs[:-1], vs[1:])
+    judged = (dt > 0.0) & (chan >= min_speed) & (step > 0.0)
+    rate = np.divide(step, dt, out=np.zeros_like(step), where=judged)
+    ratio = np.divide(
+        rate, chan * scale, out=np.zeros_like(step), where=judged & (chan > 0.0)
+    )
+    jump = np.flatnonzero(ratio > max_ratio)
+
+    #: Metres per position unit, from the car's own data: `scale` is position units
+    #: per (km/h * s), so dividing by it gives travel units and by 3.6 gives metres.
+    to_m = 1.0 / (scale * KMH_S_PER_METRE)
+    times = tuple(float(ts[k]) for k in jump)
+
+    if len(jump) < 2:
+        # One jump is a relocation or an isolated spike; there is no pair to cancel.
+        offset = float(np.hypot(dxs[jump], dys[jump]).max()) if len(jump) else 0.0
+        return FrameDisplacement(
+            px, py, times, False, (), offset * to_m, offset * to_m, 0.0, None
+        )
+
+    offsets = np.cumsum(np.stack([dxs[jump], dys[jump]], axis=1), axis=0)
+    residual = float(np.hypot(offsets[-1, 0], offsets[-1, 1]))
+    allowed = float(scale * (chan[jump] * dt[jump]).sum())
+    worst = float(np.hypot(offsets[:, 0], offsets[:, 1]).max())
+
+    if residual > tolerance * allowed:
+        return FrameDisplacement(
+            px, py, times, False, (), worst * to_m, residual * to_m, allowed * to_m, None
+        )
+
+    m = len(jump)
+    corrected = offsets - np.outer(np.arange(1, m + 1) / m, offsets[-1])
+    rx = px.copy()
+    ry = py.copy()
+    for k in range(m):
+        lo = int(jump[k]) + 1
+        hi = int(jump[k + 1]) + 1 if k + 1 < m else n
+        rx[lo:hi] -= corrected[k, 0]
+        ry[lo:hi] -= corrected[k, 1]
+
+    first = int(jump[0])
+    last = min(int(jump[-1]) + 1, n - 1)
+    return FrameDisplacement(
+        rx,
+        ry,
+        times,
+        True,
+        (first, last),
+        worst * to_m,
+        residual * to_m,
+        allowed * to_m,
+        (float(ts[first]), float(ts[last])),
+    )
+
+
 def covers_ground(t: Any, x: Any, y: Any, speed: Any) -> bool:
     """
     True when this car moved far enough for its positions to be placed by travelled
@@ -769,6 +954,7 @@ def resample_positions_by_travel(
     y: Any,
     speed: Any,
     keep: "np.ndarray | None" = None,
+    anchors: "Sequence[int]" = (),
 ) -> "tuple[np.ndarray, np.ndarray]":
     """
     Place each sample at the point along the recorded path where the speed integral
@@ -807,6 +993,34 @@ def resample_positions_by_travel(
 
     The 0.17% is not resolved by this, it is DISTRIBUTED — 0.17% spread across every
     step, which is finer than the precision x/y are emitted at.
+
+    ANCHORS — where the normalisation is PINNED, and what that is for
+    -----------------------------------------------------------------
+    With no anchors the map has exactly two: the first fix and the last. That is what
+    makes the fraction global, and it is also what makes a LOCAL change to the path
+    move EVERY sample. Slice 9g shipped that consequence and it is what got reverted:
+    removing 51 m of phantom arclength from a 29 km window shrank `s_total` by 0.175%
+    and displaced one car by up to 30.3 m across a 513-second window, in a smooth arch
+    that was zero at both ends and maximal in the middle. The gaps in the timing tower
+    went with it.
+
+    An anchor is a fix at which the map is pinned to that fix's own arc length, so the
+    map becomes piecewise: `np.interp(travelled, d[anchors], s[anchors])`. Passing the
+    two fixes that bound a repair therefore confines that repair's arithmetic to the
+    stretch between them, in the sense that matters — the removed length is absorbed
+    where it was removed instead of being spread over the window as a fraction.
+
+    Anchoring is NOT free and is not a silent improvement: pinning splits the window
+    into segments with their own path/travel ratios, so samples outside the repaired
+    stretch move too. On 2024 Silverstone R that movement is a CORRECTION, and the
+    timing loops are what say so — placement scatter falls from 108.9 m to 17.4 m
+    (VER) and 61.7 m to 30.8 m (HAM) against a 6.6-11.7 m noise floor. See PLAN.md
+    Slice 9h for the full four-scheme table, including the two schemes this beat.
+
+    With no anchors the original expression is evaluated unchanged, rather than the
+    equivalent two-point `np.interp`. That is deliberate: the two are the same
+    mathematics but not the same floating-point association, and a car with nothing to
+    repair must come out bit-identical rather than nearly so.
 
     BOUNDARY
     --------
@@ -863,7 +1077,32 @@ def resample_positions_by_travel(
     moved = np.concatenate(([True], np.diff(s) > 0.0))
 
     travelled = interp_continuous(times, t, d)
-    target = np.clip(travelled / d[-1] * s[-1], 0.0, s[-1])
+
+    # `anchors` index the SOURCE fixes; `s` indexes the kept ones. An anchor that was
+    # itself rejected has no arc length to pin to and is dropped — `keep` and the
+    # repair are independent screens and neither is entitled to assume the other's
+    # verdict. `np.interp` needs both axes strictly increasing, so an anchor that fails
+    # to advance either (a stationary car, a duplicate fix) is dropped for the same
+    # reason `moved` exists.
+    kept_index = None if keep is None else np.cumsum(np.asarray(keep, dtype=int)) - 1
+    pinned: "list[tuple[float, float]]" = [(0.0, 0.0)]
+    for a in anchors:
+        if keep is not None and not keep[a]:
+            continue
+        j = a if kept_index is None else int(kept_index[a])
+        node = (float(d[a]), float(s[j]))
+        if node[0] > pinned[-1][0] and node[1] > pinned[-1][1]:
+            pinned.append(node)
+    end = (float(d[-1]), float(s[-1]))
+    if len(pinned) > 1 and end[0] > pinned[-1][0] and end[1] > pinned[-1][1]:
+        pinned.append(end)
+
+    if len(pinned) > 2:
+        xp = np.array([p[0] for p in pinned])
+        fp = np.array([p[1] for p in pinned])
+        target = np.clip(np.interp(travelled, xp, fp), 0.0, s[-1])
+    else:
+        target = np.clip(travelled / d[-1] * s[-1], 0.0, s[-1])
 
     return (
         interp_continuous(target, s[moved], kx[moved]),
@@ -990,16 +1229,22 @@ def build_replay_dict(
             "telemetry Time must be non-decreasing; the source rows are out of order"
         )
 
+    # Two screens, in this order, and the order is the point. A frame displacement is
+    # made of steps that are individually impossible, so if the fix screen ran first it
+    # would reject the very jumps whose cancellation proves the displacement bounded —
+    # and rejecting them removes no phantom arclength at all. Repair first; whatever
+    # the repair declines is then screened exactly as it was before this existed.
+    repair = repair_frame_displacements(
+        t, telemetry["X"], telemetry["Y"], telemetry["Speed"]
+    )
     # The lap the app LOOPS is the recorded path plus the chord back to its start, so
     # that is the lap the grid has to cover. See `closing_time`.
     # Impossible fixes are dropped BEFORE anything measures the path: `closing_time`
     # reads the last recorded fix, and an excursion sitting on it would set the whole
     # lap's time base from a point the car was never at.
-    rejection = reject_impossible_fixes(
-        t, telemetry["X"], telemetry["Y"], telemetry["Speed"]
-    )
-    kx = np.asarray(telemetry["X"], dtype=float)[rejection.keep]
-    ky = np.asarray(telemetry["Y"], dtype=float)[rejection.keep]
+    rejection = reject_impossible_fixes(t, repair.x, repair.y, telemetry["Speed"])
+    kx = repair.x[rejection.keep]
+    ky = repair.y[rejection.keep]
     kt = t[rejection.keep]
     kv = np.asarray(telemetry["Speed"], dtype=float)[rejection.keep]
 
@@ -1016,7 +1261,13 @@ def build_replay_dict(
     # covers no ground is corrupt, so this is the call that RAISES rather than
     # tolerating it — the window builder is where a car legitimately sits still.
     gx, gy = resample_positions_by_travel(
-        src, t, telemetry["X"], telemetry["Y"], telemetry["Speed"], rejection.keep
+        src,
+        t,
+        repair.x,
+        repair.y,
+        telemetry["Speed"],
+        rejection.keep,
+        repair.anchors,
     )
     ch = resample_channels(src, t, telemetry)
 
@@ -1212,14 +1463,18 @@ def build_window_replay_dict(
     built = []
     rejections: "list[tuple[str, FixRejection]]" = []
     for car, t, ch in per_car:
-        x, y = car.telemetry["X"], car.telemetry["Y"]
-        rejection = reject_impossible_fixes(t, x, y, car.telemetry["Speed"])
+        speed = car.telemetry["Speed"]
+        # Repair before screening, and screen the repaired polyline — see the same
+        # note in `build_replay_dict` for why that order is load-bearing.
+        repair = repair_frame_displacements(t, car.telemetry["X"], car.telemetry["Y"], speed)
+        x, y = repair.x, repair.y
+        rejection = reject_impossible_fixes(t, x, y, speed)
         rejections.append((str(car.driver), rejection))
         # Parked or moving — the one place a window differs from a lap in how
         # positions are placed. See `covers_ground`.
-        if covers_ground(t, x, y, car.telemetry["Speed"]):
+        if covers_ground(t, x, y, speed):
             gx, gy = resample_positions_by_travel(
-                src, t, x, y, car.telemetry["Speed"], rejection.keep
+                src, t, x, y, speed, rejection.keep, repair.anchors
             )
         else:
             gx, gy = hold_positions(src, t, x, y)
@@ -1335,6 +1590,44 @@ def fix_rejection_report(
             f"- kept, not bridged"
         )
     return line
+
+
+def frame_repair_report(
+    driver: str, r: "FrameDisplacement", offset: float = 0.0
+) -> str:
+    """
+    One line per car for the frame-displacement screen, in the same family as
+    `fix_rejection_report`: a clean car prints a zero rather than nothing, because
+    silence is indistinguishable from a detector that never ran.
+
+    A DECLINED displacement is the line worth reading. It means the position channel
+    relocated and did not come back, so every fix after it is somewhere else and this
+    module has refused to guess which side is real. It is not fatal — the output is
+    still schema-valid, the fix screen still ran, and the car is still worth watching —
+    but nobody should discover it by wondering why one car's gaps look wrong.
+    """
+    if not r.jump_times:
+        return f"  {driver}: 0 frame displacements"
+    at = ", ".join(f"{t - offset:.1f}" for t in r.jump_times[:6])
+    more = "..." if len(r.jump_times) > 6 else ""
+    if r.repaired:
+        span = r.span or (0.0, 0.0)
+        return (
+            f"  {driver}: frame displaced up to {r.offset_m:.1f} m over "
+            f"t={span[0] - offset:.1f}-{span[1] - offset:.1f}s, translated back "
+            f"(jumps cancel to {r.residual_m:.1f} m of {r.allowed_m:.1f} m allowed; "
+            f"{len(r.jump_times)} jump steps at t={at}{more})"
+        )
+    return (
+        f"  {driver}: {len(r.jump_times)} unmatched position jump(s) at t={at}{more}\n"
+        f"      DECLINED: offset {r.offset_m:.1f} m does not cancel"
+        + (
+            f" (residual {r.residual_m:.1f} m against {r.allowed_m:.1f} m allowed)"
+            if r.allowed_m > 0.0
+            else " (no second jump to cancel against)"
+        )
+        + " - the channel relocated and stayed; left to the fix screen, not bridged"
+    )
 
 
 def window_car_report(

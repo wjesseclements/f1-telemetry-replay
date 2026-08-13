@@ -47,6 +47,15 @@ from FastF1 data. PRD.md holds the detail; this file holds the law.
   HUD tick, plus the per-focus-change cost, on a real file through the shipped engine.
   The React render is NOT in it (that half is `fps-probe.js`'s callback p95/p99); its
   header says so next to what it does measure.
+- Ask whether an emitted replay's cars are **where they should be**: `pipeline/.venv/bin/
+  python docs/instruments/placement-error.py app/public/gallery/<file>.json --gp
+  Silverstone --session R --ref HAM --laps 24-28 [--baseline <other.json>]`. Reads the
+  FastF1 cache for transponder marks, fetches nothing, writes nothing. It scores against
+  the TRACK (timing loops) rather than against the previous build, which is the
+  distinction Slice 9g got wrong — a diff can only say a build changed, never which one
+  is right. Its header carries the procedure and the measured noise floor; Slice 9h's
+  PLAN entry carries the baseline to compare a re-run against. Same family as the three
+  above: outside `app/`, no gate adopts it.
 
 ## Architecture rules (non-negotiable — see PRD §Load-bearing decisions)
 

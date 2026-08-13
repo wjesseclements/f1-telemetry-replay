@@ -72,7 +72,9 @@ from replay_transform import (
     closing_time,
     color_lookup_warning,
     fix_rejection_report,
+    frame_repair_report,
     reject_impossible_fixes,
+    repair_frame_displacements,
     dump_json,
     parse_lap_range,
     time_base_stretch,
@@ -172,7 +174,13 @@ def build_lap_replay(year, gp, session_id, driver, cache_dir=".f1cache"):
     closing = closing_time(
         times, telemetry["X"], telemetry["Y"], telemetry["Speed"]
     )
-    return replay, recorded, closing
+    # Recomputed for reporting, as the window builder does. A lap is short enough that
+    # a frame displacement is unlikely, which is exactly why it must not be silent —
+    # the screen runs on every build, so it prints on every build.
+    repair = repair_frame_displacements(
+        times, telemetry["X"], telemetry["Y"], telemetry["Speed"]
+    )
+    return replay, recorded, closing, repair
 
 
 def validate_output(path: Path) -> None:
@@ -446,15 +454,20 @@ def report_window(replay, window, cars, coverage, compact: bool = False) -> None
             f"replay; see `replay_transform.motion_fidelity`.\n"
         )
 
-    # Position fixes the speed channel says were unreachable. Recomputed here for
-    # REPORTING from the same pure function and the same inputs the builder applied,
-    # so the two agree by construction. See `reject_impossible_fixes`.
-    print("  position-fix screening:")
+    # The two position screens, recomputed here for REPORTING from the same pure
+    # functions, in the same order and on the same inputs the builder applied, so the
+    # two agree by construction. Screening the RAW polyline here would not: the
+    # builder screens what the repair handed it.
+    print("  position screening:")
     worst_share = 0.0
     for car in cars:
-        r = reject_impossible_fixes(
+        repair = repair_frame_displacements(
             car.telemetry["Time"], car.telemetry["X"],
             car.telemetry["Y"], car.telemetry["Speed"],
+        )
+        print(frame_repair_report(str(car.driver), repair, offset=window[0]))
+        r = reject_impossible_fixes(
+            car.telemetry["Time"], repair.x, repair.y, car.telemetry["Speed"],
         )
         # Rebased onto the WINDOW so the times line up with the app's transport clock.
         # Session seconds are what the transform works in and are useless to anyone
@@ -578,7 +591,7 @@ def _run_window(args) -> int:
 
 def _run_lap(args) -> int:
     try:
-        data, recorded, closing = build_lap_replay(
+        data, recorded, closing, repair = build_lap_replay(
             args.year, args.gp, args.session, args.driver
         )
     except TelemetryShapeError as err:
@@ -611,6 +624,8 @@ def _run_lap(args) -> int:
         f"({closing_steps:+.2f} of a grid step) · "
         f"time base stretched {stretch:.5f}x onto the grid"
     )
+    print("position screening:")
+    print(frame_repair_report(args.driver, repair))
     # The tripwire for the case the synthetic tests can only simulate: telemetry that
     # leaves more than a whole grid step unrecorded (or runs more than one past the
     # line). Beyond that the closing chord is no longer a rounding correction — the

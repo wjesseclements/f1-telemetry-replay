@@ -38,7 +38,10 @@ from replay_transform import (
     cumulative_travel,
     dump_json,
     fix_rejection_report,
+    frame_repair_report,
     reject_impossible_fixes,
+    repair_frame_displacements,
+    DISPLACEMENT_TOLERANCE,
     IMPOSSIBLE_RATIO,
     IMPOSSIBLE_MAX_RUN,
     forward_fill,
@@ -1961,3 +1964,331 @@ def test_build_replay_dict_drops_an_impossible_fix_from_the_emitted_path():
     xs = [s["x"] for s in replay["cars"][0]["samples"]]
     # The excursion's coordinates are nowhere in the output.
     assert max(xs) < 20000.0
+
+
+# --- repair_frame_displacements: translation, not rejection -------------------------
+#
+# The defect, as the census found it: on 2024 Silverstone R the position channel leaves
+# its frame in one impossible step and returns in another, and the jump VECTORS cancel
+# (VER 9.8 m, HAM 6.8 m residual against offsets reaching 99 m and 53 m). What lies
+# between is the recorded shape, correct except that it is somewhere else. Rejecting
+# the displaced run removes 0.0 m of phantom arclength and deletes 30-50 real fixes
+# through a pit entry; translating it keeps every one of them.
+#
+# The synthetic form: a straight constant-speed run whose middle is shifted sideways
+# and shifted back. The jump steps carry no forward motion of their own, so the
+# residual is only what the return fails to undo - which is the quantity under test.
+
+
+def _displaced_run(lo=30, hi=45, out=4000.0, back=None, gap=0.25):
+    """
+    A clean run whose fixes [lo, hi) sit `out` units off the line, then return.
+
+    The two jump steps span a longer sample interval than the rest, which is both
+    realistic (a feed that drops a sample is where a jump tends to show up) and
+    necessary here: on a STRAIGHT run the ground the car genuinely covers during the
+    two jumps is collinear, so it adds rather than partly cancelling and the
+    cancellation test lands exactly on its bound. See
+    `test_a_collinear_displacement_sits_exactly_on_the_bound`, which pins that.
+    """
+    t, x, y, v = _clean_run()
+    back = out if back is None else back
+    y[lo:hi] += out
+    y[hi:] += out - back
+    t[lo:] += gap
+    t[hi:] += gap
+    return t, x, y, v
+
+
+def test_repair_leaves_clean_data_untouched_and_says_so():
+    t, x, y, v = _clean_run()
+    r = repair_frame_displacements(t, x, y, v)
+
+    assert r.jump_times == ()
+    assert not r.repaired
+    assert r.anchors == ()
+    assert np.array_equal(r.x, x) and np.array_equal(r.y, y)
+    assert "0 frame displacements" in frame_repair_report("VER", r)
+
+
+def test_repair_translates_a_bounded_displacement_back_into_frame():
+    """The whole mechanism: the enclosed fixes come home, and nothing is deleted."""
+    t, x, y, v = _displaced_run()
+    clean_y = _clean_run()[2]
+    r = repair_frame_displacements(t, x, y, v)
+
+    assert r.repaired
+    assert len(r.jump_times) == 2
+    # What is left over is the ground covered during the jumps, and it is under the
+    # ground the channel allows over exactly those steps. That is the whole test.
+    assert r.residual_m == pytest.approx(20.0)
+    assert r.allowed_m == pytest.approx(40.0)
+    # Every fix is still here - this is translation, not rejection.
+    assert len(r.x) == len(x) and len(r.y) == len(y)
+    assert np.allclose(r.y, clean_y)
+
+
+def test_repair_leaves_everything_outside_the_displacement_bit_identical():
+    """
+    The property that makes this surgical, and the one Slice 9g's revert was about.
+
+    The running offset is forced to zero at both ends by spreading the residual over
+    the jumps, so the fixes before the first jump and after the last are not merely
+    close - they are the same floats.
+    """
+    t, x, y, v = _displaced_run(out=4000.0, back=3900.0)
+    r = repair_frame_displacements(t, x, y, v)
+
+    assert r.repaired
+    first, last = r.anchors
+    assert np.array_equal(r.x[: first + 1], x[: first + 1])
+    assert np.array_equal(r.y[: first + 1], y[: first + 1])
+    assert np.array_equal(r.x[last:], x[last:])
+    assert np.array_equal(r.y[last:], y[last:])
+
+
+def test_repair_spreads_the_residual_across_the_jumps_it_could_not_undo():
+    """
+    An imperfect return leaves a residual. It is halved onto the two seams rather
+    than dumped on one of them, which is what keeps both ends anchored.
+    """
+    t, x, y, v = _displaced_run(out=4000.0, back=3900.0)
+    r = repair_frame_displacements(t, x, y, v)
+
+    first, last = r.anchors
+    assert r.y[first + 1] - r.y[first] == pytest.approx(50.0)
+    assert r.y[last] - r.y[last - 1] == pytest.approx(50.0)
+
+
+def test_repair_declines_a_relocation_that_never_comes_back():
+    """
+    NOR's rain window on real data: one 41.7 m jump and no partner. The channel
+    relocated and stayed, and deciding which side is real is reconstruction.
+    """
+    t, x, y, v = _clean_run()
+    y[30:] += 4000.0
+    r = repair_frame_displacements(t, x, y, v)
+
+    assert not r.repaired
+    assert len(r.jump_times) == 1
+    assert r.anchors == ()
+    assert np.array_equal(r.y, y)
+    line = frame_repair_report("NOR", r)
+    assert "DECLINED" in line and "no second jump to cancel against" in line
+
+
+def test_repair_declines_two_jumps_that_do_not_cancel():
+    t, x, y, v = _clean_run()
+    y[30:45] += 4000.0
+    y[45:] += 2000.0  # returns only half way: a relocation wearing an excursion's coat
+    r = repair_frame_displacements(t, x, y, v)
+
+    assert not r.repaired
+    assert r.anchors == ()
+    assert np.array_equal(r.y, y)
+    assert r.residual_m > r.allowed_m
+    line = frame_repair_report("NOR", r)
+    assert "DECLINED" in line and "does not cancel" in line
+
+
+def test_repair_reports_the_two_sides_of_the_cancellation_test():
+    """The threshold is an argument, so both of its terms are on the report."""
+    t, x, y, v = _displaced_run(out=4000.0, back=3900.0)
+    r = repair_frame_displacements(t, x, y, v)
+
+    assert r.allowed_m > r.residual_m > 0.0
+    assert r.residual_m <= DISPLACEMENT_TOLERANCE * r.allowed_m
+    line = frame_repair_report("HAM", r)
+    assert "translated back" in line
+    assert f"{r.residual_m:.1f} m of {r.allowed_m:.1f} m allowed" in line
+
+
+def test_repair_is_scale_invariant_so_no_position_unit_is_assumed():
+    """6b's rule again: scale x/y and every decision is identical."""
+    t, x, y, v = _displaced_run()
+    base = repair_frame_displacements(t, x, y, v)
+    for factor in (0.1, 10.0, 1000.0):
+        scaled = repair_frame_displacements(t, x * factor, y * factor, v)
+        assert scaled.repaired == base.repaired
+        assert scaled.anchors == base.anchors
+        assert scaled.jump_times == base.jump_times
+        assert scaled.offset_m == pytest.approx(base.offset_m, rel=1e-9)
+        assert np.allclose(scaled.y, base.y * factor)
+
+
+def test_repair_handles_a_multi_stage_return():
+    """
+    VER's real shape: the frame comes back in two jumps 2.3 s apart, so between them
+    the polyline sits at an intermediate offset. A running offset handles it; a
+    single out-and-back pair would translate the middle stretch by the wrong amount.
+    """
+    t, x, y, v = _clean_run()
+    y[30:45] += 4000.0
+    y[45:50] += 1500.0  # partial return: still 1500 off the line
+    clean_y = _clean_run()[2]
+    r = repair_frame_displacements(t, x, y, v)
+
+    assert r.repaired
+    assert len(r.jump_times) == 3
+    assert np.allclose(r.y, clean_y)
+
+
+def test_repair_needs_no_decision_on_data_too_short_to_measure():
+    for n in (0, 1, 2):
+        t = np.arange(n, dtype=float)
+        r = repair_frame_displacements(t, t, t, np.full(n, 100.0))
+        assert not r.repaired and r.jump_times == ()
+
+
+def test_repair_keeps_everything_when_it_cannot_calibrate():
+    """All-pit-lane data is not evidence of anything; there is no median to scale by."""
+    n = 8
+    t = np.arange(n, dtype=float) * 0.25
+    r = repair_frame_displacements(t, np.arange(n) * 3.0, np.zeros(n), np.full(n, 2.0))
+    assert not r.repaired and r.jump_times == ()
+
+
+def test_repair_runs_before_the_fix_screen_and_leaves_it_nothing_to_do():
+    """
+    The order the builders use, and why it is load-bearing: a displacement is MADE of
+    individually impossible steps, so the fix screen would reject the very jumps whose
+    cancellation proves it bounded - and gain no arclength for it.
+    """
+    t, x, y, v = _displaced_run()
+    before = reject_impossible_fixes(t, x, y, v)
+    # 9g's verdict on this shape, unchanged: too long a run to be a cluster, so it
+    # surrenders and keeps it - once on the way out and once on the way back, having
+    # repaired nothing either time. That is the state this slice inherited.
+    assert before.surrendered_runs == 2
+    assert before.n_rejected == 0
+
+    r = repair_frame_displacements(t, x, y, v)
+    after = reject_impossible_fixes(t, r.x, r.y, v)
+    assert after.n_rejected == 0 and after.surrendered_runs == 0
+
+
+# --- anchors: where the travel-to-path map is pinned --------------------------------
+
+
+def _varying_ratio_run(half=20, dt=0.25, speed_kmh=144.0):
+    """
+    A straight run whose second half covers twice the ground per step at the SAME
+    channel speed: path and travel are no longer proportional.
+
+    That is Slice 9h's F3 condition in miniature, and it is the only shape on which
+    an anchored map and the global one can disagree. On a run where the two ARE
+    proportional every scheme agrees, which is how the first version of the test
+    below passed with the anchors ignored entirely.
+    """
+    n = 2 * half + 1
+    t = np.arange(n, dtype=float) * dt
+    step = np.where(np.arange(1, n) <= half, 100.0, 200.0)
+    x = np.concatenate(([0.0], np.cumsum(step)))
+    y = np.zeros(n, dtype=float)
+    v = np.full(n, speed_kmh, dtype=float)
+    return t, x, y, v
+
+
+def test_anchors_pin_the_map_at_the_fix_they_name():
+    """
+    An anchored map reads the anchor fix's own arc length at the anchor fix's own
+    travel. That is what confines a repair's arithmetic to the stretch it repaired.
+
+    The negative control is the point: with no anchor, half the travel maps to half
+    the PATH, which on this run is 1000 units past where the car actually was.
+    """
+    t, x, y, v = _varying_ratio_run()
+    at_midpoint = np.array([t[20]])
+
+    anchored, _ = resample_positions_by_travel(at_midpoint, t, x, y, v, None, (20,))
+    plain, _ = resample_positions_by_travel(at_midpoint, t, x, y, v)
+
+    assert anchored[0] == pytest.approx(x[20])  # 2000: the fix it was pinned to
+    assert plain[0] == pytest.approx(3000.0)  # half of a 6000-unit path
+    assert x[20] == 2000.0 and x[-1] == 6000.0
+
+
+def test_no_anchors_is_the_original_global_expression_bit_for_bit():
+    """
+    A car with nothing to repair must come out bit-identical, not nearly so: the
+    two-point interpolation is the same mathematics but not the same floating-point
+    association, and the goldens are compared structurally.
+    """
+    t, x, y, v = _clean_run(n=40)
+    times = np.linspace(0.0, t[-1], 97)
+    plain = resample_positions_by_travel(times, t, x, y, v)
+    empty = resample_positions_by_travel(times, t, x, y, v, None, ())
+    assert np.array_equal(plain[0], empty[0]) and np.array_equal(plain[1], empty[1])
+
+
+def test_an_anchor_that_was_rejected_is_dropped_rather_than_trusted():
+    """
+    The two screens are independent and neither may assume the other's verdict: a
+    rejected fix has no arc length left to pin to.
+    """
+    t, x, y, v = _varying_ratio_run()
+    keep = np.ones(len(t), dtype=bool)
+    keep[20] = False
+    at_midpoint = np.array([t[20]])
+
+    with_anchor, _ = resample_positions_by_travel(at_midpoint, t, x, y, v, keep, (20,))
+    without, _ = resample_positions_by_travel(at_midpoint, t, x, y, v, keep, ())
+
+    assert np.array_equal(with_anchor, without)
+    # And it really is the global answer, not a coincidence of a proportional run.
+    assert with_anchor[0] == pytest.approx(3000.0, rel=1e-3)
+
+
+@pytest.mark.parametrize("anchor", [0, 40])
+def test_an_anchor_at_either_end_pins_nothing(anchor):
+    """
+    `np.interp` needs both axes strictly increasing, so a node that advances neither
+    travel nor arc past its neighbour is dropped - which is exactly what an anchor on
+    the first or last fix is. Dropping both leaves the global map, bit for bit.
+    """
+    t, x, y, v = _varying_ratio_run()
+    times = np.linspace(0.0, t[-1], 97)
+    anchored = resample_positions_by_travel(times, t, x, y, v, None, (anchor,))
+    plain = resample_positions_by_travel(times, t, x, y, v)
+    assert np.array_equal(anchored[0], plain[0])
+    assert np.array_equal(anchored[1], plain[1])
+    # Not vacuous: an anchor in the middle of this run moves the answer by 1000 units.
+    moved = resample_positions_by_travel(times, t, x, y, v, None, (20,))
+    assert not np.array_equal(moved[0], plain[0])
+
+
+def test_a_collinear_displacement_sits_exactly_on_the_bound():
+    """
+    `DISPLACEMENT_TOLERANCE` is the triangle inequality, not a fitted constant.
+
+    What the return fails to undo is the ground the car covered during the two jump
+    steps, as a VECTOR sum; the bound is the same ground as a SCALAR sum. So the
+    residual can never exceed the bound for a true displacement, and reaches it
+    exactly when the two jumps' genuine motion is collinear - a straight line, which
+    real telemetry never is. Real pit entries measure 0.31-0.35 of the bound.
+    """
+    t, x, y, v = _displaced_run(gap=0.0)
+    r = repair_frame_displacements(t, x, y, v)
+    assert r.residual_m == pytest.approx(r.allowed_m, rel=1e-9)
+
+
+def test_a_repaired_car_reaches_the_emitted_path_through_both_builders():
+    """End to end: the displacement is gone from the output, and no fix went with it."""
+    channels = synthetic.telemetry()
+    y = np.asarray(channels["Y"], dtype=float).copy()
+    clean = y.copy()
+    y[8:14] += 4000.0
+    channels["Y"] = y
+
+    repair = repair_frame_displacements(
+        channels["Time"], channels["X"], y, channels["Speed"]
+    )
+    assert repair.repaired
+
+    channels["Y"] = y
+    replay = build_replay_dict(channels, synthetic.META)
+    ys = np.array([s["y"] for s in replay["cars"][0]["samples"]])
+    # The 4000-unit branch is nowhere in the output, and the emitted path still
+    # spans the oval it was generated from.
+    assert ys.max() < clean.max() + 200.0
+    assert ys.min() > clean.min() - 200.0
