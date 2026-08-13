@@ -2854,6 +2854,27 @@ evidence, and deliberately not started in the same session that produced them.
   - Three assets regenerated, **3.9 MB** total, all validating through `parseReplay`,
     all minified; only the rain asset's bytes changed.
 
+- **Verified in the browser (2026-08-13, human pass at 0.5x on the deployed build) —
+  PASS with findings, and the findings match the mechanism car for car.** SLICE
+  CLOSED. What makes this worth recording is that the eyes and the instrument agree
+  about *which cars* and *in which order*, which is the check neither could pass
+  alone:
+  - **VER: perfect.** Both pre-registered acceptance targets — **4:45.7** and
+    **~290 s** — read as clean single-sided sweeps into the pit lane. No doubling
+    back, no lateral slide, no crawl. This is the car whose displacement fully
+    cancelled (9.8 m of 29.6 m allowed) and whose bridged fixes went 9 → 0.
+  - **HAM: zigzags, much diminished.** Consistent with what it was left holding — a
+    **6.8 m non-cancelling residual**, the **one surviving bridged fix** at t=386.4,
+    and F3's drift. Repaired but not to VER's standard, which is what its 33.8 m
+    against VER's 17.8 m already said in metres.
+  - **NOR: zigzags, diminished but more pronounced than HAM.** The untreated car,
+    exactly as pre-registered — its 41.7 m relocation was DECLINED, nothing was
+    translated, and its 47.6 m placement is unchanged. The one car this slice
+    deliberately did not fix is the one that still looks worst.
+  - **Observed severity ranking: VER < HAM < NOR.** It is the same ranking as the
+    instrument's B column (17.8 / 33.8 / 47.6 m) and the same as the amount of repair
+    each car received. Carried into Slice 9i as the baseline to re-rank against.
+
 ### [ ] Slice 9i — the global fraction mapping drifts, and pit stops are where
 
 **Filed by Slice 9h with its numbers, so it cannot be lost.** F3 above: placement error
@@ -2883,6 +2904,25 @@ stop is where it breaks.
 - **Do not tune `DISPLACEMENT_TOLERANCE` or `IMPOSSIBLE_RATIO` to reach these numbers.**
   Neither detector is what is wrong here; both read zero on the dry windows that carry
   30–40 m of this error.
+- **Rider (c) — attribute HAM's residual zigzag BEFORE choosing a remedy, read-only.**
+  Slice 9h's browser pass found HAM still zigzagging at its pit entry, much diminished.
+  Three candidates are left holding it and they have **different remedies**, so 9i must
+  not start until it knows which:
+  - the **6.8 m non-cancelling residual**, spread half onto each seam of the
+    translation (a better residual model, or a return jump found below `min_speed`);
+  - the **one surviving bridged fix** at t=386.4 — a 0.3 m step at dt=0.00 that the fix
+    screen still rejects at 23.1x (a degenerate-step question, not a placement one);
+  - **F3 itself**, the drift this slice is about (periodic re-anchoring).
+  Read-only and measured, in the instrument-first order this line of slices has now
+  banked five times: the attribution is the finding, and it decides the remedy rather
+  than following it.
+- **Browser acceptance for 9i, written from 9h's pass rather than invented later: all
+  THREE pit entries read clean at 0.5x.** VER already does and must not regress — it
+  is the control. **HAM and NOR are the checklist.** The severity ranking observed on
+  2026-08-13 is the baseline to re-rank against: **VER < HAM < NOR**, matching the
+  instrument's 17.8 / 33.8 / 47.6 m. A remedy that improves the metric without moving
+  that ranking has not been seen by the eyes yet, and one that reorders it without
+  moving the metric needs explaining before it ships.
 
 
 ## Backlog (ideas — not committed)
