@@ -2875,6 +2875,107 @@ evidence, and deliberately not started in the same session that produced them.
     instrument's B column (17.8 / 33.8 / 47.6 m) and the same as the amount of repair
     each car received. Carried into Slice 9i as the baseline to re-rank against.
 
+### [x] Slice 9h-b — the degenerate step, and NOR's window boundary (micro-slice)
+
+**Two probes, one guard, aimed at the two visible residuals from 9h's browser pass.**
+F3 / periodic re-anchoring deliberately untouched — that is 9i's, and nothing here
+pre-empts it. Probes first, read-only, in the instrument-first order now banked six
+times; the second probe DECLINED the remedy it was scoping, which is what probes
+are for.
+
+- **Probe 1 — the degenerate step, and the mechanism is richer than the rider
+  guessed.** HAM's "0.3 m at dt=0.00 rejected at 23.1x" is a 0.25 m step 3 ms after
+  its predecessor, and the 23.1x is the fix being **convicted for pollution the
+  repair injected** — a feedback artifact between the two screens, and the finding
+  this probe exists in the record for. In two stages:
+  1. The REPAIR screen's per-step ratio divides noise by nearly-no-time: 0.25 m over
+     3 ms reads 3.8x, so the step entered the jump list as a phantom fifth jump.
+  2. The residual spreading then handed that phantom seam a fifth of the 7.6 m
+     residual — a **1.52 m kink across 3 ms** — and the fix screen rejected the
+     polluted fix at **23.1x** (the raw step alone reads 3.8x; both screens misjudge
+     the same row for the same reason).
+  - **Census, all nine car-windows: there are NO true dt=0 rows anywhere** (min
+    positive dt 2 ms), 121–153 rows per car-window at dt <= 5 ms — all benign at
+    ratio ~1.0, because FastF1's merge INTERPOLATES position onto interleaved
+    timestamps, and interpolation apportions displacement pro-rata to dt. Exactly
+    ONE degenerate jump-step exists in the corpus (HAM rain, t=386.45); every real
+    jump-step is **>= 4.51 m at dt >= 37 ms**.
+  - That pro-rata fact is the structural argument the guard rests on: a small-dt
+    row's step carries its parent interval's rate plus rounding noise amplified by
+    1/dt — no independent evidence, only divergence. **The bulk of a genuine jump
+    always lands on a step large in metres, whatever its dt.**
+- **Probe 2 — NOR's frame does NOT return outside the window, and the
+  boundary-aware repair is DECLINED by measurement.** The jump vector (−28.6, +30.3)
+  finds no partner at ±30 s or ±60 s: the vector sum stays 41.7 m against 3.3 m
+  allowed at every margin. The one place a return could hide from the ratio test —
+  below `min_speed`, in the pit box at t=403.2–406.1 s — carries 24 low-speed steps
+  of at most **0.47 m** against a 41.7 m relocation. The channel relocated and
+  stayed; NOR is genuinely not VER's class, the surrender stands, and it is
+  **inherited by 9i with these vectors** rather than re-litigated. No repair-margin
+  mechanism was built, because the probe it depended on said no.
+
+- **The guard: `IMPOSSIBLE_MIN_STEP_M = 2.0` — a MEASURABILITY floor on both
+  screens.** Below it a step cannot be judged impossible: a fix within the position
+  channel's own noise of where the car already was proves nothing, however enormous
+  dividing that noise by 3 ms makes the implied rate look.
+  - **On the STEP, not on dt, and the census case is why.** A dt floor big enough to
+    matter would skip real jumps — HAM's genuine first out-jump is 8.27 m at 37 ms,
+    and a frame displacement CAN enter across a tiny dt (large in metres, still
+    convicted over the step floor; a dt-skip would miss the out-jump, break the
+    cancellation, and decline the whole repair). Pinned by test from both sides,
+    each with a negative control at `min_step=0.0` so a floor that silently stopped
+    being applied fails a test rather than passing on the fault's absence.
+  - **In the measured empty band, not tuned:** flagged small-dt artifacts top out at
+    0.25 m (small-dt steps generally ~0.5 m); the smallest real jump-step is 4.51 m;
+    2.0 sits between, under half a car length and a sixth of placement B's ~12 m
+    resolution — nothing it could mask is visible to any other measure this project
+    has. Unit-agnostic through the car's own scale bridge (the reports' conversion
+    run backwards), so 6b's rule survives, pinned by a scale-invariance test.
+  - HAM's shape reproduced in miniature as a regression test: phantom third jump in,
+    kink out, conviction — versus floor on: two real jumps, clean fix screen.
+
+- **Verified (2026-08-14) — pre-registered, misses included.**
+
+  | criterion | before (main) | after |
+  |---|---|---|
+  | HAM convictions / bridged fixes (rain) | 1 at 23.1x | **0, worst 2.3x** ✓ |
+  | HAM repair jump list | 5 (one phantom) | **4, all real** ✓ |
+  | NOR + VER rain samples | — | **byte-identical** ✓ (pre-registered) |
+  | dry windows | — | **byte-identical, both** ✓ (pre-registered) |
+  | HAM placement B (S/F / s1 / s2) | 3.3 / 28.0 / 33.8 m | 3.3 / **18.2** / 33.8 m |
+  | HAM reversal A | 1.35 @ 381.8 s | 1.42 @ 381.9 s, **0 windows > 2.0** |
+  | gates | — | 197 pytest, 100% lines+branches; `npm run check` 572 tests, 0 warnings ✓ |
+  | render path | — | drawcall md5s identical (`04506b72…` / `0aea33a3…`) ✓ |
+
+  - **One pre-registration MISSED, and the instrument ruled against the
+    prediction's premise, again.** Predicted: HAM's change confined near
+    t=381.9–386.5. Measured: 1,316 samples over t=381.9–513.4 s, max 14.4 m — the
+    restored fix and the one-fix anchor shift changed the anchored map's TAIL
+    segment ratio, and the whole tail slid. The loops say the slide is a
+    CORRECTION: sector1 scatter fell 28.0 → 18.2 m. Same lesson as 9h's `hold`
+    refutation — smallest diff is not most correct — arriving at smaller scale.
+  - **HAM's A max rose 1.35 → 1.42 and that is the recorded trade:** the 7.6 m
+    residual now spreads over 4 real seams instead of 5, so each seam carries
+    1.9 m instead of 1.5 m. Both readings are far under the 2.0 bar (p99 1.02) and
+    the old max was at the same first seam — the degenerate kink never showed in A
+    because the old build bridged the fix it had bent.
+  - HAM motion fidelity r=0.9996 spread 0.0418 (was 0.9997/0.0404 on main): the
+    restored recorded fix and sharper seams cost the aggregate a fourth decimal,
+    said out loud rather than smoothed.
+  - Rain asset regenerated `--compact`, validates through `parseReplay`; only
+    HAM's samples differ from main. Dry assets regenerated and byte-identical, so
+    not re-committed (no diff exists).
+
+- **Pre-registered browser outcome for the re-watch at 0.5x, written BEFORE the
+  watch:** VER **must** read identical to 9h's pass — its bytes did not change; it
+  is the control. NOR **must** read identical for the same reason: still the worst,
+  now attributed with vectors, 9i's by inheritance. HAM: no visible regression;
+  possibly imperceptibly cleaner at ~386 s (a 23.1x conviction's bridge replaced by
+  the recorded fix); if a diminished zigzag remains at t≈382–386 it is now fully
+  attributed — the 7.6 m residual at 1.9 m per seam, plus F3's drift — and both
+  remainders are explicitly 9i's, not an unexplained miss. Expected severity
+  ranking unchanged: **VER < HAM < NOR.**
+
 ### [ ] Slice 9i — the global fraction mapping drifts, and pit stops are where
 
 **Filed by Slice 9h with its numbers, so it cannot be lost.** F3 above: placement error
@@ -2900,21 +3001,28 @@ stop is where it breaks.
     window; a rewrite that touches every window needs its own.
 - **NOR's uncancelled relocation belongs here too** — the one real defect 9h declined.
   41.7 m at t=383.0 in the rain window, one jump with no partner, reported in the build
-  log. It is the residual reason NOR still scores 47.6 m.
+  log. It is the residual reason NOR still scores 47.6 m. **Slice 9h-b closed the
+  where-the-window-fell question for it:** no return jump exists at ±30 s or ±60 s
+  (vector sum 41.7 m at every margin), and the below-`min_speed` blind spot is clear —
+  the pit-box stop at t=403–406 s carries steps of at most 0.47 m. Whatever 9i does
+  about NOR, it is reconstruction of a genuine relocation, not a wider-margin repair.
 - **Do not tune `DISPLACEMENT_TOLERANCE` or `IMPOSSIBLE_RATIO` to reach these numbers.**
   Neither detector is what is wrong here; both read zero on the dry windows that carry
   30–40 m of this error.
 - **Rider (c) — attribute HAM's residual zigzag BEFORE choosing a remedy, read-only.**
   Slice 9h's browser pass found HAM still zigzagging at its pit entry, much diminished.
-  Three candidates are left holding it and they have **different remedies**, so 9i must
-  not start until it knows which:
-  - the **6.8 m non-cancelling residual**, spread half onto each seam of the
-    translation (a better residual model, or a return jump found below `min_speed`);
-  - the **one surviving bridged fix** at t=386.4 — a 0.3 m step at dt=0.00 that the fix
-    screen still rejects at 23.1x (a degenerate-step question, not a placement one);
+  Three candidates were left holding it; **Slice 9h-b resolved one and quantified
+  another**, so what remains for 9i is two, both measured:
+  - the **7.6 m non-cancelling residual**, now spread 1.9 m onto each of four real
+    seams (a better residual model, or a return jump found below `min_speed`);
+  - ~~the **one surviving bridged fix** at t=386.4~~ — **CLOSED by Slice 9h-b**: it
+    was a degenerate 0.25 m step at dt=3 ms that first polluted the repair (phantom
+    fifth jump, 1.52 m manufactured kink) and was then convicted at 23.1x for that
+    pollution. The measurability floor removed it; HAM's rain window now rejects
+    zero fixes, and sector1 placement improved 28.0 → 18.2 m;
   - **F3 itself**, the drift this slice is about (periodic re-anchoring).
   Read-only and measured, in the instrument-first order this line of slices has now
-  banked five times: the attribution is the finding, and it decides the remedy rather
+  banked six times: the attribution is the finding, and it decides the remedy rather
   than following it.
 - **Browser acceptance for 9i, written from 9h's pass rather than invented later: all
   THREE pit entries read clean at 0.5x.** VER already does and must not regress — it

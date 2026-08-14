@@ -505,6 +505,38 @@ IMPOSSIBLE_MIN_SPEED = 15.0
 #: reported and warned about, never silent.
 IMPOSSIBLE_MAX_RUN = 6
 
+#: Below this displacement, in metres through the car's own scale bridge, a step
+#: cannot be judged impossible by EITHER screen. An unmeasurable step is not evidence
+#: of anything: a fix within the position channel's own noise of where the car already
+#: was cannot prove the car was somewhere it could not be, no matter how enormous
+#: dividing that noise by a tiny dt makes the implied rate look.
+#:
+#: THE DEGENERATE STEP this floors out, measured (2024 Silverstone R, HAM, rain
+#: window, t=386.45s): a 0.25 m step 3 ms after its predecessor reads 3.8x — noise
+#: over nearly-no-time — and entered the repair screen as a phantom fifth jump. The
+#: residual spreading then manufactured a 1.52 m kink across those same 3 ms, which
+#: the fix screen rejected at 23.1x: the detector convicting the fix for the damage
+#: the detector's own earlier stage had done to it. Both screens misjudge the same
+#: row for the same reason, so both take the same floor.
+#:
+#: WHY NO REAL DEFECT CAN HIDE UNDER IT. On FastF1's merged axis, rows closer
+#: together than the position channel's native period (~220 ms) carry INTERPOLATED
+#: positions, and interpolation apportions any real displacement pro-rata to dt — the
+#: bulk of a genuine jump always lands on a step that is large in metres, whatever
+#: its dt. Measured across all nine gallery car-windows: every real jump-step is
+#: >= 4.51 m; every step the ratio test flags at dt <= 10 ms is <= 0.25 m, and
+#: small-dt steps top out near 0.5 m. The empty band is 0.5-4.5 m and 2.0 sits in
+#: it — below half a car length (`PARKED_TRAVEL_M`) and a sixth of the placement
+#: instrument's ~12 m resolution, so nothing this floor could mask is visible to any
+#: other measure this project has. A hypothetical genuinely-impossible small-dt step
+#: is a frame displacement, tens of metres, far over the floor: still convicted, and
+#: pinned by test.
+#:
+#: The conversion to position units is `IMPOSSIBLE_MIN_STEP_M * KMH_S_PER_METRE *
+#: scale` — the reports' own bridge run backwards, resting on the one unit the
+#: contract pins (speed) and never on FastF1's undocumented position convention.
+IMPOSSIBLE_MIN_STEP_M = 2.0
+
 
 @dataclass(frozen=True)
 class FixRejection:
@@ -550,6 +582,7 @@ def reject_impossible_fixes(
     max_ratio: float = IMPOSSIBLE_RATIO,
     min_speed: float = IMPOSSIBLE_MIN_SPEED,
     max_run: int = IMPOSSIBLE_MAX_RUN,
+    min_step: float = IMPOSSIBLE_MIN_STEP_M,
 ) -> FixRejection:
     """
     Drop position fixes the speed channel says the car could not have reached.
@@ -628,6 +661,8 @@ def reject_impossible_fixes(
     # if every step were NaN the count check above would have returned already. A
     # defensive branch here would be unreachable code pretending to be care.
     scale = float(np.median((step[usable] / dt[usable]) / v[usable]))
+    #: The measurability floor in position units — see `IMPOSSIBLE_MIN_STEP_M`.
+    floor = min_step * KMH_S_PER_METRE * scale
 
     def ratio(i: int, j: int) -> float:
         """Implied rate from fix `i` to fix `j`, over the channel, over the median."""
@@ -637,8 +672,15 @@ def reject_impossible_fixes(
         chan = max(vs[i], vs[j])
         if span <= 0.0 or chan < min_speed:
             return 0.0
-        reach = np.hypot(px[j] - px[i], py[j] - py[i]) / span
-        return float(reach / chan / scale)
+        dist = np.hypot(px[j] - px[i], py[j] - py[i])
+        # A fix within the channel's own noise of the anchor is where the car was, as
+        # far as the data can say; dividing that noise by a small span proves nothing.
+        # Deliberately AFTER the span/speed gate and BEFORE the division, and written
+        # so a NaN coordinate falls through (NaN <= floor is False) and is still
+        # rejected as unreachable, exactly as before the floor existed.
+        if dist <= floor:
+            return 0.0
+        return float(dist / span / chan / scale)
 
     anchor = 0
     corroborated = False
@@ -755,6 +797,7 @@ def repair_frame_displacements(
     max_ratio: float = IMPOSSIBLE_RATIO,
     min_speed: float = IMPOSSIBLE_MIN_SPEED,
     tolerance: float = DISPLACEMENT_TOLERANCE,
+    min_step: float = IMPOSSIBLE_MIN_STEP_M,
 ) -> FrameDisplacement:
     """
     Translate a bounded displacement of the position channel's frame back into frame.
@@ -835,7 +878,14 @@ def repair_frame_displacements(
     ratio = np.divide(
         rate, chan * scale, out=np.zeros_like(step), where=judged & (chan > 0.0)
     )
-    jump = np.flatnonzero(ratio > max_ratio)
+    # A jump must clear the measurability floor as well as the rate test: a step
+    # smaller than the channel's own noise is not a frame displacement however fast
+    # its dt makes it look, and letting one in does real damage — it becomes a
+    # phantom seam that the residual spreading below then dumps a share of the
+    # residual onto, across nearly no time. See `IMPOSSIBLE_MIN_STEP_M` for the
+    # measured instance and why nothing genuine can sit under the floor.
+    floor = min_step * KMH_S_PER_METRE * scale
+    jump = np.flatnonzero((ratio > max_ratio) & (step > floor))
 
     #: Metres per position unit, from the car's own data: `scale` is position units
     #: per (km/h * s), so dividing by it gives travel units and by 3.6 gives metres.

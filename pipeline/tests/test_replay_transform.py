@@ -44,6 +44,7 @@ from replay_transform import (
     DISPLACEMENT_TOLERANCE,
     IMPOSSIBLE_RATIO,
     IMPOSSIBLE_MAX_RUN,
+    IMPOSSIBLE_MIN_STEP_M,
     forward_fill,
     interp_continuous,
     normalise_brake,
@@ -2165,6 +2166,127 @@ def test_repair_runs_before_the_fix_screen_and_leaves_it_nothing_to_do():
     r = repair_frame_displacements(t, x, y, v)
     after = reject_impossible_fixes(t, r.x, r.y, v)
     assert after.n_rejected == 0 and after.surrendered_runs == 0
+
+
+# --- the degenerate step: an unmeasurable step is not evidence ----------------------
+#
+# FastF1's merged axis interleaves two channels' timestamps, so consecutive rows can
+# sit milliseconds apart; their positions are INTERPOLATED, so a real displacement is
+# apportioned pro-rata to dt and the leftover at a tiny-dt step is only noise — which
+# the ratio test divides by nearly-no-time. Measured (2024 Silverstone R, HAM,
+# t=386.45s): a 0.25 m step over 3 ms read 3.8x, entered the repair as a phantom
+# fifth jump, was handed a share of the spread residual — a 1.52 m kink across 3 ms —
+# and the fix screen then rejected it at 23.1x for damage the repair had done.
+# `IMPOSSIBLE_MIN_STEP_M` floors both screens; these tests pin the floor from both
+# sides, each with a negative control at min_step=0.0 so a floor that silently
+# stopped being applied fails a test instead of passing on the fault's absence.
+
+
+def _with_jitter_row(t, x, y, v, after, dt=0.003, offset=5.0):
+    """Insert a row `dt` after fix `after`, displaced `offset` units of pure noise."""
+    i = after + 1
+    return (
+        np.insert(t, i, t[after] + dt),
+        np.insert(x, i, x[after]),
+        np.insert(y, i, y[after] + offset),
+        np.insert(v, i, v[after]),
+    )
+
+
+def test_a_jitter_step_over_milliseconds_convicts_nobody():
+    """
+    The degenerate step, in miniature: 5 units of noise 3 ms after its predecessor
+    implies 4.2x the channel — and proves nothing, because the fix sits within the
+    channel's own noise of where the car already was.
+    """
+    t, x, y, v = _with_jitter_row(*_clean_run(), after=30)
+
+    r = repair_frame_displacements(t, x, y, v)
+    assert r.jump_times == () and not r.repaired
+    assert np.array_equal(r.y, y)
+    assert reject_impossible_fixes(t, x, y, v).keep.all()
+
+    # The controls: without the floor, both screens misjudge exactly this row —
+    # which is what proves the floor is the thing doing the work above.
+    assert len(repair_frame_displacements(t, x, y, v, min_step=0.0).jump_times) == 1
+    naked = reject_impossible_fixes(t, x, y, v, min_step=0.0)
+    assert list(np.where(~naked.keep)[0]) == [31]
+
+
+def test_a_real_jump_on_a_tiny_dt_is_still_rejected():
+    """
+    The census case the floor must not mask, fix-screen side: a fix tens of metres
+    wrong is impossible however small its dt — the floor is on the STEP, so it still
+    convicts. A floor on dt instead would skip this row, which is why there isn't one.
+    """
+    t, x, y, v = _clean_run()
+    t[30] = t[29] + 0.003
+    y[30] += 4000.0
+    r = reject_impossible_fixes(t, x, y, v)
+    assert list(np.where(~r.keep)[0]) == [30]
+    assert r.worst_ratio > IMPOSSIBLE_RATIO
+
+
+def test_a_real_displacement_entering_on_a_tiny_dt_is_still_translated():
+    """
+    The census case, repair side: the frame leaves across a 3 ms step and returns
+    across a normal one. Both jumps are far over the floor, so the displacement is
+    still seen whole and comes home — a dt floor would miss the out-jump, break the
+    cancellation, and decline the whole repair.
+    """
+    t, x, y, v = _clean_run()
+    clean_y = y.copy()
+    t[30] = t[29] + 0.003
+    x[30] = x[29] + 1.2  # the ground 3 ms genuinely covers, so the data stays honest
+    y[30:45] += 4000.0
+    t[45:] += 0.25  # the return jump spans a dropped sample, as in `_displaced_run`
+    r = repair_frame_displacements(t, x, y, v)
+    assert r.repaired and len(r.jump_times) == 2
+    assert np.allclose(r.y, clean_y)
+
+
+def test_a_degenerate_tail_no_longer_pollutes_the_repair():
+    """
+    HAM's recorded shape (2024 Silverstone R, t=381.9-386.45s), in miniature: an
+    imperfectly-returning displacement with a jitter row milliseconds after the
+    return jump. REGRESSION: the phantom third jump used to take a third of the
+    spread residual across 3 ms, and the fix screen then rejected the fix the repair
+    had bent at 23.1x. With the floor the jump list is the two real jumps, and the
+    repaired polyline sails through the fix screen untouched.
+    """
+    t, x, y, v = _with_jitter_row(*_displaced_run(out=4000.0, back=3900.0), after=45)
+
+    r = repair_frame_displacements(t, x, y, v)
+    assert len(r.jump_times) == 2 and r.repaired
+    after = reject_impossible_fixes(t, r.x, r.y, v)
+    assert after.n_rejected == 0
+
+    # The control: the recorded two-stage failure, reproduced. The phantom jump gets
+    # in, and the fix screen convicts the fix the residual spreading displaced.
+    naked = repair_frame_displacements(t, x, y, v, min_step=0.0)
+    assert len(naked.jump_times) == 3
+    assert reject_impossible_fixes(t, naked.x, naked.y, v, min_step=0.0).n_rejected > 0
+
+
+def test_the_measurability_floor_is_scale_invariant():
+    """The floor rides the car's own scale bridge, so 6b's rule survives it."""
+    t, x, y, v = _with_jitter_row(*_clean_run(), after=30)
+    base = reject_impossible_fixes(t, x, y, v)
+    for factor in (0.1, 10.0, 1000.0):
+        scaled = reject_impossible_fixes(t, x * factor, y * factor, v)
+        assert np.array_equal(scaled.keep, base.keep), factor
+
+
+def test_the_floor_sits_inside_the_measured_empty_band():
+    """
+    2.0 m is an argument about measurement, not a tuned number: above the biggest
+    flagged small-dt artifact in the nine-window corpus (0.25 m, and small-dt steps
+    top out near 0.5 m), below its smallest real jump-step (4.51 m), and under every
+    other floor this project judges positions by (half of `PARKED_TRAVEL_M`'s car
+    length, a sixth of the placement instrument's ~12 m resolution).
+    """
+    assert 0.5 < IMPOSSIBLE_MIN_STEP_M < 4.51
+    assert IMPOSSIBLE_MIN_STEP_M <= PARKED_TRAVEL_M / 2
 
 
 # --- anchors: where the travel-to-path map is pinned --------------------------------
