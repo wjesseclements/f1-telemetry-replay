@@ -2976,6 +2976,19 @@ are for.
   remainders are explicitly 9i's, not an unexplained miss. Expected severity
   ranking unchanged: **VER < HAM < NOR.**
 
+### [ ] Slice 14 — Laps and tyres (stub — plan in its own session)
+
+**Ordered ahead of Slice 9i (2026-09-07).** A stub so STATUS.md and this ledger agree
+on the order; the slice is planned when its session starts, and nothing here
+pre-commits a design.
+
+- Surface lap context and tyre state for a v2 window: which lap each car is on, and
+  tyre compound/age, sourced from FastF1's lap data through the pipeline.
+- To be decided at planning time: exact scope, where it renders (HUD/tower), and the
+  schema impact — additive within `schemaVersion` 1 with optional fields (the Slice 8
+  precedent) or a justified bump. Tyre data is season-dependent; the Indicators rule
+  (CLAUDE.md rule 8) applies — the app never branches on year.
+
 ### [ ] Slice 9i — the global fraction mapping drifts, and pit stops are where
 
 **Filed by Slice 9h with its numbers, so it cannot be lost.** F3 above: placement error

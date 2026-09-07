@@ -13,12 +13,13 @@ Monza 2024 pit cycle). Quality state at the last merge: `npm run check` green wi
 572 tests and 0 warnings, 197 pytest with `replay_transform.py` at 100% lines +
 branches, drawcall md5s unchanged on both render modes. The last recorded in-browser
 placement pass is Slice 9h's (2026-08-13, rain window at 0.5x): severity ranking
-**VER < HAM < NOR**, matching the placement instrument's 17.8 / 33.8 / 47.6 m; 9h-b
-changed only HAM's rain samples after that pass and pre-registered its expected
-re-watch outcome in its PLAN entry.
+**VER < HAM < NOR**, matching the placement instrument's 17.8 / 33.8 / 47.6 m. 9h-b
+changed only HAM's rain samples after that pass; its pre-registered browser re-watch
+at 0.5x (expected outcome written in its PLAN entry) is **still pending**.
 
-**What is open, and what is blocked.** One slice is open: **9i — the global fraction
-mapping drifts, and pit stops are where** (placement error 31–149 m for every car that
+**What is open, and what is blocked.** Two slices are open. **Slice 14 — laps and
+tyres** is next up (a stub in PLAN.md, planned when its session starts). Behind it
+sits **9i — the global fraction mapping drifts, and pit stops are where** (placement error 31–149 m for every car that
 pits vs 6.6–11.7 m for every car that doesn't; `resample_positions_by_travel`'s single
 global path/travel fraction is the mechanism). It carries three riders — (a) record
 gap-level impact alongside absolute placement, (b) re-verify the timing-loop reference's
@@ -30,10 +31,11 @@ was rescinded by 9h. One standing constraint applies to all pipeline work: F1 bl
 datacentre IPs from live timing, so `build_replay.py` runs only from the human's home
 network (see CLAUDE.md Gotchas).
 
-**What happens next.** The next session implements Slice 9i, in the instrument-first
-order this line of slices has banked six times: the read-only riders and attribution
-first, and the attribution decides the remedy. Its browser acceptance is already
-written: all three pit entries read clean at 0.5x, with VER as the untouched control
-and the 2026-08-13 severity ranking as the baseline to re-rank against. After 9i, the
-committed plan is empty; the backlog's headline item is the **fixture asymmetry
-overhaul** (four recorded instances of the symmetric fixture hiding defect classes).
+**What happens next.** The next session implements **Slice 14 (laps and tyres)**,
+starting from its PLAN.md stub. **Slice 9i follows**, in the instrument-first order
+this line of slices has banked six times: the read-only riders and attribution first,
+and the attribution decides the remedy. 9i's browser acceptance is already written:
+all three pit entries read clean at 0.5x, with VER as the untouched control and the
+2026-08-13 severity ranking as the baseline to re-rank against. After 9i comes the
+backlog's headline item, the **fixture asymmetry overhaul** (four recorded instances
+of the symmetric fixture hiding defect classes).
