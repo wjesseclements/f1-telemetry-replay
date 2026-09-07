@@ -3327,6 +3327,73 @@ stop is where it breaks.
     remedy for NOR can be validated by loops alone at this magnitude** — Phase 2
     must justify any reconstruction structurally and may not claim loop evidence
     for it.
+- **Phase 2 (2026-09-07) — the remedy, table first, code second. Candidates were
+  simulated through the real package and scored by the committed instruments before
+  any implementation; the simulator's fidelity was proven by its `current` builds
+  byte-matching all three shipped assets.** Held-out sector spreads (m), the table
+  that decided:
+
+  | window | car | baseline | C-PIT | C-LOOP | C-LOOP-G | **C-UNION** |
+  |---|---|---|---|---|---|---|
+  | Monza | VER | 5.6/6.7 | untouched | 11.4/8.7 | 11.4/8.7 | 11.4/8.7 |
+  | | LEC | 27.9/26.2 | 18.2/16.4 | 9.8/14.1 | 9.8/14.1 | 12.8/15.7 |
+  | | NOR | 25.0/19.6 | 16.2/11.8 | 20.5/15.7 | 20.5/15.7 | **12.8/11.6** |
+  | finale | HAM | 6.6/6.0 | byte-id. | 7.0/7.5 | 7.0/7.5 | 7.0/7.5 |
+  | | VER | 10.0/11.7 | byte-id. | 6.5/4.8 | 6.5/4.8 | 6.5/4.8 |
+  | | NOR | 7.1/8.4 | byte-id. | 3.0/7.8 | 3.0/7.8 | 3.0/7.8 |
+  | rain | HAM | 18.2/33.8 | 24.7/33.8 ✗ | 11.7/11.1 | 11.7/11.1 | 11.7/11.1 |
+  | | VER | 17.8/17.4 | 16.6/17.4 | 14.8/10.6 | 14.8/10.6 | **10.6/10.6** |
+  | | NOR | 38.9/47.6 | 41.3/66.4 ✗ | 21.6/60.2 ✗ | held (0.0 m) | held (0.0 m) |
+
+  - **RULED (human, 2026-09-07): C-UNION** — S/F loop-crossing anchors UNION
+    pit-span brackets, both withheld for a car with a declined displacement. One
+    line of rationale, as directed: the union's worst held-out cell improves or
+    ties in every window, and C-PIT's rain harm came only from anchoring the
+    declined car, which the guard already forbids. Rulings recorded with it:
+    the DTDA continuous truth is retired for gaps (the human's own suggestion,
+    refuted by measurement — L loop deltas adjudicate); Monza is the numeric
+    proving ground; rain is certified by eyes plus only its above-floor cells;
+    NOR gets NO reconstruction (anchoring improves his approach; the jump stays
+    declined and reported).
+  - **Pre-registration CORRECTION, flagged before implementation rather than
+    absorbed:** the Phase 2 checkpoint claimed every rain L sector pair
+    improves-or-holds; re-checking showed NOR-VER worsens 0.19/0.20 →
+    0.22/0.24 s mean (+0.03/+0.04, past the accepted ±0.02 s) for BOTH surviving
+    candidates — the NOR-correlation effect leaking into sectors at a tenth of
+    the rain window's own 24–38 m floor. Under the rain-by-eyes ruling this cell
+    is proposed as eyes' territory; **it awaits the human's ratification at the
+    browser pass and is not claimed as passing.**
+  - **Thresholds vs the shipped C-UNION, all pre-registered:** Monza — every
+    held-out sector cell ≤ baseline+2 m or ≤ 11.7 m ✓ (worst 15.7); LEC's four
+    sector cells ≤ 21 m ✓; L sector pair means ≤ baseline+0.02 s ✓ (0.04–0.06 vs
+    0.07–0.13). Finale — every sector cell ≤ 11.7 m ✓ (worst 7.8); no cell above
+    baseline+2 m ✓; L means ≤ 0.18 s ✓ (0.04–0.08). Rain — HAM sector2 33.8 →
+    **11.1 m** ✓ (< 24 required); NOR cells held exactly (byte-untouched) ✓;
+    HAM-VER L pairs 0.22/0.23 → 0.06/0.08 ✓; the NOR-VER cell flagged above;
+    **expected S/F regression, pre-registered for the eyes: NOR-pair S/F gap max
+    1.42 → 1.96 s** (correcting HAM/VER breaks correlation with the uncorrected
+    NOR — 9h's rider-(a) effect, confined to the in-sample family). Reversal A:
+    no new windows > 2.0 anywhere; NOR rain 7 → 6. Mechanical revert stands for
+    any numeric miss above.
+  - **Implementation** (`placement.py` `lap_start_anchors`/`slow_span_anchors`;
+    `assembly.py` `AnchorPlan`/`window_anchor_plan` + builder wiring;
+    `reporting.py` `anchor_report`; `build_replay.py` report lines): the
+    crossings come from the lap table the pipeline already receives (Slice 14) —
+    **no new inputs** — and the single-lap builder is untouched (a closed lap has
+    no session loops to anchor to and no observed defect). The plan is computed
+    once by a pure function and recomputed by the report, so file and log cannot
+    disagree.
+  - **Verified (2026-09-07):** pytest **231** (220 → 231), coverage 100%
+    lines+branches on every module; the race-window golden regenerated with a
+    reviewed diff of **≤ 0.01 m** position-rounding flips and zero non-position
+    changes (the synthetic ratio is near-constant, so anchors are near no-ops
+    there — itself confirming); **all three regenerated gallery assets
+    byte-identical (md5) to their scored simulations**, so the table's numbers
+    transfer to the shipped files exactly; `monza_full_field.json` rebuilt, 19
+    cars, sensible plans (SAI/STR get pit brackets), no warnings; every build's
+    screening unchanged (NOR's 41.7 m still DECLINED, now with the WITHHELD
+    anchor line beside it); `npm run check` green (650 tests, 0 warnings by
+    full-log grep); drawcall md5s identical both modes (canvas untouched).
 - **Browser acceptance for 9i, written from 9h's pass rather than invented later: all
   THREE pit entries read clean at 0.5x.** VER already does and must not regress — it
   is the control. **HAM and NOR are the checklist.** The severity ranking observed on

@@ -32,27 +32,29 @@ the vs pill per the row's surrender order — were each fixed in-branch and
 re-verified on a fresh preview; the findings and fixes are amendments in its
 PLAN entry.
 
-**What is open, and what is blocked.** One slice is open: **9i — the global fraction
-mapping drifts, and pit stops are where** (placement error 31–149 m for every car that
-pits vs 6.6–11.7 m for every car that doesn't; `resample_positions_by_travel`'s single
-global path/travel fraction is the mechanism). It carries three riders — (a) record
-gap-level impact alongside absolute placement, (b) re-verify the timing-loop reference's
-noise floor in 9i's own context, (c) attribute HAM's residual zigzag read-only before
-choosing a remedy — plus NOR's genuine 41.7 m uncancelled relocation, inherited from
-9h/9h-b with its vectors (no return jump at ±30/±60 s; the below-`min_speed` blind spot
-is clear; Slice 14's asset regeneration reproduced it unchanged). **Nothing is
-currently blocked.** One standing constraint applies to all pipeline work: F1 blocks
+**What is open, and what is blocked.** One slice is open and nearly done: **9i —
+anchor placement to the timing loops; retire the global ratio.** Phase 0 (the
+`replay_transform` package split) is merged; Phases 1–2 are implemented on
+`feat/slice-9i-loop-anchored-placement`: the ruled remedy is **C-UNION** — per-lap
+S/F loop-crossing anchors union pit-span brackets, both WITHHELD for a car carrying
+a declined displacement (NOR's 41.7 m stays declined and reported, per ruling) —
+chosen from a four-candidate simulation table scored by the committed instruments
+under a pre-registered held-out scheme (sector marks never anchor). Every
+regenerated gallery asset is byte-identical to its scored simulation; held-out
+placement lands at 10.6–15.7 m on the pitting cars (from 19.6–47.6), the dry
+finale tightens, and NOR-rain is untouched by design. **Open before merge: the
+human browser pass at 0.5x** (pre-registered per candidate, including the expected
+NOR-pair S/F gap regression and one flagged rain-L cell awaiting eyes'
+ratification). One standing constraint applies to all pipeline work: F1 blocks
 datacentre IPs from live timing, so `build_replay.py` runs only from the human's home
 network (see CLAUDE.md Gotchas).
 
-**What happens next.** **Slice 15 — speed-trace comparison** was implemented ahead of
-9i on the human's explicit direction (the ordering note is in its PLAN entry). The
-next session implements **Slice 9i**, in the
-instrument-first order this line of slices has banked six times: the read-only riders
-and attribution first, and the attribution decides the remedy. 9i's browser acceptance
-is already written: all three pit entries read clean at 0.5x, with VER as the untouched
-control and the 2026-08-13 severity ranking (**VER < HAM < NOR**, matching the
-instrument's 17.8 / 33.8 / 47.6 m) as the baseline to re-rank against. After 9i comes
+**What happens next.** The human's 0.5x browser pass on all three scenarios closes
+Slice 9i: all three rain pit entries against the 2026-08-13 severity baseline
+(**VER < HAM < NOR**), finale and Monza checked for no visible regression since
+every asset changed, the pre-registered expectations in the PLAN entry (including
+the accepted NOR-pair S/F gap regression) judged by eyes. A pass merges the slice;
+any numeric miss triggers the pre-registered mechanical revert. After 9i comes
 the backlog's headline item, the **fixture asymmetry overhaul** (four recorded
 instances of the symmetric fixture hiding defect classes — Slice 14 worked around the
 same limitation again by putting its asymmetry in test tables rather than the fixture).

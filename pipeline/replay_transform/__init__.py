@@ -84,6 +84,7 @@ the whole of `app/src/engine/` are untouched. See `PLAN.md` §Slice 7.
 """
 
 from .assembly import (
+    AnchorPlan,
     SessionMeta,
     WindowCar,
     build_corners,
@@ -91,6 +92,7 @@ from .assembly import (
     build_samples,
     build_window_replay_dict,
     parse_lap_range,
+    window_anchor_plan,
     window_grid,
 )
 from .contract import (
@@ -128,6 +130,7 @@ from .lap_context import (
 )
 from .placement import (
     KMH_S_PER_METRE,
+    lap_start_anchors,
     PARKED_TRAVEL_M,
     closing_time,
     covers_ground,
@@ -135,6 +138,7 @@ from .placement import (
     cumulative_travel,
     hold_positions,
     resample_positions_by_travel,
+    slow_span_anchors,
 )
 from .repair import (
     DISPLACEMENT_TOLERANCE,
@@ -148,6 +152,7 @@ from .repair import (
     repair_frame_displacements,
 )
 from .reporting import (
+    anchor_report,
     dump_json,
     fix_rejection_report,
     frame_repair_report,
