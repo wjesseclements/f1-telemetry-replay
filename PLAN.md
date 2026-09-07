@@ -3210,6 +3210,37 @@ stop is where it breaks.
   Read-only and measured, in the instrument-first order this line of slices has now
   banked six times: the attribution is the finding, and it decides the remedy rather
   than following it.
+- **Phase 0 (own PR, human-directed 2026-09-07) — make the patient readable: split
+  `replay_transform.py` into a package by concern, pure re-organisation, zero
+  behaviour change.** `replay_transform/` now holds `contract` (schema mirror +
+  hygiene), `grid`, `placement`, `repair`, `lap_context`, `assembly`, `reporting`,
+  with `__init__.py` re-exporting the full public surface so every caller and every
+  test imports exactly as before — seven modules instead of the requested five
+  because assembly (the two builders) and the contract mirror are real concerns
+  that would have hurt readability folded into the others. Code text moved
+  verbatim (new text is only module headers and imports); the dependency graph is
+  a clean DAG (contract → grid → placement → repair → lap_context → assembly →
+  reporting); zero monkeypatching existed in the tests, so no cross-module
+  patch-target hazard.
+  - **Verified (2026-09-07), all acceptance mechanical:** 220 pytest green,
+    unchanged in count; coverage 100% lines + branches on EVERY module (the bar
+    held per-module, not in aggregate). All three goldens regenerated through the
+    package and byte-identical (`git status` clean). **All four real assets
+    regenerated (home network) and byte-identical by md5** — rain, finale, pit
+    cycle, `monza_full_field.json` — with every build's position screening
+    matching the known state (HAM translated 53.3 m/7.6 m residual, NOR's 41.7 m
+    DECLINED, VER translated 99.1 m). `placement-error.py` (which imports fastf1
+    only, never `replay_transform` — structurally unaffectable by this split)
+    reproduces the rain window EXACTLY: VER 17.8 / HAM 33.8 / NOR 47.6 m, HAM S/F
+    3.3 m, sector1 18.2 m; finale reproduces the 6.6–11.7 m dry noise-floor
+    bracket (6.6 / 11.7 / 8.4).
+  - **Finding for Phase 1 rider (b), reported not smoothed:** the Monza window
+    reads LEC 40.9 / NOR 31.2 m WORST against the 40.3 / 35.1 recorded 2026-08-13
+    — on byte-identical asset bytes and an instrument unchanged since 9h, so the
+    delta pre-exists this refactor and its inputs; the moving part can only be
+    the FastF1 cache side (Slice 14's 2026-09-07 fetches landed between the two
+    readings). Rider (b)'s noise-floor re-verification must reconcile this before
+    any remedy is scored against Monza numbers.
 - **Browser acceptance for 9i, written from 9h's pass rather than invented later: all
   THREE pit entries read clean at 0.5x.** VER already does and must not regress — it
   is the control. **HAM and NOR are the checklist.** The severity ranking observed on

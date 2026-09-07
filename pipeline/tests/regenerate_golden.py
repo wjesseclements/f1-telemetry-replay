@@ -2,7 +2,7 @@
 """
 Rewrite the committed goldens from the current pipeline.
 
-Run this after an INTENTIONAL change to `replay_transform.py`, then read the diff —
+Run this after an INTENTIONAL change to the `replay_transform` package, then read the diff —
 it is the change's effect on real output, which is the only place that effect is
 visible without network access. `tests/test_golden.py` fails until you do.
 

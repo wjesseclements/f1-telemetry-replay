@@ -16,7 +16,9 @@ via Vercel, and the site opens on a three-scenario gallery of real F1 data
 and `stints` — a leader-lap counter in the transport bar, a compound dot per tower
 row, and a compound chip with tyre age in the focused readout, all additive within
 `schemaVersion` 1. Quality state at the last merge: `npm run check` green with 639
-tests and 0 warnings, 220 pytest with `replay_transform.py` at 100% lines + branches,
+tests and 0 warnings, 220 pytest with the `replay_transform` package — split into one
+module per concern by Slice 9i Phase 0, byte-identical outputs — at 100% lines +
+branches on every module,
 drawcall md5s unchanged on both render modes, and the trace overlay measured at its
 predicted bound (2x points, 36 µs/tick = 0.108% of the HUD budget). **Both pre-registered browser passes are done (2026-09-07, one
 sitting): PASS.** Slice 14's pass confirmed the finale tyre story against its survey
