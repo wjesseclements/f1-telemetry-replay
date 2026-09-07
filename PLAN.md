@@ -3162,7 +3162,7 @@ a tyre story the data could not tell.
   - **375px width** — below the 412px record, the tower's first true mobile look;
     screenshots to `docs/screenshots/slice-14-*`.
 
-### [ ] Slice 9i — the global fraction mapping drifts, and pit stops are where
+### [x] Slice 9i — the global fraction mapping drifts, and pit stops are where
 
 **Filed by Slice 9h with its numbers, so it cannot be lost.** F3 above: placement error
 against the timing loops is **31–149 m for every car that pits** and **6.6–11.7 m for
@@ -3241,6 +3241,159 @@ stop is where it breaks.
     the FastF1 cache side (Slice 14's 2026-09-07 fetches landed between the two
     readings). Rider (b)'s noise-floor re-verification must reconcile this before
     any remedy is scored against Monza numbers.
+- **Phase 1 (read-only, 2026-09-07) — measure before designing. Four findings, one
+  new instrument (`docs/instruments/gap-error.py`), and the validation design
+  pre-registered below.**
+  - **Rider (b), part 1 — the Monza reference did not move; the recorded digits were
+    never command-reproducible.** Every input to `placement-error.py` is provably
+    identical to 9h's measurement day: the asset's samples byte-equal across the
+    file's entire git history, the FastF1 cache untouched since Jul 31, the venv
+    since Jul 28, the instrument single-version. Today's run is deterministic
+    (repeated), and every plausible knob — circular vs linear spread, off-line
+    filter, ±2 s boundary pads, all six manifold laps — moves the result ≤0.1 m and
+    never to 40.3/35.1. The recorded pair must have come from an in-session
+    intermediate during 9h. The deltas (0.6/3.9 m) are inside the instrument's own
+    ~12 m resolution, so recorded and current are THE SAME measurement at the
+    instrument's precision. **Standing rule from this:** record the full per-family
+    table plus the exact command, never bare WORST digits.
+  - **Rider (b), part 2 — the reference floors, re-measured in 9i's own context.**
+    The authoritative per-family baseline (spread in metres; command:
+    `placement-error.py <file> --gp <gp> --session R --ref <ref> --laps <A-B>`):
+
+    | window (ref, laps) | car | S/F | sector1 | sector2 |
+    |---|---|---|---|---|
+    | rain (HAM 24-28) | HAM | 3.3 | 18.2 | 33.8 |
+    | | NOR | 20.6 | 38.9 | 47.6 |
+    | | VER | 6.4 | 17.8 | 17.4 |
+    | finale (HAM 48-52) | HAM | 4.2 | 6.6 | 6.0 |
+    | | VER | 10.3 | 10.0 | 11.7 |
+    | | NOR | 5.5 | 7.1 | 8.4 |
+    | Monza (VER 13-19) | VER | 6.2 | 5.6 | 6.7 |
+    | | LEC | 40.9 | 27.9 | 26.2 |
+    | | NOR | 31.2 | 25.0 | 19.6 |
+
+    The dry floor stands (6.6–11.7 m; Monza VER corroborates at 6.7). **New: the
+    floor is window-specific** — in the RAIN window the clean-pair mark scatter is
+    24–38 m per family (HAM+VER pooled), so the reference resolves ~3x worse
+    exactly where two of the three defects live.
+  - **Rider (b), part 3 — the speed-integral truth is position-free but NOT
+    accurate over pit windows; the loop deltas are the gap adjudicator.**
+    Independence verified in-source in this slice's context (`fastf1.core`
+    `calculate_driver_ahead` reads Speed and the laps table; X/Y never enter). But
+    accuracy fails where 9i needs it: per-lap integral noise is ±20 m, a pit LAP
+    integrates ~40–50 m more than the racing-line arc (the pit lane is a different
+    path), and post-stop laps can run systematically hot (LEC vs VER at Monza:
+    +15–26 m/lap) — so over 5–7 laps the continuous truth drifts >100 m for pairs
+    where exactly one car stops, larger than the defect. 9h's 0.036–0.059%
+    agreement was a dry-window number and does not transfer. `gap-error.py` prints
+    signed first→last-minute means so truth drift (monotone growth, loops quiet)
+    is distinguishable from real gap error; **where G and L disagree, L wins.**
+  - **Rider (a) — the gap-level impact, measured (`gap-error.py`, both truths).**
+    L = loop-crossing deltas (zero integration), mean/max seconds per pair:
+
+    | window | pairs @ S/F | pairs @ sectors |
+    |---|---|---|
+    | finale (dry floor) | 0.06–0.22 mean, 0.28 max | 0.06–0.18 mean, 0.28 max |
+    | rain | 0.25–0.49 mean, **1.42 max** | 0.19–0.26 mean, 0.51 max |
+    | Monza | 0.40–0.63 mean, **2.02 max** | 0.07–0.13 mean, 0.34 max |
+
+    The tower's story is wrong by up to **2.0 s at the loops on pit laps** —
+    ~5–10x the dry floor and squarely at the scale a viewer reads (a DRS window is
+    1.0 s) — but SMALLER than absolute placement implies, and the cancellation is
+    measured in the wild: LEC-NOR (both stop, a lap apart) hold 13.1 m mean G error
+    while each is 20–41 m misplaced; VER-LEC and VER-NOR (one stops) read 58–66 m.
+    **Priority confirmed, honestly sized: the defect is a 1–2 s tower lie
+    concentrated on pit laps, not a uniform 31–149 m one.**
+  - **THE VALIDATION DESIGN, pre-registered before any remedy (the tautology
+    guard).** Anchoring at loops and scoring at the same loops is 9h's
+    Distance-channel failure class. Therefore: **a Phase 2 candidate may consume
+    S/F (lap-start) loop crossings as anchors; sector1 and sector2 marks are HELD
+    OUT** — never an input to any candidate — and placement is judged on the
+    sector columns only, gaps on the sector-mark L deltas only. S/F columns are
+    still reported, labelled in-sample. The current build's held-out baseline is
+    the sector columns of the table above plus the sector rows of the L table;
+    the acceptance thresholds in metres are Phase 2's to pre-register against
+    them. The dry finale is scored under the same scheme as the no-regression
+    control.
+  - **NOR's 41.7 m — the loops CANNOT tell, shown with numbers rather than
+    asserted.** Against fixed mark positions estimated from HAM+VER (clean-pair
+    scatter 24–38 m in this window), NOR's post-jump marks deviate −19.0 (sector1,
+    t=441.5), −10.3 (sector2, t=482.2), −3.9 m (S/F, t=510.3) — inside the
+    scatter and trending to zero — while pre-jump marks drift +19.9/+37.2 m
+    approaching the stop (F3's signature); the first post-jump S/F (t=389.4) is
+    taken in the pit lane (off-line, −44.2 m) and is not comparable. The
+    along-track component of any pre/post offset is ≤ ~15 m against a 41.7 m
+    vector, so the relocation is mostly lateral or partially absorbed, and **no
+    remedy for NOR can be validated by loops alone at this magnitude** — Phase 2
+    must justify any reconstruction structurally and may not claim loop evidence
+    for it.
+- **Phase 2 (2026-09-07) — the remedy, table first, code second. Candidates were
+  simulated through the real package and scored by the committed instruments before
+  any implementation; the simulator's fidelity was proven by its `current` builds
+  byte-matching all three shipped assets.** Held-out sector spreads (m), the table
+  that decided:
+
+  | window | car | baseline | C-PIT | C-LOOP | C-LOOP-G | **C-UNION** |
+  |---|---|---|---|---|---|---|
+  | Monza | VER | 5.6/6.7 | untouched | 11.4/8.7 | 11.4/8.7 | 11.4/8.7 |
+  | | LEC | 27.9/26.2 | 18.2/16.4 | 9.8/14.1 | 9.8/14.1 | 12.8/15.7 |
+  | | NOR | 25.0/19.6 | 16.2/11.8 | 20.5/15.7 | 20.5/15.7 | **12.8/11.6** |
+  | finale | HAM | 6.6/6.0 | byte-id. | 7.0/7.5 | 7.0/7.5 | 7.0/7.5 |
+  | | VER | 10.0/11.7 | byte-id. | 6.5/4.8 | 6.5/4.8 | 6.5/4.8 |
+  | | NOR | 7.1/8.4 | byte-id. | 3.0/7.8 | 3.0/7.8 | 3.0/7.8 |
+  | rain | HAM | 18.2/33.8 | 24.7/33.8 ✗ | 11.7/11.1 | 11.7/11.1 | 11.7/11.1 |
+  | | VER | 17.8/17.4 | 16.6/17.4 | 14.8/10.6 | 14.8/10.6 | **10.6/10.6** |
+  | | NOR | 38.9/47.6 | 41.3/66.4 ✗ | 21.6/60.2 ✗ | held (0.0 m) | held (0.0 m) |
+
+  - **RULED (human, 2026-09-07): C-UNION** — S/F loop-crossing anchors UNION
+    pit-span brackets, both withheld for a car with a declined displacement. One
+    line of rationale, as directed: the union's worst held-out cell improves or
+    ties in every window, and C-PIT's rain harm came only from anchoring the
+    declined car, which the guard already forbids. Rulings recorded with it:
+    the DTDA continuous truth is retired for gaps (the human's own suggestion,
+    refuted by measurement — L loop deltas adjudicate); Monza is the numeric
+    proving ground; rain is certified by eyes plus only its above-floor cells;
+    NOR gets NO reconstruction (anchoring improves his approach; the jump stays
+    declined and reported).
+  - **Pre-registration CORRECTION, flagged before implementation rather than
+    absorbed:** the Phase 2 checkpoint claimed every rain L sector pair
+    improves-or-holds; re-checking showed NOR-VER worsens 0.19/0.20 →
+    0.22/0.24 s mean (+0.03/+0.04, past the accepted ±0.02 s) for BOTH surviving
+    candidates — the NOR-correlation effect leaking into sectors at a tenth of
+    the rain window's own 24–38 m floor. Under the rain-by-eyes ruling this cell
+    is proposed as eyes' territory; **it awaits the human's ratification at the
+    browser pass and is not claimed as passing.**
+  - **Thresholds vs the shipped C-UNION, all pre-registered:** Monza — every
+    held-out sector cell ≤ baseline+2 m or ≤ 11.7 m ✓ (worst 15.7); LEC's four
+    sector cells ≤ 21 m ✓; L sector pair means ≤ baseline+0.02 s ✓ (0.04–0.06 vs
+    0.07–0.13). Finale — every sector cell ≤ 11.7 m ✓ (worst 7.8); no cell above
+    baseline+2 m ✓; L means ≤ 0.18 s ✓ (0.04–0.08). Rain — HAM sector2 33.8 →
+    **11.1 m** ✓ (< 24 required); NOR cells held exactly (byte-untouched) ✓;
+    HAM-VER L pairs 0.22/0.23 → 0.06/0.08 ✓; the NOR-VER cell flagged above;
+    **expected S/F regression, pre-registered for the eyes: NOR-pair S/F gap max
+    1.42 → 1.96 s** (correcting HAM/VER breaks correlation with the uncorrected
+    NOR — 9h's rider-(a) effect, confined to the in-sample family). Reversal A:
+    no new windows > 2.0 anywhere; NOR rain 7 → 6. Mechanical revert stands for
+    any numeric miss above.
+  - **Implementation** (`placement.py` `lap_start_anchors`/`slow_span_anchors`;
+    `assembly.py` `AnchorPlan`/`window_anchor_plan` + builder wiring;
+    `reporting.py` `anchor_report`; `build_replay.py` report lines): the
+    crossings come from the lap table the pipeline already receives (Slice 14) —
+    **no new inputs** — and the single-lap builder is untouched (a closed lap has
+    no session loops to anchor to and no observed defect). The plan is computed
+    once by a pure function and recomputed by the report, so file and log cannot
+    disagree.
+  - **Verified (2026-09-07):** pytest **231** (220 → 231), coverage 100%
+    lines+branches on every module; the race-window golden regenerated with a
+    reviewed diff of **≤ 0.01 m** position-rounding flips and zero non-position
+    changes (the synthetic ratio is near-constant, so anchors are near no-ops
+    there — itself confirming); **all three regenerated gallery assets
+    byte-identical (md5) to their scored simulations**, so the table's numbers
+    transfer to the shipped files exactly; `monza_full_field.json` rebuilt, 19
+    cars, sensible plans (SAI/STR get pit brackets), no warnings; every build's
+    screening unchanged (NOR's 41.7 m still DECLINED, now with the WITHHELD
+    anchor line beside it); `npm run check` green (650 tests, 0 warnings by
+    full-log grep); drawcall md5s identical both modes (canvas untouched).
 - **Browser acceptance for 9i, written from 9h's pass rather than invented later: all
   THREE pit entries read clean at 0.5x.** VER already does and must not regress — it
   is the control. **HAM and NOR are the checklist.** The severity ranking observed on
@@ -3248,9 +3401,60 @@ stop is where it breaks.
   instrument's 17.8 / 33.8 / 47.6 m. A remedy that improves the metric without moving
   that ranking has not been seen by the eyes yet, and one that reorders it without
   moving the metric needs explaining before it ships.
+- **Browser pass — DONE (2026-09-07, human, rain at 0.5x on the PR #66 preview):
+  PASS, with graded ratings recorded as the NEW BASELINE for future re-watches:**
+  - **VER 97% smooth (near-perfect)** — the control did not regress and improved.
+  - **HAM 85%** — improved, but **an abrupt zigzag remains at his pit entry**;
+    filed as Slice 9j with 85% as the number to beat and VER's 97% as the target.
+  - **NOR unchanged** — the big zigzag stands, declined by design (the guard).
+  - Ranking **VER < HAM < NOR holds**, agreeing with the instrument's re-ranking.
+  - Monza visibly better; finale no regression.
+  - **Both flagged items ratified by eye**: the expected NOR-pair S/F gap
+    regression, and the rain NOR-VER L cell (+0.03/+0.04 s) — the
+    pre-registration correction is thereby resolved as eyes' territory, as the
+    rain-by-eyes ruling proposed.
+  - One product finding filed from the pass as Slice 16: the Monza pit cycle
+    shows LEC and NOR pitting on an UNDRAWN pit lane (the ribbon comes from
+    `cars[0]`, and VER never pits).
 
 
-### [x] Slice 15 — speed-trace comparison
+### [ ] Slice 9j — attribute HAM's residual pit-entry zigzag, then beat 85%
+
+**Filed by Slice 9i's browser pass with its numbers, so it cannot be lost.** At 0.5x
+HAM's rain pit entry still carries one abrupt zigzag; the human's rating is **85%
+smooth, with VER's 97% as the target**. Instrument-first, as always:
+
+- **Attribution FIRST, read-only.** Three candidates, two inherited from rider (c)
+  and one new from this slice's own remedy:
+  1. the **7.6 m cancellation residual**, spread 1.9 m onto each of four real seams
+     by the repair (9h-b quantified it);
+  2. **anchor noise** — new with 9i: each S/F and pit-span anchor pins the map to
+     one fix's own recorded arc position, injecting per-crossing noise (measured at
+     up to ~6 m on clean cars' S/F spreads);
+  3. something neither instrument has named yet.
+  The attribution decides the remedy; no fix is designed before it.
+- **Acceptance:** held-out sector cells hold or improve from 9i's banked table
+  (HAM 11.7/11.1 m); the human re-watches HAM's entry at 0.5x against the 85%
+  baseline; VER must stay at his 97%.
+- **Out of scope:** NOR (declined by ruling, unchanged); the pipeline's detectors'
+  thresholds (9i's rule stands: neither detector is what is wrong here).
+
+
+### [ ] Slice 16 — draw the pit lane any car in the file uses
+
+**Filed by Slice 9i's browser pass.** The track ribbon is traced from `cars[0]`'s
+path, so the pit lane is drawn only when the REFERENCE car pits — the Monza pit
+cycle shows LEC and NOR driving through an undrawn pit lane. Decouple the ribbon
+from `cars[0]`: draw the pit lane whenever any car in the file uses it.
+
+- **Scope sketch (app-side, render):** the ribbon's source stays the reference lap
+  for the CIRCUIT; the pit lane is an additional path, derived from the cars that
+  actually traverse it (their below-speed spans bound it, and their emitted samples
+  through it are its geometry). No schema change expected — the data is already in
+  every car's samples — but argue it before assuming it.
+- **Verify:** Monza pit cycle shows the lane under LEC and NOR; rain unchanged
+  (HAM's lane already draws — cars[0] pits there); drawcall capture re-baselined
+  deliberately (this slice DOES change the canvas, the first since 9e's family).
 
 **The trace learns to hold two cars.** A "vs" control on each tower row overlays a
 second car's speed on the focused car's scrolling trace — same 20 s window, same

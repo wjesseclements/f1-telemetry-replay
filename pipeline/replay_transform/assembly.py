@@ -31,9 +31,17 @@ from .placement import (
     closing_time,
     covers_ground,
     hold_positions,
+    lap_start_anchors,
     resample_positions_by_travel,
+    slow_span_anchors,
 )
-from .repair import FixRejection, reject_impossible_fixes, repair_frame_displacements
+from .repair import (
+    IMPOSSIBLE_MIN_SPEED,
+    FixRejection,
+    FrameDisplacement,
+    reject_impossible_fixes,
+    repair_frame_displacements,
+)
 
 # --- assembly ---------------------------------------------------------------------
 
@@ -411,11 +419,13 @@ def build_window_replay_dict(
         x, y = repair.x, repair.y
         rejection = reject_impossible_fixes(t, x, y, speed)
         rejections.append((str(car.driver), rejection))
+        plan = window_anchor_plan(t, speed, repair, car, window[0])
         # Parked or moving — the one place a window differs from a lap in how
         # positions are placed. See `covers_ground`.
         if covers_ground(t, x, y, speed):
             gx, gy = resample_positions_by_travel(
-                src, t, x, y, speed, rejection.keep, repair.anchors
+                src, t, x, y, speed, rejection.keep,
+                sorted(set(list(repair.anchors) + plan.extra())),
             )
         else:
             gx, gy = hold_positions(src, t, x, y)
@@ -498,3 +508,55 @@ def _window_time_axis(car: WindowCar) -> np.ndarray:
             "are out of order"
         )
     return t
+
+
+@dataclass(frozen=True)
+class AnchorPlan:
+    """The extra anchors a window car earns (Slice 9i), and why any were withheld."""
+
+    #: Anchors at the car's own S/F timing-loop crossings (`lap_start_anchors`).
+    loop: "tuple[int, ...]"
+    #: Anchors bracketing below-`IMPOSSIBLE_MIN_SPEED` spans (`slow_span_anchors`).
+    pit: "tuple[int, ...]"
+    #: True when the car carries a DECLINED frame displacement, which withholds
+    #: every extra anchor: anchoring asserts the path between anchors is ground the
+    #: car covered, and a declined relocation is known-unreal path. The 41.7 m
+    #: guard — measured, not stylistic: anchoring rain NOR moved his held-out
+    #: sector2 error from 47.6 m to 60.2 m (PLAN.md Slice 9i, candidate table).
+    declined: bool
+
+    def extra(self) -> "list[int]":
+        return [] if self.declined else sorted(set(self.loop + self.pit))
+
+
+def window_anchor_plan(
+    t: Any,
+    speed: Any,
+    repair: FrameDisplacement,
+    car: WindowCar,
+    t0: float,
+) -> AnchorPlan:
+    """
+    The anchor plan for one window car: S/F loop crossings UNION pit-span brackets,
+    all withheld for a car with a declined displacement.
+
+    The union, chosen by simulation rather than argument (PLAN.md Slice 9i Phase 2
+    table): the two families fix different things — loop anchors carry the timing
+    loops' authority once per lap, pit brackets confine the path/travel break to the
+    span it happens in — and the union's worst held-out sector cell improves or ties
+    in every window.
+
+    Called by `build_window_replay_dict` AND recomputed by `build_replay.py`'s
+    report, same inputs, so the file and the log cannot disagree.
+
+    The crossings are `t0 + lap.startT` — the lap table the pipeline already
+    receives (Slice 14); no new inputs. A lap in progress at the window start
+    (negative `startT`) falls outside the coverage margin and contributes nothing.
+    """
+    ts = np.asarray(t, dtype=float)
+    crossings = [float(t0) + float(lap["startT"]) for lap in car.laps]
+    return AnchorPlan(
+        loop=tuple(lap_start_anchors(ts, crossings)),
+        pit=tuple(slow_span_anchors(ts, speed, IMPOSSIBLE_MIN_SPEED)),
+        declined=bool(repair.jump_times) and not repair.repaired,
+    )

@@ -21,7 +21,13 @@ import pytest
 
 import synthetic
 from replay_transform import (
+    AnchorPlan,
     DEFAULT_COLOR,
+    FrameDisplacement,
+    anchor_report,
+    lap_start_anchors,
+    slow_span_anchors,
+    window_anchor_plan,
     SAMPLE_RATE_HZ,
     SCHEMA_VERSION,
     SPEED_UNIT,
@@ -2651,3 +2657,130 @@ def test_window_cars_carry_their_own_lap_context_per_car():
     assert [lap["number"] for lap in aaa["laps"]] == [12, 13]
     assert len(aaa["stints"]) == 2
     assert bbb["laps"] == [] and bbb["stints"] == []
+
+
+# --- anchor derivation (Slice 9i) --------------------------------------------------
+
+
+def test_lap_start_anchors_take_only_crossings_inside_the_margin():
+    t = np.arange(0.0, 30.0, 0.5)
+    # 0.5 s and 29.7 s sit inside the coverage but inside the 1 s margin; 10 and 20
+    # are real crossings; 10 twice pins the dedup.
+    got = lap_start_anchors(t, [0.5, 10.0, 10.0, 20.0, 29.7])
+    assert got == [int(np.searchsorted(t, 10.0)), int(np.searchsorted(t, 20.0))]
+
+
+def test_lap_start_anchors_are_empty_without_crossings():
+    assert lap_start_anchors(np.arange(0.0, 5.0, 0.5), []) == []
+
+
+def test_slow_span_anchors_bracket_the_span_on_the_moving_side():
+    t = np.arange(6, dtype=float)
+    speed = np.array([50.0, 50.0, 5.0, 5.0, 50.0, 50.0])
+    # last moving fix before the span is 1, first moving fix after it is 4
+    assert slow_span_anchors(t, speed, 15.0) == [1, 4]
+
+
+def test_slow_span_anchors_are_empty_when_nothing_is_slow():
+    t = np.arange(4, dtype=float)
+    assert slow_span_anchors(t, [50.0, 60.0, 70.0, 80.0], 15.0) == []
+
+
+def test_slow_span_anchors_drop_edges_at_the_array_bounds():
+    # A span that starts at fix 0 has no moving fix before it, and one that runs to
+    # the last fix has none after: only the inner edge of each survives, and it is
+    # never index 0 or n-1.
+    t = np.arange(3, dtype=float)
+    # exact values, not just bounds: leading span exits at index 2 -> dropped (== n-1)
+    assert slow_span_anchors(t, [5.0, 5.0, 50.0], 15.0) == []
+    # trailing span enters after index 0 -> dropped (== 0 is out of bounds)
+    assert slow_span_anchors(t, [50.0, 5.0, 5.0], 15.0) == []
+    # the same spans away from the bounds survive with exact indices
+    t5 = np.arange(5, dtype=float)
+    assert slow_span_anchors(t5, [5.0, 5.0, 50.0, 50.0, 50.0], 15.0) == [2]
+    assert slow_span_anchors(t5, [50.0, 50.0, 50.0, 5.0, 5.0], 15.0) == [2]
+
+
+def test_anchor_plan_union_is_sorted_and_deduplicated():
+    plan = AnchorPlan(loop=(9, 3), pit=(3, 5), declined=False)
+    assert plan.extra() == [3, 5, 9]
+
+
+def test_anchor_plan_withholds_everything_for_a_declined_displacement():
+    plan = AnchorPlan(loop=(3,), pit=(5,), declined=True)
+    assert plan.extra() == []
+
+
+def test_window_anchor_plan_reads_crossings_from_the_lap_table():
+    start, end = WINDOW
+    telemetry = synthetic.session_telemetry(start, end)
+    car = synthetic.window_car(
+        "AAA", telemetry,
+        laps=[{"number": 12, "startT": 4.0}, {"number": 13, "startT": 40.0}],
+    )
+    repair = repair_frame_displacements(
+        telemetry["Time"], telemetry["X"], telemetry["Y"], telemetry["Speed"]
+    )
+    plan = window_anchor_plan(
+        telemetry["Time"], telemetry["Speed"], repair, car, start
+    )
+    # 4.0 s is inside coverage; 40.0 s is past the window and contributes nothing.
+    assert len(plan.loop) == 1 and plan.pit == () and not plan.declined
+    assert plan.extra() == list(plan.loop)
+
+
+def test_window_anchor_plan_declines_with_an_unrepaired_displacement():
+    start, end = WINDOW
+    telemetry = synthetic.session_telemetry(start, end)
+    declined = FrameDisplacement(
+        x=np.asarray(telemetry["X"], dtype=float),
+        y=np.asarray(telemetry["Y"], dtype=float),
+        jump_times=(float(start) + 3.0,),
+        repaired=False,
+        anchors=(),
+        offset_m=41.7,
+        residual_m=41.7,
+        allowed_m=0.0,
+        span=None,
+    )
+    car = synthetic.window_car(
+        "AAA", telemetry, laps=[{"number": 12, "startT": 4.0}]
+    )
+    plan = window_anchor_plan(
+        telemetry["Time"], telemetry["Speed"], declined, car, start
+    )
+    assert plan.declined and plan.loop and plan.extra() == []
+
+
+def test_window_builder_moves_samples_for_an_anchored_car():
+    # The behaviour, not the wiring: the same telemetry built with and without a
+    # mid-window S/F crossing must differ in emitted positions — the anchor pins
+    # the map to the crossing fix's own arc position instead of the global line.
+    start, end = WINDOW
+    telemetry = synthetic.session_telemetry(start, end)
+    with_laps = build_window_replay_dict(
+        [synthetic.window_car("AAA", telemetry,
+                              laps=[{"number": 12, "startT": 4.0}])],
+        synthetic.SESSION_META, WINDOW,
+    )["cars"][0]["samples"]
+    without = build_window_replay_dict(
+        [synthetic.window_car("AAA", telemetry)],
+        synthetic.SESSION_META, WINDOW,
+    )["cars"][0]["samples"]
+    assert any(
+        a["x"] != b["x"] or a["y"] != b["y"] for a, b in zip(with_laps, without)
+    )
+    # and every non-position channel is untouched by anchoring
+    assert all(
+        (a["speed"], a["gear"], a["t"]) == (b["speed"], b["gear"], b["t"])
+        for a, b in zip(with_laps, without)
+    )
+
+
+def test_anchor_report_names_all_three_states():
+    withheld = anchor_report("NOR", AnchorPlan((3,), (5,), True))
+    assert "WITHHELD" in withheld and "declined" in withheld
+    none = anchor_report("VER", AnchorPlan((), (), False))
+    assert "0 extra anchors" in none
+    both = anchor_report("LEC", AnchorPlan((3, 9), (5,), False))
+    assert "3 extra anchor(s)" in both and "2 S/F" in both and "1 pit-span" in both

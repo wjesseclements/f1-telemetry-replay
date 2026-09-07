@@ -16,7 +16,7 @@ import numpy as np
 from .contract import SAMPLE_RATE_HZ
 from .placement import KMH_S_PER_METRE, covers_ground, cumulative_travel
 from .repair import FixRejection, FrameDisplacement
-from .assembly import WindowCar
+from .assembly import AnchorPlan, WindowCar
 
 def stint_report(driver: str, laps: "Sequence[Mapping[str, Any]]", stints: "Sequence[Mapping[str, Any]]") -> str:
     """
@@ -225,3 +225,25 @@ def dump_json(replay: Mapping[str, Any], compact: bool = False) -> str:
     if compact:
         return json.dumps(replay, separators=(",", ":"), sort_keys=True) + "\n"
     return json.dumps(replay, indent=2, sort_keys=True) + "\n"
+
+
+def anchor_report(driver: str, plan: "AnchorPlan") -> str:
+    """
+    One line per car for the anchor plan (Slice 9i), same family as the screens:
+    a car with no anchors says so, and a WITHHELD plan is the line worth reading —
+    it means the car carries a declined relocation, so the map deliberately stays
+    global rather than pinning to a path that is known to be somewhere else.
+    """
+    if plan.declined:
+        held = len(plan.loop) + len(plan.pit)
+        return (
+            f"  {driver}: anchors WITHHELD ({held} candidate(s)) - declined "
+            f"displacement; the map stays global rather than pin known-unreal path"
+        )
+    n = len(plan.extra())
+    if n == 0:
+        return f"  {driver}: 0 extra anchors (no crossings or slow spans in coverage)"
+    return (
+        f"  {driver}: {n} extra anchor(s) - {len(plan.loop)} S/F crossing(s), "
+        f"{len(plan.pit)} pit-span edge(s)"
+    )

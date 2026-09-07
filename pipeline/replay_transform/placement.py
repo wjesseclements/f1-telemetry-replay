@@ -338,3 +338,56 @@ def resample_positions_by_travel(
         interp_continuous(target, s[moved], kx[moved]),
         interp_continuous(target, s[moved], ky[moved]),
     )
+
+
+# --- anchor derivation (Slice 9i) --------------------------------------------------
+
+
+def lap_start_anchors(t: Any, crossings: "Sequence[float]") -> "list[int]":
+    """
+    One anchor index per S/F timing-loop crossing strictly inside the coverage.
+
+    The crossing times come from the lap table — timing-loop data, independent of
+    both the position and speed channels — which is what entitles them to pin the
+    travel→path map: at each crossing the car is AT the line, so the map may be told
+    so. Slice 9i's held-out validation (sector marks, never inputs here) is what
+    keeps this from grading its own homework.
+
+    A margin of one second at each end keeps an anchor from landing on the very
+    fixes the window boundary already pins implicitly; `resample_positions_by_travel`
+    additionally drops any anchor that fails to advance path or travel, so a
+    crossing during a stationary spell degrades to no-op rather than corrupting
+    the map.
+    """
+    ts = np.asarray(t, dtype=float)
+    out = []
+    for cross in crossings:
+        c = float(cross)
+        if ts[0] + 1.0 < c < ts[-1] - 1.0:
+            out.append(int(np.searchsorted(ts, c)))
+    return sorted(set(out))
+
+
+def slow_span_anchors(t: Any, speed: Any, min_speed: float) -> "list[int]":
+    """
+    Anchor indices bracketing every below-`min_speed` span — pit entries and exits.
+
+    The pit lane is where the path/travel ratio breaks (Slice 9h's F3), so the map
+    is pinned at the last moving fix before each slow span and the first moving fix
+    after it, confining the break to the span it happened in. Anchors sit on the
+    MOVING side of each edge: a fix inside the span has unreliable arc/travel
+    advance, and `resample_positions_by_travel` would drop it anyway.
+
+    `min_speed` is passed by the caller (the builders hand it
+    `IMPOSSIBLE_MIN_SPEED`) rather than imported here — `repair` already imports
+    this module, and the constant crossing back would be a cycle.
+    """
+    ts = np.asarray(t, dtype=float)
+    slow = np.asarray(speed, dtype=float) < float(min_speed)
+    if not slow.any():
+        return []
+    edges = np.flatnonzero(np.diff(slow.astype(int)))
+    anchors = []
+    for e in edges:
+        anchors.append(int(e if not slow[e] else e + 1))
+    return sorted({a for a in anchors if 0 < a < len(ts) - 1})

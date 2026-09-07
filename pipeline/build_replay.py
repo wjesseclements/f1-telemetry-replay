@@ -71,8 +71,10 @@ from replay_transform import (
     check_columns,
     closing_time,
     color_lookup_warning,
+    anchor_report,
     fix_rejection_report,
     frame_repair_report,
+    window_anchor_plan,
     lap_context,
     reject_impossible_fixes,
     repair_frame_displacements,
@@ -527,6 +529,14 @@ def report_window(replay, window, cars, coverage, compact: bool = False) -> None
         # comparing against a screenshot.
         print(fix_rejection_report(str(car.driver), r, offset=window[0]))
         worst_share = max(worst_share, r.n_rejected / max(len(car.telemetry["Time"]), 1))
+        # The anchor plan (Slice 9i), recomputed from the same pure function the
+        # builder used on the same inputs, so the file and the log cannot disagree.
+        print(anchor_report(
+            str(car.driver),
+            window_anchor_plan(
+                car.telemetry["Time"], car.telemetry["Speed"], repair, car, window[0]
+            ),
+        ))
     if worst_share > REJECTED_FIX_WARN_SHARE:
         print(
             f"\nWARNING: a car lost {worst_share*100:.1f}% of its position fixes, over "
