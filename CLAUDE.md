@@ -153,11 +153,21 @@ Rules that come with it:
   in `app/package.json` so Vercel reads it instead of an unwritten dashboard setting.
   On a machine running a different major, `npm install` prints one advisory
   `EBADENGINE` warning — expected, not a defect (`engine-strict` is off).
+- **Formula 1 blocks datacentre IP ranges from live timing** (as of ~May 2026 —
+  FastF1 issues #916/#948: VPS and Colab users fail, home networks work; verified
+  working from a home network 2026-09-07). So `build_replay.py` must never run from
+  a cloud box, CI, or behind a VPN whose exit is a datacentre — and the failure
+  signature is **"missing data"**, not anything that says "blocked", so don't debug
+  the pipeline for hours on a box that can never succeed. Corollary:
+  `pipeline/.f1cache/` is a **backup-worthy asset** — gitignored, but it holds data
+  a datacentre machine could never re-fetch.
 
 ## Workflow
 
-- Read PLAN.md and CLAUDE.md at the start of each session; implement the next unchecked
-  slice only. One slice per session; `/clear` between slices.
+- Read `docs/STATUS.md` first — the three-paragraph current-state page — then PLAN.md
+  and CLAUDE.md at the start of each session; implement the next unchecked slice only.
+  One slice per session; `/clear` between slices. PLAN.md stays the full ledger;
+  STATUS.md is updated in the PR that changes what it says.
 - Self-verify with `npm run check` before declaring done.
 - Self-review the diff before declaring done by running the `/review` command
   (`.claude/commands/review.md`) and reporting its checklist results.
