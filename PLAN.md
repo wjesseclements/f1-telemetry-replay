@@ -3219,7 +3219,7 @@ stop is where it breaks.
   moving the metric needs explaining before it ships.
 
 
-### [ ] Slice 15 — speed-trace comparison
+### [x] Slice 15 — speed-trace comparison
 
 **The trace learns to hold two cars.** A "vs" control on each tower row overlays a
 second car's speed on the focused car's scrolling trace — same 20 s window, same
@@ -3303,6 +3303,21 @@ ledger's open defect slice; STATUS.md is updated in this PR accordingly.
   usable with the "vs" buttons present; screenshots to `docs/screenshots/slice-15-*`.
   **Re-check after the legibility fixes:** the "vs" pill findable at a glance, the
   VER overlay clearly readable against the background, focused line still dominant.
+- **Browser pass — DONE (2026-09-07, human, on the Vercel previews): PASS**, after
+  three findings across two blocked re-checks, each fixed in-branch as a principle
+  and re-verified on a fresh preview before the next look:
+  1. **Control visibility** — the "vs" control was borderless grey text and could
+     not be found; it became a bordered pill in the DRS pill's shape, accent when
+     pressed.
+  2. **Contrast floor on dark team colours** — Red Bull's navy overlay near-vanished
+     on `--c-bg`; the comparison colour now passes through `floorLuminance` to
+     `COMPARISON_MIN_LUMINANCE`, fully opaque at `COMPARISON_STROKE_WIDTH`.
+  3. **The metres column yields per the surrender order** — "313 mVS": the row was
+     out of width and `gap_m` overflowed into the pill; it now drops at the
+     `md:w-56` sidebar and shrinks-first everywhere, seconds and pill untouched.
+  The passing look confirmed: pill visible and obvious, comparison line clearly
+  readable, no overlap on driver rows at normal or narrow width, and the overlay
+  shows the softs' gain through the finale lap — the slice's acceptance scenario.
 - **Verified (2026-09-07):**
   - `npm run check` green: typecheck, lint, format, 650 tests (622 → 639 at the
     first review, → 650 after the legibility fixes: `floorLuminance` /

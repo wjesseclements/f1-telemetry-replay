@@ -23,8 +23,12 @@ sitting): PASS.** Slice 14's pass confirmed the finale tyre story against its su
 table, the first-ever 375px layout, and the HARD-white vs UNKNOWN-grey dot
 distinction; 9h-b's rain re-watch at 0.5x held its prediction — severity ranking
 **VER < HAM < NOR** unchanged, which is the baseline Slice 9i re-ranks against.
-Slice 15's own browser acceptance (finale, HAM focused vs VER, 375px with the new
-"vs" buttons) is pre-registered in its PLAN entry and awaits the human's pass.
+Slice 15's browser acceptance (finale, HAM focused vs VER, 375px with the new
+"vs" buttons) also PASSED 2026-09-07, after three legibility findings — control
+visibility, a contrast floor for dark team colours, the metres column yielding to
+the vs pill per the row's surrender order — were each fixed in-branch and
+re-verified on a fresh preview; the findings and fixes are amendments in its
+PLAN entry.
 
 **What is open, and what is blocked.** One slice is open: **9i — the global fraction
 mapping drifts, and pit stops are where** (placement error 31–149 m for every car that
