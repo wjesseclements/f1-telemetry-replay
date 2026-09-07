@@ -2,7 +2,7 @@
 Unit tests for the pure transform.
 
 The bar here is the app's bar: `app/vite.config.ts` gates `src/engine/**` at 90%
-lines/branches/functions per file, and `replay_transform.py` is the pipeline's
+lines/branches/functions per file, and the `replay_transform` package is the pipeline's
 engine, so `pytest.ini` gates it the same way rather than trusting a promise.
 
 Every assertion traces to a rule in `app/src/engine/schema.ts`. Where a test pins
