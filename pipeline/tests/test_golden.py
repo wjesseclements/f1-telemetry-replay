@@ -35,7 +35,12 @@ from pathlib import Path
 import pytest
 
 import synthetic
-from replay_transform import build_replay_dict, build_window_replay_dict, dump_json
+from replay_transform import (
+    build_replay_dict,
+    build_window_replay_dict,
+    dump_json,
+    lap_context,
+)
 
 GOLDEN_DIR = Path(__file__).parent / "golden"
 
@@ -44,10 +49,21 @@ GOLDEN_DIR = Path(__file__).parent / "golden"
 RACE_WINDOW = (synthetic.SESSION_T0, synthetic.SESSION_T0 + 4.0)
 
 
-def _lap(drs: bool, meta) -> "dict":
+def _lap(drs: bool, meta, table) -> "dict":
+    # The lap context goes through the real `lap_context`, exactly as
+    # `build_lap_replay` routes it, so the goldens pin that function's output and
+    # not a hand-written imitation of it.
+    laps, stints = lap_context(*table, (0.0, 3.0))
     return build_replay_dict(
-        synthetic.telemetry(drs=drs), meta, corners=synthetic.CORNERS
+        synthetic.telemetry(drs=drs), meta, corners=synthetic.CORNERS,
+        laps=laps, stints=stints,
     )
+
+
+def _window_context(driver: str) -> "tuple[list, list]":
+    """A synthetic driver's `(laps, stints)` for RACE_WINDOW — CCC has none."""
+    table = synthetic.SESSION_LAP_TABLES.get(driver)
+    return ([], []) if table is None else lap_context(*table, RACE_WINDOW)
 
 
 def _race_window() -> "dict":
@@ -70,9 +86,15 @@ def _race_window() -> "dict":
     start, end = RACE_WINDOW
     return build_window_replay_dict(
         [
-            synthetic.window_car("AAA", synthetic.session_telemetry(start, end)),
             synthetic.window_car(
-                "BBB", synthetic.session_telemetry(start, end - 1.0, offset_s=1.5)
+                "AAA",
+                synthetic.session_telemetry(start, end),
+                *_window_context("AAA"),
+            ),
+            synthetic.window_car(
+                "BBB",
+                synthetic.session_telemetry(start, end - 1.0, offset_s=1.5),
+                *_window_context("BBB"),
             ),
             synthetic.window_car("CCC", synthetic.parked_telemetry(start, end)),
         ],
@@ -84,8 +106,8 @@ def _race_window() -> "dict":
 
 #: name -> the exact call that produced the committed file.
 CASES = {
-    "lap-drs": lambda: _lap(True, synthetic.META),
-    "lap-nodrs": lambda: _lap(False, synthetic.META_NO_DRS),
+    "lap-drs": lambda: _lap(True, synthetic.META, synthetic.LAP_TABLE_DRS),
+    "lap-nodrs": lambda: _lap(False, synthetic.META_NO_DRS, synthetic.LAP_TABLE_NODRS),
     "race-window": _race_window,
 }
 
@@ -158,6 +180,46 @@ def test_the_race_golden_is_a_shared_grid_of_unlike_cars():
         "drs" in s for car in race["cars"] for s in car["samples"]
     )
     assert all(s["drs"] == 0 for s in race["cars"][2]["samples"])
+
+
+def test_the_goldens_cover_the_lap_and_stint_shapes():
+    """
+    Slice 14's per-car fields, pinned on committed output with three cars that are
+    deliberately unlike (see `synthetic.SESSION_LAP_TABLES`): a mid-window compound
+    change, a stint with no age, and a car with no lap data at all. The two lap
+    goldens split the compound paths the same way: known SOFT with an age, and the
+    UNKNOWN mapping with the age omitted.
+    """
+    race = json.loads((GOLDEN_DIR / "race-window.golden.json").read_text())
+    aaa, bbb, ccc = race["cars"]
+
+    # AAA: the lap in progress at the window start carries its true, NEGATIVE startT,
+    # and the compound changes mid-window.
+    assert [lap["number"] for lap in aaa["laps"]] == [12, 13]
+    assert aaa["laps"][0]["startT"] == -18.0
+    assert aaa["laps"][1]["startT"] == 2.0
+    assert aaa["stints"] == [
+        {"compound": "MEDIUM", "fromLap": 12, "toLap": 12, "ageAtStart": 5},
+        {"compound": "SOFT", "fromLap": 13, "toLap": 13, "ageAtStart": 0},
+    ]
+
+    # BBB: a lap that never ended in the data is still the lap the car was on, and
+    # an unknown TyreLife is an OMITTED age, not a zero.
+    assert [lap["number"] for lap in bbb["laps"]] == [12]
+    assert bbb["stints"] == [{"compound": "HARD", "fromLap": 12, "toLap": 12}]
+
+    # CCC: no lap data — the keys are still emitted, empty.
+    assert ccc["laps"] == [] and ccc["stints"] == []
+
+    with_drs = json.loads((GOLDEN_DIR / "lap-drs.golden.json").read_text())
+    without = json.loads((GOLDEN_DIR / "lap-nodrs.golden.json").read_text())
+    assert with_drs["cars"][0]["laps"] == [{"number": 7, "startT": 0.0}]
+    assert with_drs["cars"][0]["stints"] == [
+        {"compound": "SOFT", "fromLap": 7, "toLap": 7, "ageAtStart": 2}
+    ]
+    assert without["cars"][0]["stints"] == [
+        {"compound": "UNKNOWN", "fromLap": 7, "toLap": 7}
+    ]
 
 
 def test_the_lap_goldens_stay_closed_and_the_race_golden_open():

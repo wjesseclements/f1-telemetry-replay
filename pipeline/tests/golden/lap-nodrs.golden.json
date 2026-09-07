@@ -3,6 +3,12 @@
     {
       "color": "#3671C6",
       "driver": "SYN",
+      "laps": [
+        {
+          "number": 7,
+          "startT": 0.0
+        }
+      ],
       "samples": [
         {
           "brake": 0,
@@ -282,6 +288,13 @@
           "throttle": 100,
           "x": 753.3,
           "y": -145.7
+        }
+      ],
+      "stints": [
+        {
+          "compound": "UNKNOWN",
+          "fromLap": 7,
+          "toLap": 7
         }
       ],
       "team": "Synthetic Racing"

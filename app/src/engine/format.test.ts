@@ -11,8 +11,10 @@ import {
   formatGapMetres,
   formatGapSeconds,
   formatGear,
+  formatLapIndicator,
   formatLapTime,
   formatSpeed,
+  formatTyreAge,
   pedalFraction,
 } from "./format";
 
@@ -132,5 +134,25 @@ describe("formatGap — seconds, or laps once there are any", () => {
   it("keeps the em dash for a gap with no answer, whatever the lap count says", () => {
     expect(formatGap(null, 0)).toBe(NO_VALUE);
     expect(formatGap(null, 1)).toBe(NO_VALUE);
+  });
+});
+
+describe("formatLapIndicator", () => {
+  it("writes the counter as the transport bar shows it", () => {
+    expect(formatLapIndicator(52)).toBe("LAP 52");
+    expect(formatLapIndicator(1)).toBe("LAP 1");
+  });
+});
+
+describe("formatTyreAge", () => {
+  it("counts laps on the set, singular at one", () => {
+    expect(formatTyreAge(0)).toBe("0 laps");
+    expect(formatTyreAge(1)).toBe("1 lap");
+    expect(formatTyreAge(12)).toBe("12 laps");
+  });
+
+  it("keeps the em dash for an unknown age — never a zero that reads as a fresh set", () => {
+    expect(formatTyreAge(null)).toBe(NO_VALUE);
+    expect(formatTyreAge(NaN)).toBe(NO_VALUE);
   });
 });

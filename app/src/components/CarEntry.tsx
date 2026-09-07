@@ -40,6 +40,12 @@
  *  2. **`gap_m` is next**, if twenty rows get tight.
  *  3. **`gap_s` never goes.** It is the unit the one-second DRS rule and every
  *     broadcast interval are quoted in.
+ *
+ * The compound mark in a compact row is a DOT, not a chip, for exactly this
+ * reason: a dot claims ~8px without displacing anything on the surrender list,
+ * while a lettered chip would compete with `gap_m`. It conveys nothing by colour
+ * alone — an sr-only compound name sits beside it inside the button, so the
+ * row's accessible name says "SOFT tyres" where sighted eyes see red.
  */
 import { carHasDrs, isDrsOpen } from "../engine/drs";
 import {
@@ -47,18 +53,47 @@ import {
   formatGapMetres,
   formatGear,
   formatSpeed,
+  formatTyreAge,
   pedalFraction,
 } from "../engine/format";
 import type { Gap } from "../engine/gaps";
 import type { CarSnapshot } from "../engine/interpolate";
-import type { Car } from "../engine/schema";
+import type { Car, Compound } from "../engine/schema";
+import { compoundLetter, type TyreState } from "../engine/tyres";
 import { FOCUS_RING } from "./focus";
+
+/**
+ * Compound → colour classes. Presentation, so it lives here the way DrsPill owns
+ * the DRS pill's styling; the engine deals only in compound strings. Full literal
+ * class names (never assembled) so Tailwind's scanner keeps them. UNKNOWN renders
+ * in the dim neutral — the same achromatic "we don't know" as the pipeline's
+ * fallback team colour — never a guessed compound colour.
+ */
+const COMPOUND_DOT: Record<Compound, string> = {
+  SOFT: "bg-tyre-soft",
+  MEDIUM: "bg-tyre-medium",
+  HARD: "bg-tyre-hard",
+  INTERMEDIATE: "bg-tyre-inter",
+  WET: "bg-tyre-wet",
+  UNKNOWN: "bg-dim",
+};
+
+const COMPOUND_CHIP: Record<Compound, string> = {
+  SOFT: "border-tyre-soft text-tyre-soft",
+  MEDIUM: "border-tyre-medium text-tyre-medium",
+  HARD: "border-tyre-hard text-tyre-hard",
+  INTERMEDIATE: "border-tyre-inter text-tyre-inter",
+  WET: "border-tyre-wet text-tyre-wet",
+  UNKNOWN: "border-line text-dim",
+};
 
 export interface CarEntryProps {
   car: Car;
   snapshot: CarSnapshot;
   /** The car's gap to the focused car, or `null` when the data has no answer. */
   gap: Gap | null;
+  /** The tyre the car is on, or `null` when the data has no answer (rule 8). */
+  tyre: TyreState | null;
   focused: boolean;
   onFocus: () => void;
 }
@@ -67,6 +102,7 @@ export function CarEntry({
   car,
   snapshot,
   gap,
+  tyre,
   focused,
   onFocus,
 }: CarEntryProps) {
@@ -92,6 +128,18 @@ export function CarEntry({
         <span className="font-mono text-xs font-bold tracking-wider text-txt">
           {car.driver}
         </span>
+        {/* Rule 8 again: the dot exists only when the data carries a tyre answer.
+            Inside the button, so the compound folds into the row's accessible
+            name (the sr-only text is the information; the colour is a mark). */}
+        {tyre && (
+          <>
+            <span
+              aria-hidden="true"
+              className={`h-1.5 w-1.5 shrink-0 rounded-full ${COMPOUND_DOT[tyre.compound]}`}
+            />
+            <span className="sr-only">{tyre.compound} tyres</span>
+          </>
+        )}
         {/*
           The team NAME belongs to the focused entry, which has the width for it. In a
           compact row the two gap columns leave about six characters, and "Red Bull
@@ -126,13 +174,21 @@ export function CarEntry({
         )}
       </button>
 
-      {focused && <CarReadout car={car} snapshot={snapshot} />}
+      {focused && <CarReadout car={car} snapshot={snapshot} tyre={tyre} />}
     </li>
   );
 }
 
 /** The focused car's numbers — unchanged from when there was only ever one car. */
-function CarReadout({ car, snapshot }: { car: Car; snapshot: CarSnapshot }) {
+function CarReadout({
+  car,
+  snapshot,
+  tyre,
+}: {
+  car: Car;
+  snapshot: CarSnapshot;
+  tyre: TyreState | null;
+}) {
   return (
     <dl className="m-0 mt-2 flex flex-1 flex-row flex-wrap items-center gap-x-5 gap-y-3 md:flex-col md:flex-nowrap md:items-stretch md:gap-3">
       {/* The unit lives INSIDE the `<dd>`. A `<dl>` may only contain `dt`/`dd` groups
@@ -171,7 +227,32 @@ function CarReadout({ car, snapshot }: { car: Car; snapshot: CarSnapshot }) {
         branching — a 2026+ replay simply has no `drs`, and this renders nothing.
       */}
       {carHasDrs(car) && <DrsPill open={isDrsOpen(snapshot.drs)} />}
+
+      {/* Same contract as the DRS pill: rendered only when the data has a tyre
+          answer for this clock. The letter is the mark; the sr-only text is the
+          name; the age is omitted (not zeroed) when unknown. */}
+      {tyre && <TyrePill tyre={tyre} />}
     </dl>
+  );
+}
+
+function TyrePill({ tyre }: { tyre: TyreState }) {
+  return (
+    <div className="flex items-center gap-2">
+      <dt className="sr-only">Tyres</dt>
+      <dd
+        className={`m-0 rounded border px-2 py-0.5 font-mono text-[10px] font-bold tracking-widest ${COMPOUND_CHIP[tyre.compound]}`}
+      >
+        <span aria-hidden="true">{compoundLetter(tyre.compound)}</span>
+        <span className="sr-only">{tyre.compound}</span>
+        {tyre.age !== null && (
+          <span className="font-normal text-dim">
+            {" "}
+            · {formatTyreAge(tyre.age)}
+          </span>
+        )}
+      </dd>
+    </div>
   );
 }
 

@@ -65,6 +65,8 @@ function replayOf(...cars: Sample[][]): Replay {
       team: "Test",
       color: "#888888",
       samples,
+      laps: [],
+      stints: [],
     })),
   } as Replay;
 }

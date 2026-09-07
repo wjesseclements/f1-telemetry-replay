@@ -308,6 +308,115 @@ describe("parseReplay — meta.loop", () => {
   });
 });
 
+describe("parseReplay — laps and stints", () => {
+  // Additive within schemaVersion 1 like `meta.loop`, but with `.default([])`:
+  // an empty array means exactly what absence means — "this replay carries no
+  // lap/tyre data" — so `z.infer` keeps the parsed fields required and the
+  // engine branches on `length`, never on `undefined`.
+  const LAPS = [
+    { number: 48, startT: -1.5 },
+    { number: 49, startT: 89.2 },
+  ];
+  const STINTS = [
+    { compound: "HARD", fromLap: 48, toLap: 48, ageAtStart: 15 },
+    { compound: "SOFT", fromLap: 49, toLap: 49 },
+  ];
+
+  it("defaults a replay without the fields to empty arrays", () => {
+    expect(sampleLap.cars[0]).not.toHaveProperty("laps");
+    expect(sampleLap.cars[0]).not.toHaveProperty("stints");
+    const car = parseReplay(sampleLap).cars[0];
+    expect(car.laps).toEqual([]);
+    expect(car.stints).toEqual([]);
+  });
+
+  it("accepts a car carrying laps and stints, negative first startT and unknown age included", () => {
+    const ok = clone();
+    ok.cars[0].laps = LAPS;
+    ok.cars[0].stints = STINTS;
+
+    const car = parseReplay(ok).cars[0];
+    expect(car.laps).toEqual(LAPS);
+    expect(car.stints[0].ageAtStart).toBe(15);
+    expect(
+      car.stints[1].ageAtStart,
+      "unknown age stays absent",
+    ).toBeUndefined();
+  });
+
+  it("rejects an unknown compound rather than falling back to a default", () => {
+    // The pipeline maps unrecognised compounds to "UNKNOWN"; an arbitrary string
+    // reaching the loader is a hand-mangled file, and must fail as loudly as a
+    // meta.loop typo does.
+    const bad = clone();
+    bad.cars[0].laps = LAPS;
+    bad.cars[0].stints = [{ compound: "SUPERSOFT", fromLap: 48, toLap: 49 }];
+
+    const err = expectRejection(bad);
+    expect(err.message).toContain("compound");
+  });
+
+  it("rejects null for either field, which is not the same as absent", () => {
+    for (const field of ["laps", "stints"] as const) {
+      const bad = clone();
+      bad.cars[0][field] = null;
+      expectRejection(bad);
+    }
+  });
+
+  it("rejects laps that do not strictly increase in startT", () => {
+    // lapAt is a predecessor search on startT; unsorted boundaries mis-answer it.
+    const bad = clone();
+    bad.cars[0].laps = [
+      { number: 48, startT: 10 },
+      { number: 49, startT: 10 },
+    ];
+
+    const err = expectRejection(bad);
+    expect(err.message).toContain("strictly increasing");
+  });
+
+  it("rejects laps that do not strictly increase in number", () => {
+    const bad = clone();
+    bad.cars[0].laps = [
+      { number: 49, startT: 0 },
+      { number: 48, startT: 10 },
+    ];
+    expectRejection(bad);
+  });
+
+  it("rejects a stint whose lap range is backwards", () => {
+    const bad = clone();
+    bad.cars[0].laps = LAPS;
+    bad.cars[0].stints = [{ compound: "SOFT", fromLap: 49, toLap: 48 }];
+
+    const err = expectRejection(bad);
+    expect(err.message).toContain("backwards");
+  });
+
+  it("rejects overlapping stints", () => {
+    // Two stints claiming one lap would make stintAt's answer depend on search
+    // internals rather than on the data.
+    const bad = clone();
+    bad.cars[0].laps = LAPS;
+    bad.cars[0].stints = [
+      { compound: "HARD", fromLap: 48, toLap: 49 },
+      { compound: "SOFT", fromLap: 49, toLap: 49 },
+    ];
+
+    const err = expectRejection(bad);
+    expect(err.message).toContain("non-overlapping");
+  });
+
+  it("rejects stints without laps — a stint is located via the lap table", () => {
+    const bad = clone();
+    bad.cars[0].stints = [{ compound: "SOFT", fromLap: 48, toLap: 49 }];
+
+    const err = expectRejection(bad);
+    expect(err.message).toContain("unreachable");
+  });
+});
+
 describe("parseReplay — span agreement", () => {
   // Three spans have to stay interchangeable: meta.duration (what the transport
   // wraps on), samples.length / sampleRateHz (what interpolate.ts wraps on), and

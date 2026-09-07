@@ -27,11 +27,18 @@
  * and the twenty-car frame budget is untouched by them. The expensive half — indexing
  * the focused car's path — is `useMemo`'d on the replay and the focus, so it is O(n)
  * per focus change and free otherwise.
+ *
+ * Tyres are derived the same way (Slice 14): `tyreStateAt(car, clock)` per car per
+ * tick, a function of the replay and the clock exactly like a gap — never a
+ * `CarSnapshot` field, so the 60 fps path and `displaySignature` never learn what a
+ * tyre is. The signature's clock term already forces an emit whenever the answer
+ * could change.
  */
 import { useMemo, useState } from "react";
 import { buildProgressIndex, gapTo, type Gap } from "../engine/gaps";
 import { orderByGap, sameOrder } from "../engine/runningOrder";
 import type { Replay } from "../engine/schema";
+import { tyreStateAt } from "../engine/tyres";
 import { useTransport } from "../store/transport";
 import { EMPTY_FRAME } from "../telemetry/channel";
 import { useTelemetry } from "../telemetry/useTelemetry";
@@ -83,6 +90,9 @@ export function Hud({ replay }: HudProps) {
     i === focusedCarIndex ? SELF : gapTo(progress, focusedCarIndex, i, clock),
   );
 
+  // O(cars × log laps) per tick — measured in µs by hud-tick.mjs, like the gaps.
+  const tyres = replay.cars.map((car) => tyreStateAt(car, clock));
+
   /**
    * The order the tower is in, which the next sort prefers over resorting.
    *
@@ -124,6 +134,7 @@ export function Hud({ replay }: HudProps) {
             car={replay.cars[i]}
             snapshot={snapshots[i]}
             gap={gaps[i]}
+            tyre={tyres[i]}
             focused={i === focusedCarIndex}
             onFocus={() => setFocusedCarIndex(i)}
           />

@@ -29,7 +29,14 @@ function carFromPoints(points: readonly [number, number][]): Car {
     brake: 0,
     gear: 4,
   }));
-  return { driver: "TST", team: "Test", color: "#3671C6", samples: samplesOut };
+  return {
+    driver: "TST",
+    team: "Test",
+    color: "#3671C6",
+    samples: samplesOut,
+    laps: [],
+    stints: [],
+  };
 }
 
 describe("wrapClock", () => {
@@ -227,6 +234,8 @@ describe("sampleCarAt — open replays hold the last sample", () => {
       brake: 0 as const,
       gear: 4,
     })),
+    laps: [],
+    stints: [],
   };
   /** Heading of the last real segment, (10,10) -> (10,20): due south-in-world. */
   const LAST_SEGMENT_HEADING = Math.PI / 2;

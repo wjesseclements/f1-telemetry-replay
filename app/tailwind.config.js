@@ -16,6 +16,11 @@ export default {
         throttle: "var(--c-throttle)",
         brake: "var(--c-brake)",
         drs: "var(--c-drs)",
+        "tyre-soft": "var(--c-tyre-soft)",
+        "tyre-medium": "var(--c-tyre-medium)",
+        "tyre-hard": "var(--c-tyre-hard)",
+        "tyre-inter": "var(--c-tyre-inter)",
+        "tyre-wet": "var(--c-tyre-wet)",
       },
       fontFamily: {
         mono: ["ui-monospace", "SF Mono", "Menlo", "Consolas", "monospace"],
