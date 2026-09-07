@@ -13,6 +13,11 @@ import { parseReplay } from "../engine/load";
 import type { CarSnapshot } from "../engine/interpolate";
 import type { Replay } from "../engine/schema";
 import { NO_VALUE } from "../engine/format";
+import { floorLuminance } from "../engine/color";
+import {
+  COMPARISON_MIN_LUMINANCE,
+  COMPARISON_STROKE_WIDTH,
+} from "../engine/trace";
 import { useTransport } from "../store/transport";
 import { displaySignature, telemetry } from "../telemetry/channel";
 import { Hud } from "./Hud";
@@ -439,16 +444,30 @@ function renderTower(
   return render(<Hud replay={target} />);
 }
 
+/**
+ * The tower's ROW buttons, without the per-row compare buttons (Slice 15): a row
+ * carries the arrow-key shortcut hint, a compare button does not. Name-anchored
+ * queries (`/^SEC/`) do the same job one row at a time — "vs SEC" contains the
+ * driver code but does not start with it.
+ */
+function rowButtons() {
+  return screen
+    .getAllByRole("button")
+    .filter((b) => b.hasAttribute("aria-keyshortcuts"));
+}
+
 describe("Hud timing tower", () => {
-  beforeEach(() => useTransport.setState({ focusedCarIndex: 0 }));
+  beforeEach(() =>
+    useTransport.setState({ focusedCarIndex: 0, comparisonCarIndex: null }),
+  );
 
   it("shows a row per car, naming the team on the focused one", () => {
     // The team name goes where there is width for it. A compact row identifies its
     // team by the colour swatch instead — at the sidebar's real width, "Red Bull
     // Racing" truncates to "R…", which is worse than not showing it.
     renderTower(4, atSample(20));
-    expect(screen.getByRole("button", { name: /VER/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /SEC/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^VER/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^SEC/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Demo/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Second Team/ })).toBeNull();
   });
@@ -490,26 +509,26 @@ describe("Hud timing tower", () => {
     // SEC is second in `cars[]` and first on the road, so this fails for any ordering
     // that quietly falls back to source order.
     renderTower(4, atSample(60));
-    const rows = screen.getAllByRole("button").map((b) => b.textContent ?? "");
+    const rows = rowButtons().map((b) => b.textContent ?? "");
     expect(rows[0]).toMatch(/SEC/);
     expect(rows[1]).toMatch(/VER/);
   });
 
   it("marks exactly one row as pressed, and moves it on a click", () => {
     renderTower(4, atSample(20));
-    expect(screen.getByRole("button", { name: /VER/ })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: /^VER/ })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /SEC/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^SEC/ }));
 
     expect(useTransport.getState().focusedCarIndex).toBe(1);
-    expect(screen.getByRole("button", { name: /SEC/ })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: /^SEC/ })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
-    expect(screen.getByRole("button", { name: /VER/ })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: /^VER/ })).toHaveAttribute(
       "aria-pressed",
       "false",
     );
@@ -517,7 +536,7 @@ describe("Hud timing tower", () => {
 
   it("moves the speed trace to the newly focused car", () => {
     renderTower(4, atSample(20));
-    fireEvent.click(screen.getByRole("button", { name: /SEC/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^SEC/ }));
     expect(
       screen.getByRole("img", { name: /Speed trace for SEC/ }),
     ).toBeInTheDocument();
@@ -527,11 +546,9 @@ describe("Hud timing tower", () => {
     // Gaps all shift by the same constant when the reference car changes, so track
     // order is focus-independent. Rows move at overtakes and at nothing else.
     renderTower(4, atSample(60));
-    const before = screen
-      .getAllByRole("button")
-      .map((b) => b.textContent ?? "");
-    fireEvent.click(screen.getByRole("button", { name: /SEC/ }));
-    const after = screen.getAllByRole("button").map((b) => b.textContent ?? "");
+    const before = rowButtons().map((b) => b.textContent ?? "");
+    fireEvent.click(screen.getByRole("button", { name: /^SEC/ }));
+    const after = rowButtons().map((b) => b.textContent ?? "");
     expect(after.map((t) => t.slice(0, 3))).toEqual(
       before.map((t) => t.slice(0, 3)),
     );
@@ -552,7 +569,9 @@ describe("Hud timing tower", () => {
  * changes nothing, and a test still asserting that it does would be asserting a defect.
  */
 describe("HUD / signature coupling — the tower", () => {
-  beforeEach(() => useTransport.setState({ focusedCarIndex: 0 }));
+  beforeEach(() =>
+    useTransport.setState({ focusedCarIndex: 0, comparisonCarIndex: null }),
+  );
 
   const base = snapshot();
   const second = atSample(20);
@@ -625,7 +644,9 @@ describe("HUD / signature coupling — the tower", () => {
 });
 
 describe("Hud across a replay swap", () => {
-  beforeEach(() => useTransport.setState({ focusedCarIndex: 0 }));
+  beforeEach(() =>
+    useTransport.setState({ focusedCarIndex: 0, comparisonCarIndex: null }),
+  );
 
   it("survives a frame that still describes the previous replay", () => {
     // Loading a replay swaps `replay` immediately, but the last frame the render
@@ -648,5 +669,217 @@ describe("Hud across a replay swap", () => {
     telemetry.publish(2000, 4, [snapshot()]);
     render(<Hud replay={replay} />);
     expect(screen.getByRole("meter", { name: "Throttle" })).toBeInTheDocument();
+  });
+});
+
+/**
+ * The comparison overlay (Slice 15) — a second car's speed on the focused car's trace.
+ *
+ * The overlay is a function of (replay, clock, comparisonCarIndex): its identity is
+ * store state that re-renders the HUD when it changes, its curve rides the clock the
+ * signature already carries, so — like gaps and tyres — it adds NOTHING to
+ * `displaySignature`. What these tests pin is the control's presence rules, the shared
+ * axis, and keep-and-suppress across focus changes.
+ */
+describe("Hud speed-trace comparison", () => {
+  beforeEach(() =>
+    useTransport.setState({ focusedCarIndex: 0, comparisonCarIndex: null }),
+  );
+
+  /** SEC's speeds halved, so the union axis differs from either car's own range. */
+  const scaledReplay: Replay = (() => {
+    const raw = JSON.parse(JSON.stringify(sampleLap));
+    raw.cars.push({
+      ...raw.cars[0],
+      driver: "SEC",
+      team: "Second Team",
+      color: "#ff8000",
+      samples: raw.cars[0].samples.map((s: { speed: number }) => ({
+        ...s,
+        speed: s.speed / 2,
+      })),
+    });
+    return parseReplay(raw, "scaled.json");
+  })();
+
+  /** The two-car pair plus a third, so focus can move WITHOUT landing on the pair. */
+  const threeCarReplay: Replay = (() => {
+    const raw = JSON.parse(JSON.stringify(sampleLap));
+    const n = raw.cars[0].samples.length;
+    for (const [driver, color, shift] of [
+      ["SEC", "#ff8000", SHIFT],
+      ["TRD", "#00c000", SHIFT * 2],
+    ] as const) {
+      raw.cars.push({
+        ...raw.cars[0],
+        driver,
+        color,
+        samples: raw.cars[0].samples.map((s: { t: number }, k: number) => ({
+          ...raw.cars[0].samples[(k + shift) % n],
+          t: s.t,
+        })),
+      });
+    }
+    return parseReplay(raw, "three-cars.json");
+  })();
+
+  /** The trace SVG's curves: [comparison, focused] when comparing, [focused] alone. */
+  function tracePaths() {
+    const svg = screen.getByRole("img", { name: /Speed trace/ });
+    return [...svg.querySelectorAll("path")];
+  }
+
+  it("offers a compare control on every row but the focused one", () => {
+    renderTower(4, atSample(20));
+    const vs = screen.getByRole("button", { name: "vs SEC" });
+    expect(vs).toHaveAttribute("aria-pressed", "false");
+    expect(screen.queryByRole("button", { name: "vs VER" })).toBeNull();
+  });
+
+  it("shows NO compare control on a single-car replay — nothing to compare", () => {
+    // Not a count branch: the one row is always the focused row, which never has one.
+    renderHud(replay);
+    expect(screen.queryByRole("button", { name: /^vs / })).toBeNull();
+  });
+
+  it("overlays the compared car dashed, in its colour, under the focused line", () => {
+    renderTower(4, atSample(20));
+    expect(tracePaths()).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "vs SEC" }));
+
+    expect(useTransport.getState().comparisonCarIndex).toBe(1);
+    const [overlay, focused] = tracePaths();
+    expect(tracePaths()).toHaveLength(2);
+    // The overlay: SEC's team colour (bright enough to pass the luminance floor
+    // untouched), fully opaque at the tunable width, dashed — the dash being the
+    // channel that survives colour-blindness.
+    expect(overlay.getAttribute("stroke")).toBe("#ff8000");
+    expect(overlay.getAttribute("stroke-width")).toBe(
+      String(COMPARISON_STROKE_WIDTH),
+    );
+    expect(overlay.getAttribute("stroke-opacity")).toBeNull();
+    expect(overlay.getAttribute("stroke-dasharray")).toBe("3 2");
+    expect(overlay.getAttribute("d")).not.toBe("");
+    // The focused line is untouched by the overlay's arrival.
+    expect(focused.getAttribute("stroke")).toBe("var(--c-dim)");
+    expect(focused.getAttribute("stroke-width")).toBe("1");
+    expect(screen.getByRole("button", { name: "vs SEC" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("floors a dark team colour to the trace's minimum luminance — the browser-pass fix", () => {
+    // Red Bull's navy (#3671C6, luminance ≈ 0.17) vanished on --c-bg; the overlay
+    // must stroke the LIFTED colour, and the legend swatch must agree with the line.
+    const darkReplay: Replay = (() => {
+      const raw = JSON.parse(JSON.stringify(sampleLap));
+      const n = raw.cars[0].samples.length;
+      raw.cars.push({
+        ...raw.cars[0],
+        driver: "SEC",
+        team: "Second Team",
+        color: "#3671C6",
+        samples: raw.cars[0].samples.map((s: { t: number }, k: number) => ({
+          ...raw.cars[0].samples[(k + SHIFT) % n],
+          t: s.t,
+        })),
+      });
+      return parseReplay(raw, "dark.json");
+    })();
+    const lifted = floorLuminance("#3671C6", COMPARISON_MIN_LUMINANCE);
+    expect(lifted).not.toBe("#3671C6"); // the fixture really exercises the floor
+
+    renderTower(4, atSample(20), darkReplay);
+    fireEvent.click(screen.getByRole("button", { name: "vs SEC" }));
+
+    const [overlay] = tracePaths();
+    expect(overlay.getAttribute("stroke")).toBe(lifted);
+    const legendLines = screen
+      .getByRole("img", { name: /compared with SEC/ })
+      .closest("figure")
+      ?.querySelectorAll("svg[aria-hidden] line");
+    expect(legendLines).toHaveLength(2);
+    expect(legendLines?.[1].getAttribute("stroke")).toBe(lifted);
+  });
+
+  it("labels the pair and shows a legend naming both drivers in text", () => {
+    renderTower(4, atSample(20));
+    fireEvent.click(screen.getByRole("button", { name: "vs SEC" }));
+    const svg = screen.getByRole("img", {
+      name: /Speed trace for VER compared with SEC, the last 20 seconds/,
+    });
+    // The legend binds line style to driver code in TEXT, inside the figure — a
+    // colour-blind viewer maps dashed→SEC without reading a hue.
+    const figure = svg.closest("figure");
+    expect(figure?.textContent).toMatch(/VER/);
+    expect(figure?.textContent).toMatch(/SEC/);
+  });
+
+  it("hides the legend when nothing is compared — the plain trace is unchanged", () => {
+    renderTower(4, atSample(20));
+    const figure = screen
+      .getByRole("img", { name: /Speed trace/ })
+      .closest("figure");
+    expect(figure?.textContent).not.toMatch(/SEC/);
+    expect(tracePaths()).toHaveLength(1);
+    expect(tracePaths()[0].getAttribute("stroke")).toBe("var(--c-dim)");
+  });
+
+  it("draws BOTH lines to one union axis, so equal heights mean equal speeds", () => {
+    // SEC's speeds are the fixture's halved: own ranges 157–338 and 78.5–169, so a
+    // per-car axis would show two similar curves. The label carries the union.
+    renderTower(4, atSample(20), scaledReplay);
+    fireEvent.click(screen.getByRole("button", { name: "vs SEC" }));
+    expect(
+      screen.getByRole("img", {
+        name: /Speed trace for VER compared with SEC, the last 20 seconds, 78.5 to 338 km\/h/,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("clears on a second press of the same control", () => {
+    renderTower(4, atSample(20));
+    fireEvent.click(screen.getByRole("button", { name: "vs SEC" }));
+    fireEvent.click(screen.getByRole("button", { name: "vs SEC" }));
+    expect(useTransport.getState().comparisonCarIndex).toBeNull();
+    expect(tracePaths()).toHaveLength(1);
+  });
+
+  it("suppresses, keeps, and restores across focus landing on the compared car", () => {
+    // Keep-and-suppress: focusing the compared car does not mutate the choice — the
+    // overlay is simply meaningless (self-comparison) until focus moves off again.
+    renderTower(4, atSample(20));
+    fireEvent.click(screen.getByRole("button", { name: "vs SEC" }));
+
+    fireEvent.click(screen.getByRole("button", { name: /^SEC/ }));
+    expect(useTransport.getState().comparisonCarIndex).toBe(1);
+    expect(tracePaths()).toHaveLength(1);
+    expect(
+      screen.getByRole("img", { name: /Speed trace for SEC, the last/ }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /^VER/ }));
+    expect(tracePaths()).toHaveLength(2);
+    expect(
+      screen.getByRole("img", {
+        name: /Speed trace for VER compared with SEC/,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the comparison across an ordinary focus change", () => {
+    telemetry.publish(1000, 4, [snapshot(), atSample(20), atSample(40)]);
+    render(<Hud replay={threeCarReplay} />);
+    fireEvent.click(screen.getByRole("button", { name: "vs SEC" }));
+
+    fireEvent.click(screen.getByRole("button", { name: /^TRD/ }));
+    expect(useTransport.getState().comparisonCarIndex).toBe(1);
+    expect(
+      screen.getByRole("img", {
+        name: /Speed trace for TRD compared with SEC/,
+      }),
+    ).toBeInTheDocument();
   });
 });

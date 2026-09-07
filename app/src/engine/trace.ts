@@ -60,6 +60,25 @@ export const PLAYHEAD_FRACTION = 1;
 export const TRACE_W = 240;
 export const TRACE_H = 44;
 
+/**
+ * The comparison overlay's two legibility knobs (Slice 15 browser pass) — tunable
+ * here, `COMET_SECONDS`-style, and read by `SpeedTrace` and its legend alike so the
+ * swatch can never desync from the line it labels.
+ *
+ * WIDTH: the overlay draws fully opaque at this width, thicker than the focused
+ * line's 1 — the pass found the original 0.75 @ 65% washed out entirely. The focused
+ * line stays the most prominent by CONTINUITY and z-order (solid, drawn on top),
+ * not by weight: the dash gaps are what read as "secondary".
+ *
+ * LUMINANCE FLOOR: dark team colours are lightened to at least this WCAG relative
+ * luminance via `floorLuminance` before stroking; bright ones pass through
+ * byte-for-byte. 0.25 against `--c-bg` #0a0d12 (luminance ≈ 0.004) is a measured
+ * ≥ 5.5:1 contrast — Red Bull's #3671C6 (≈ 0.166, the colour the pass caught) gets
+ * lifted, McLaren orange does not.
+ */
+export const COMPARISON_STROKE_WIDTH = 1.25;
+export const COMPARISON_MIN_LUMINANCE = 0.25;
+
 /** The y axis's domain: the focused car's speeds across the WHOLE replay. */
 export interface SpeedRange {
   minKmh: number;
@@ -113,6 +132,21 @@ export function speedRange(samples: readonly Sample[]): SpeedRange {
     if (s.speed > maxKmh) maxKmh = s.speed;
   }
   return { minKmh, maxKmh };
+}
+
+/**
+ * The smallest range covering both — the shared y axis of a comparison overlay.
+ *
+ * Two cars drawn to their own ranges would not be comparable: the same pixel height
+ * would mean different speeds. The union keeps `speedRange`'s no-breathing rule —
+ * both inputs are whole-replay ranges, so the axis still changes only when the PAIR
+ * changes (a discrete human act), never per window.
+ */
+export function unionRange(a: SpeedRange, b: SpeedRange): SpeedRange {
+  return {
+    minKmh: Math.min(a.minKmh, b.minKmh),
+    maxKmh: Math.max(a.maxKmh, b.maxKmh),
+  };
 }
 
 /**

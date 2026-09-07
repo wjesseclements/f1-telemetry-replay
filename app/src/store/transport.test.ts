@@ -13,6 +13,7 @@ beforeEach(() => {
     speedMult: 1,
     seekTarget: null,
     focusedCarIndex: 0,
+    comparisonCarIndex: null,
   });
 });
 
@@ -116,5 +117,35 @@ describe("useTransport focus", () => {
     useTransport.getState().setFocusedCarIndex(1);
     expect(useTransport.getState().isPlaying).toBe(true);
     expect(useTransport.getState().seekTarget).toBe(12);
+  });
+});
+
+describe("useTransport comparison", () => {
+  it("starts with no comparison — always an explicit human choice", () => {
+    expect(initial.comparisonCarIndex).toBeNull();
+  });
+
+  it("sets and clears the comparison car", () => {
+    useTransport.getState().setComparisonCarIndex(2);
+    expect(useTransport.getState().comparisonCarIndex).toBe(2);
+    useTransport.getState().setComparisonCarIndex(null);
+    expect(useTransport.getState().comparisonCarIndex).toBeNull();
+  });
+
+  it("resets to none when a replay is loaded", () => {
+    // Same invariant as focus, enforced in the same atomic place: a carried-over
+    // index would point at a driver who is not in the new file.
+    useTransport.getState().setComparisonCarIndex(2);
+    useTransport.getState().setReplay(replay);
+    expect(useTransport.getState().comparisonCarIndex).toBeNull();
+  });
+
+  it("survives a focus change onto the compared car (keep-and-suppress)", () => {
+    // The store keeps the value; the HUD suppresses the overlay while the two
+    // coincide. Cycling focus through the field must never mutate the choice.
+    useTransport.getState().setComparisonCarIndex(1);
+    useTransport.getState().setFocusedCarIndex(1);
+    expect(useTransport.getState().comparisonCarIndex).toBe(1);
+    expect(useTransport.getState().focusedCarIndex).toBe(1);
   });
 });

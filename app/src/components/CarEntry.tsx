@@ -37,7 +37,12 @@
  *     was ratified, so width work should treat it as a decision to revisit knowingly
  *     rather than a bug to fix: giving the name back means a wider sidebar, and the
  *     swatch is what identifies the team in a row.
- *  2. **`gap_m` is next**, if twenty rows get tight.
+ *  2. **`gap_m` is next**, if twenty rows get tight — and Slice 15's vs pill called
+ *     this in: at the sidebar's fixed `md:w-56` the pill and the metres column never
+ *     both fit, so `gap_m` is `md:hidden` there (it still renders in the sub-`md`
+ *     full-width strip). Enforced by flex as well as promised: `gap_m` is the compact
+ *     row's one shrinkable column, so at any unanticipated width it truncates away
+ *     before anything else moves. Giving it back means a wider sidebar, knowingly.
  *  3. **`gap_s` never goes.** It is the unit the one-second DRS rule and every
  *     broadcast interval are quoted in.
  *
@@ -46,6 +51,19 @@
  * while a lettered chip would compete with `gap_m`. It conveys nothing by colour
  * alone — an sr-only compound name sits beside it inside the button, so the
  * row's accessible name says "SOFT tyres" where sighted eyes see red.
+ *
+ * THE COMPARE CONTROL (Slice 15)
+ * ------------------------------
+ * A second, sibling button — a button cannot nest in a button — on every NON-focused
+ * row, toggling this car onto the focused car's speed trace. The focused row has none
+ * because self-comparison is meaningless, and that absence is what makes a single-car
+ * file show no compare control at all: its one row is always focused, so requirement
+ * "nothing to compare" falls out of the `focused` branch that already exists, with no
+ * count branch anywhere (rule 2). It is a bordered pill in the DRS pill's shape —
+ * the first cut was borderless grey text and the browser pass could not find it —
+ * claiming ~30px of the row's right edge, ahead of nothing on the width-surrender
+ * list. Its visible text "vs" is contained in its accessible name "vs {driver}"
+ * (WCAG 2.5.3, same rule as the gap digits).
  */
 import { carHasDrs, isDrsOpen } from "../engine/drs";
 import {
@@ -95,7 +113,11 @@ export interface CarEntryProps {
   /** The tyre the car is on, or `null` when the data has no answer (rule 8). */
   tyre: TyreState | null;
   focused: boolean;
+  /** Whether this car is the one overlaid on the speed trace. */
+  compared: boolean;
   onFocus: () => void;
+  /** Toggle this car on/off the speed-trace overlay. */
+  onCompare: () => void;
 }
 
 export function CarEntry({
@@ -104,43 +126,49 @@ export function CarEntry({
   gap,
   tyre,
   focused,
+  compared,
   onFocus,
+  onCompare,
 }: CarEntryProps) {
   return (
     <li className="m-0 w-full list-none">
-      <button
-        type="button"
-        onClick={onFocus}
-        aria-pressed={focused}
-        aria-keyshortcuts="ArrowUp ArrowDown"
-        className={`flex w-full items-center gap-2 rounded border px-2 py-1 text-left ${
-          focused
-            ? "border-line bg-panel2"
-            : "border-transparent hover:border-line"
-        } ${FOCUS_RING}`}
-      >
-        {/* The team colour, as the same mark the canvas uses for this car. */}
-        <span
-          aria-hidden="true"
-          className="h-3.5 w-1 shrink-0 rounded-full"
-          style={{ backgroundColor: car.color }}
-        />
-        <span className="font-mono text-xs font-bold tracking-wider text-txt">
-          {car.driver}
-        </span>
-        {/* Rule 8 again: the dot exists only when the data carries a tyre answer.
+      {/* `gap-2`, not `gap-1`: the daylight between the row button and the vs pill is
+          a hard floor — the button's content can truncate (see the gap columns) but
+          can never close this gap. */}
+      <div className="flex w-full items-stretch gap-2">
+        <button
+          type="button"
+          onClick={onFocus}
+          aria-pressed={focused}
+          aria-keyshortcuts="ArrowUp ArrowDown"
+          className={`flex min-w-0 flex-1 items-center gap-2 rounded border px-2 py-1 text-left ${
+            focused
+              ? "border-line bg-panel2"
+              : "border-transparent hover:border-line"
+          } ${FOCUS_RING}`}
+        >
+          {/* The team colour, as the same mark the canvas uses for this car. */}
+          <span
+            aria-hidden="true"
+            className="h-3.5 w-1 shrink-0 rounded-full"
+            style={{ backgroundColor: car.color }}
+          />
+          <span className="font-mono text-xs font-bold tracking-wider text-txt">
+            {car.driver}
+          </span>
+          {/* Rule 8 again: the dot exists only when the data carries a tyre answer.
             Inside the button, so the compound folds into the row's accessible
             name (the sr-only text is the information; the colour is a mark). */}
-        {tyre && (
-          <>
-            <span
-              aria-hidden="true"
-              className={`h-1.5 w-1.5 shrink-0 rounded-full ${COMPOUND_DOT[tyre.compound]}`}
-            />
-            <span className="sr-only">{tyre.compound} tyres</span>
-          </>
-        )}
-        {/*
+          {tyre && (
+            <>
+              <span
+                aria-hidden="true"
+                className={`h-1.5 w-1.5 shrink-0 rounded-full ${COMPOUND_DOT[tyre.compound]}`}
+              />
+              <span className="sr-only">{tyre.compound} tyres</span>
+            </>
+          )}
+          {/*
           The team NAME belongs to the focused entry, which has the width for it. In a
           compact row the two gap columns leave about six characters, and "Red Bull
           Racing" truncated to "R…" is worse than nothing — measured in the browser at
@@ -150,29 +178,62 @@ export function CarEntry({
           Empty for a replay whose pipeline could not resolve the team; an empty string
           renders nothing, so there is no branch for that either.
         */}
-        {focused ? (
-          <>
-            <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-dim">
-              {car.team}
+          {focused ? (
+            <>
+              <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-dim">
+                {car.team}
+              </span>
+              <span className="font-mono text-[10px] uppercase tracking-widest text-accent">
+                Focus
+              </span>
+            </>
+          ) : (
+            /*
+              The surrender order, enforced rather than promised, twice over:
+
+               - `md:hidden` on `gap_m`: at the sidebar's fixed `md:w-56` the vs pill
+                 and the metres column can NEVER both fit (measured — the leftover is
+                 a "1…" stub that reads as broken data), so metres is dropped outright
+                 there, per the header's list. Below `md` the tower is a full-width
+                 strip with room for both, and metres comes back.
+               - the flex belt: `gap_s` is `shrink-0` (it never goes) and `gap_m` is
+                 the row's ONE shrinkable item (`min-w-0 shrink truncate` behind the
+                 `min-w-0` chain), so at any width the maths didn't anticipate the
+                 metres column gives way and nothing can overflow the button into
+                 the pill.
+            */
+            <span className="ml-auto flex min-w-0 items-baseline gap-2">
+              <span className="shrink-0 font-mono text-sm font-bold tabular-nums text-txt">
+                {formatGap(
+                  gap === null ? null : gap.seconds,
+                  gap === null ? 0 : gap.lapsDown,
+                )}
+              </span>
+              <span className="w-11 min-w-0 shrink truncate text-right font-mono text-[10px] tabular-nums text-dim md:hidden">
+                {formatGapMetres(gap === null ? null : gap.metres)}
+              </span>
             </span>
-            <span className="font-mono text-[10px] uppercase tracking-widest text-accent">
-              Focus
-            </span>
-          </>
-        ) : (
-          <span className="ml-auto flex items-baseline gap-2">
-            <span className="font-mono text-sm font-bold tabular-nums text-txt">
-              {formatGap(
-                gap === null ? null : gap.seconds,
-                gap === null ? 0 : gap.lapsDown,
-              )}
-            </span>
-            <span className="w-11 text-right font-mono text-[10px] tabular-nums text-dim">
-              {formatGapMetres(gap === null ? null : gap.metres)}
-            </span>
-          </span>
+          )}
+        </button>
+        {/* The DRS pill's shape (border always visible, state = border+text tone) —
+            the browser pass found the borderless grey text unfindable. Pressed goes
+            accent, the same "this one is live" tone as the Focus tag. */}
+        {!focused && (
+          <button
+            type="button"
+            onClick={onCompare}
+            aria-pressed={compared}
+            aria-label={`vs ${car.driver}`}
+            className={`shrink-0 self-center rounded border px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-widest ${
+              compared
+                ? "border-accent bg-panel2 text-accent"
+                : "border-line text-dim hover:border-dim hover:text-txt"
+            } ${FOCUS_RING}`}
+          >
+            vs
+          </button>
         )}
-      </button>
+      </div>
 
       {focused && <CarReadout car={car} snapshot={snapshot} tyre={tyre} />}
     </li>

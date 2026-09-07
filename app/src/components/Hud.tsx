@@ -61,6 +61,19 @@ export function Hud({ replay }: HudProps) {
   const { clock, cars } = useTelemetry();
   const focusedCarIndex = useTransport((s) => s.focusedCarIndex);
   const setFocusedCarIndex = useTransport((s) => s.setFocusedCarIndex);
+  const comparisonCarIndex = useTransport((s) => s.comparisonCarIndex);
+  const setComparisonCarIndex = useTransport((s) => s.setComparisonCarIndex);
+
+  /**
+   * Keep-and-suppress: the stored comparison survives every focus change untouched,
+   * and the overlay simply does not draw while the compared car IS the focused car —
+   * self-comparison is meaningless, not an error. Cycling focus through the field
+   * never mutates the human's choice; focus moves off, the overlay returns.
+   */
+  const comparisonCar =
+    comparisonCarIndex !== null && comparisonCarIndex !== focusedCarIndex
+      ? replay.cars[comparisonCarIndex]
+      : null;
 
   /**
    * Keyed on the REPLAY alone — every car's progress around one shared circuit does not
@@ -136,7 +149,11 @@ export function Hud({ replay }: HudProps) {
             gap={gaps[i]}
             tyre={tyres[i]}
             focused={i === focusedCarIndex}
+            compared={i === comparisonCarIndex}
             onFocus={() => setFocusedCarIndex(i)}
+            onCompare={() =>
+              setComparisonCarIndex(i === comparisonCarIndex ? null : i)
+            }
           />
         ))}
       </ul>
@@ -148,6 +165,7 @@ export function Hud({ replay }: HudProps) {
       <div className="w-full">
         <SpeedTrace
           car={replay.cars[focusedCarIndex]}
+          comparisonCar={comparisonCar}
           clock={clock}
           duration={replay.meta.duration}
           sampleRateHz={replay.meta.sampleRateHz}

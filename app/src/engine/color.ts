@@ -161,3 +161,58 @@ export function thermalGradientCss(): string {
   });
   return `linear-gradient(90deg, ${stops.join(", ")})`;
 }
+
+/**
+ * sRGB channel (0–255) → linear-light (0–1), per the WCAG/IEC 61966 transfer curve.
+ * Luminance is a LINEAR combination of these, which is what makes `floorLuminance`'s
+ * closed form exact.
+ */
+function linearChannel(byte: number): number {
+  const s = byte / 255;
+  return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+}
+
+/** The inverse: linear-light (0–1) → sRGB channel (0–255). */
+function srgbChannel(linear: number): number {
+  const s =
+    linear <= 0.0031308 ? linear * 12.92 : 1.055 * linear ** (1 / 2.4) - 0.055;
+  return Math.round(s * 255);
+}
+
+/** `#rgb` or `#rrggbb` (the two shapes `schema.ts` admits) → linear-light channels. */
+function linearRgb(hex: string): [number, number, number] {
+  const h = hex.length === 4 ? hex.replace(/[0-9a-f]/gi, (c) => c + c) : hex;
+  return [
+    linearChannel(parseInt(h.slice(1, 3), 16)),
+    linearChannel(parseInt(h.slice(3, 5), 16)),
+    linearChannel(parseInt(h.slice(5, 7), 16)),
+  ];
+}
+
+/** WCAG relative luminance of a hex colour: 0 (black) – 1 (white). */
+export function relativeLuminance(hex: string): number {
+  const [r, g, b] = linearRgb(hex);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/**
+ * The colour, lightened just enough to reach `floor` relative luminance — or returned
+ * VERBATIM when it is already there. A minimum-contrast floor as a principle, not a
+ * per-team patch: Slice 15's browser pass found Red Bull's navy overlay near-invisible
+ * on `--c-bg`, and the next dark livery would fail the same way.
+ *
+ * The mechanism is a mix toward white in LINEAR-light space, where luminance is a
+ * linear function of the channels — so the mixing fraction that lands exactly on the
+ * floor has a closed form, `t = (floor − L₀) / (1 − L₀)`, no search, and the hue only
+ * drifts the way lightening always drifts it (toward pastel). Bright colours pass
+ * through untouched, byte-for-byte, so team identity is preserved wherever it already
+ * reads.
+ */
+export function floorLuminance(hex: string, floor: number): string {
+  const lum = relativeLuminance(hex);
+  if (lum >= floor) return hex;
+  const t = (floor - lum) / (1 - lum);
+  const [r, g, b] = linearRgb(hex).map((v) => v + t * (1 - v));
+  const to2 = (byte: number) => byte.toString(16).padStart(2, "0");
+  return `#${to2(srgbChannel(r))}${to2(srgbChannel(g))}${to2(srgbChannel(b))}`;
+}
