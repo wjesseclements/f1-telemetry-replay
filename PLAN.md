@@ -3128,6 +3128,13 @@ a tyre story the data could not tell.
   - The 19-car report line surfaced the real-data edge cases the synthetic
     fixtures encode: SAI's mid-window stop (MEDIUM → HARD age 0) and STR's
     same-compound fresh set (HARD age 19 → HARD age 2).
+- **Amendment (post-review, in-PR) — the Vercel ignore step no longer judges a push
+  by its tip commit.** `app/vercel.json`'s `ignoreCommand` was `git diff --quiet
+  HEAD^ HEAD .`, which skips the preview whenever the LAST commit of a push does not
+  touch `app/` — this PR demonstrated it live (a trailing `.gitignore` commit
+  cancelled the whole preview). It now diffs `VERCEL_GIT_PREVIOUS_SHA..HEAD` limited
+  to `app/`, and every failure mode (first deploy, var absent, sha outside the
+  shallow clone) exits non-zero, which Vercel reads as BUILD — the safe direction.
 - **Browser pass — PRE-REGISTERED, PENDING (no Chrome extension was connected to
   the session; the checks are written before any eyes on them):**
   - fps-probe on `monza_full_field.json` (production preview, visible tab) vs the
