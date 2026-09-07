@@ -37,7 +37,12 @@
  *     was ratified, so width work should treat it as a decision to revisit knowingly
  *     rather than a bug to fix: giving the name back means a wider sidebar, and the
  *     swatch is what identifies the team in a row.
- *  2. **`gap_m` is next**, if twenty rows get tight.
+ *  2. **`gap_m` is next**, if twenty rows get tight — and Slice 15's vs pill called
+ *     this in: at the sidebar's fixed `md:w-56` the pill and the metres column never
+ *     both fit, so `gap_m` is `md:hidden` there (it still renders in the sub-`md`
+ *     full-width strip). Enforced by flex as well as promised: `gap_m` is the compact
+ *     row's one shrinkable column, so at any unanticipated width it truncates away
+ *     before anything else moves. Giving it back means a wider sidebar, knowingly.
  *  3. **`gap_s` never goes.** It is the unit the one-second DRS rule and every
  *     broadcast interval are quoted in.
  *
@@ -127,7 +132,10 @@ export function CarEntry({
 }: CarEntryProps) {
   return (
     <li className="m-0 w-full list-none">
-      <div className="flex w-full items-stretch gap-1">
+      {/* `gap-2`, not `gap-1`: the daylight between the row button and the vs pill is
+          a hard floor — the button's content can truncate (see the gap columns) but
+          can never close this gap. */}
+      <div className="flex w-full items-stretch gap-2">
         <button
           type="button"
           onClick={onFocus}
@@ -180,14 +188,28 @@ export function CarEntry({
               </span>
             </>
           ) : (
-            <span className="ml-auto flex items-baseline gap-2">
-              <span className="font-mono text-sm font-bold tabular-nums text-txt">
+            /*
+              The surrender order, enforced rather than promised, twice over:
+
+               - `md:hidden` on `gap_m`: at the sidebar's fixed `md:w-56` the vs pill
+                 and the metres column can NEVER both fit (measured — the leftover is
+                 a "1…" stub that reads as broken data), so metres is dropped outright
+                 there, per the header's list. Below `md` the tower is a full-width
+                 strip with room for both, and metres comes back.
+               - the flex belt: `gap_s` is `shrink-0` (it never goes) and `gap_m` is
+                 the row's ONE shrinkable item (`min-w-0 shrink truncate` behind the
+                 `min-w-0` chain), so at any width the maths didn't anticipate the
+                 metres column gives way and nothing can overflow the button into
+                 the pill.
+            */
+            <span className="ml-auto flex min-w-0 items-baseline gap-2">
+              <span className="shrink-0 font-mono text-sm font-bold tabular-nums text-txt">
                 {formatGap(
                   gap === null ? null : gap.seconds,
                   gap === null ? 0 : gap.lapsDown,
                 )}
               </span>
-              <span className="w-11 text-right font-mono text-[10px] tabular-nums text-dim">
+              <span className="w-11 min-w-0 shrink truncate text-right font-mono text-[10px] tabular-nums text-dim md:hidden">
                 {formatGapMetres(gap === null ? null : gap.metres)}
               </span>
             </span>

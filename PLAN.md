@@ -3284,6 +3284,19 @@ ledger's open defect slice; STATUS.md is updated in this PR accordingly.
   `COMPARISON_STROKE_WIDTH` and `COMPARISON_MIN_LUMINANCE` at
   `app/src/engine/trace.ts:79-80`** — 0.25 is a measured ≥5.5:1 contrast against
   `--c-bg` (luminance ≈ 0.004). One value feeds line and legend swatch alike.
+- **Amendment — the second pass found the row out of width ("313 mVS"), fixed by the
+  header's own surrender order and verified in a real browser.** At the sidebar's
+  fixed `md:w-56` the vs pill and `gap_m` can never both fit (the leftover was a
+  "1…" stub that reads as broken data), so `gap_m` is dropped there outright
+  (`md:hidden`) and returns in the sub-`md` full-width strip — the seconds column and
+  the pill never yield. Belt under the law: `gap_s` is `shrink-0` and `gap_m` is the
+  compact row's ONE shrinkable item (`min-w-0 shrink truncate`), so no width can
+  push button content into the pill, whose daylight is the wrapper's `gap-2`.
+  Measured over the shipped build on the finale scenario (bounding-box clearance
+  between row content and pill): **17.0 px at the default sidebar, 17.0 px with the
+  list forced to 351 px (= a 375 px viewport, where "301 m"/"314 m" render in full),
+  and 17.0 px at a pathological 220 px** — the clearance is constant because the
+  yielding column absorbs all of it, which is the design.
 - **Pre-registered browser acceptance (human):** finale scenario, HAM focused, VER
   compared — the two traces overlaid through a full lap, the softs' gain visible;
   toggling off restores today's trace exactly; 375px layout reconfigures and stays
