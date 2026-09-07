@@ -20,6 +20,7 @@ import {
   TRACE_H,
   TRACE_SECONDS,
   TRACE_W,
+  unionRange,
   type TraceView,
 } from "./trace";
 
@@ -81,6 +82,32 @@ describe("speedRange", () => {
 
   it("throws on no samples rather than rendering a blank box", () => {
     expect(() => speedRange([])).toThrow(RangeError);
+  });
+});
+
+describe("unionRange", () => {
+  it("covers both inputs — the shared axis of a comparison overlay", () => {
+    expect(
+      unionRange({ minKmh: 100, maxKmh: 250 }, { minKmh: 80, maxKmh: 240 }),
+    ).toEqual({ minKmh: 80, maxKmh: 250 });
+  });
+
+  it("takes the extreme from either side, not one winner", () => {
+    // One car brakes deepest, the other tops out fastest — the axis needs both.
+    expect(
+      unionRange({ minKmh: 90, maxKmh: 320 }, { minKmh: 110, maxKmh: 340 }),
+    ).toEqual({ minKmh: 90, maxKmh: 340 });
+  });
+
+  it("is commutative", () => {
+    const a = { minKmh: 157, maxKmh: 338 };
+    const b = { minKmh: 141, maxKmh: 304 };
+    expect(unionRange(a, b)).toEqual(unionRange(b, a));
+  });
+
+  it("is identity on an equal pair — same samples, same axis as alone", () => {
+    const a = speedRange(samples);
+    expect(unionRange(a, a)).toEqual(a);
   });
 });
 

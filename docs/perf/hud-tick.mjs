@@ -27,6 +27,9 @@
  *
  *   --focus N     which car the HUD is focused on (default 0)
  *   --ticks N     timed ticks per measurement (default 6000 = 200 s of HUD time)
+ *   --compare N   overlay car N on the trace (Slice 15): setup becomes both cars'
+ *                 ranges + their union, a tick builds BOTH windows. Omitted = the
+ *                 plain single-line trace, which is the before-Slice-15 measurement.
  *
  * `vite-node` (not `node`) because this imports the app's real TypeScript modules through
  * the app's own resolution: the point is to measure the SHIPPED engine, not a copy. It
@@ -77,6 +80,7 @@ const flag = (name, fallback) => {
 const file = args.find((a) => !a.startsWith("--") && !Number.isFinite(Number(a)));
 const focus = flag("--focus", 0);
 const ticks = flag("--ticks", 6000);
+const compare = flag("--compare", -1);
 
 if (!file) {
   console.error("usage: vite-node hud-tick.mjs <replay.json> [--focus N] [--ticks N]");
@@ -86,6 +90,7 @@ if (!file) {
 const path = resolve(process.cwd(), file);
 const replay = parseReplay(require(path), file);
 const car = replay.cars[focus];
+const compareCar = compare >= 0 ? replay.cars[compare] : null;
 const { duration, sampleRateHz } = replay.meta;
 
 /**
@@ -101,10 +106,21 @@ const H = trace.TRACE_H ?? 44;
 
 const api = trace.buildTraceWindow
   ? {
-      name: `9e windowed (buildTraceWindow, TRACE_SECONDS=${trace.TRACE_SECONDS})`,
-      setup: () => trace.speedRange(car.samples),
-      tick: (range, clock) =>
-        trace.buildTraceWindow({
+      name:
+        `9e windowed (buildTraceWindow, TRACE_SECONDS=${trace.TRACE_SECONDS})` +
+        (compareCar ? ` + Slice 15 overlay (unionRange, 2x window)` : ""),
+      // With `--compare` this is the component's real per-pair-change work: both cars'
+      // whole-replay ranges plus their union, exactly what the two `useMemo`s hold.
+      setup: () =>
+        compareCar
+          ? trace.unionRange(
+              trace.speedRange(car.samples),
+              trace.speedRange(compareCar.samples),
+            )
+          : trace.speedRange(car.samples),
+      // Both paths concatenated so `countPoints` counts what the DOM would hold.
+      tick: (range, clock) => {
+        const own = trace.buildTraceWindow({
           samples: car.samples,
           sampleRateHz,
           clock,
@@ -112,7 +128,21 @@ const api = trace.buildTraceWindow
           range,
           width: W,
           height: H,
-        }).path,
+        }).path;
+        if (!compareCar) return own;
+        return (
+          own +
+          trace.buildTraceWindow({
+            samples: compareCar.samples,
+            sampleRateHz,
+            clock,
+            duration,
+            range,
+            width: W,
+            height: H,
+          }).path
+        );
+      },
     }
   : {
       name: "pre-9e full sparkline (buildSpeedTrace + tracePlayheadX)",
@@ -179,7 +209,8 @@ const f = (n, d = 3) => n.toFixed(d);
 console.log(`file             ${file}`);
 console.log(
   `replay           ${replay.cars.length} car(s), ${car.samples.length} samples/car, ` +
-    `${sampleRateHz} Hz, ${f(duration, 1)} s (${replay.meta.loop}), focus ${focus} ${car.driver}`,
+    `${sampleRateHz} Hz, ${f(duration, 1)} s (${replay.meta.loop}), focus ${focus} ${car.driver}` +
+    (compareCar ? `, compare ${compare} ${compareCar.driver}` : ""),
 );
 console.log(`api              ${api.name}`);
 console.log(`ticks            ${ticks} at 30 Hz`);

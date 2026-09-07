@@ -21,6 +21,16 @@
  *    the current replay's cars" is enforced inside `setReplay`, atomically, instead of
  *    in an effect somewhere that has to notice the replay changed.
  *
+ * `comparisonCarIndex` (Slice 15) rides the same cadence criterion — it changes on a
+ * click — but not the same first argument: the render loop never reads it, because the
+ * comparison is drawn only in the HUD's SVG trace, not on the canvas. What settles
+ * store over `galleryOpen`-style local state is `focusedCarIndex`'s SECOND argument
+ * alone: "comparison is a valid index into the current replay's cars, or null" is a
+ * replay-coupled invariant, and it is enforced atomically inside `setReplay` rather
+ * than in an effect that has to notice the replay changed (`galleryOpen` has no such
+ * invariant, which is why it stayed local). It is the same species of state as focus —
+ * an identity into `cars[]` — and the pair belongs together.
+ *
  * The render loop reads this store with `useTransport.getState()` inside its frame
  * callback rather than subscribing to it, so transport changes never re-render the
  * canvas either. See `src/render/TrackCanvas.tsx`.
@@ -53,6 +63,18 @@ export interface TransportState {
    * never moves, so this is the car's identity.
    */
   focusedCarIndex: number;
+  /**
+   * The car overlaid on the focused car's speed trace, or `null` for none.
+   *
+   * An index into `cars[]` for the same reason `focusedCarIndex` is: the tower
+   * resorts, `cars[]` never moves. `null` is the default — a comparison is always an
+   * explicit human choice, never derived from the running order, so the overlaid line
+   * cannot silently change identity at an overtake. When it coincides with
+   * `focusedCarIndex` the value is KEPT and the overlay merely not drawn
+   * (self-comparison is meaningless): cycling focus through the field never mutates a
+   * deliberate choice, and moving focus off the compared car brings the overlay back.
+   */
+  comparisonCarIndex: number | null;
 
   setReplay: (replay: Replay) => void;
   play: () => void;
@@ -62,6 +84,7 @@ export interface TransportState {
   seek: (seconds: number) => void;
   consumeSeek: () => void;
   setFocusedCarIndex: (index: number) => void;
+  setComparisonCarIndex: (index: number | null) => void;
 }
 
 export const useTransport = create<TransportState>((set) => ({
@@ -78,10 +101,13 @@ export const useTransport = create<TransportState>((set) => ({
   speedMult: 1,
   seekTarget: null,
   focusedCarIndex: 0,
+  comparisonCarIndex: null,
 
-  // A new replay is followed from its first car. Carrying the old index over would
-  // point at a driver who is not in this file — or off the end of a shorter one.
-  setReplay: (replay) => set({ replay, focusedCarIndex: 0 }),
+  // A new replay is followed from its first car, compared with nothing. Carrying
+  // either index over would point at a driver who is not in this file — or off the
+  // end of a shorter one.
+  setReplay: (replay) =>
+    set({ replay, focusedCarIndex: 0, comparisonCarIndex: null }),
   play: () => set({ isPlaying: true }),
   pause: () => set({ isPlaying: false }),
   togglePlay: () => set((s) => ({ isPlaying: !s.isPlaying })),
@@ -89,4 +115,5 @@ export const useTransport = create<TransportState>((set) => ({
   seek: (seconds) => set({ seekTarget: seconds }),
   consumeSeek: () => set({ seekTarget: null }),
   setFocusedCarIndex: (focusedCarIndex) => set({ focusedCarIndex }),
+  setComparisonCarIndex: (comparisonCarIndex) => set({ comparisonCarIndex }),
 }));

@@ -116,6 +116,21 @@ export function speedRange(samples: readonly Sample[]): SpeedRange {
 }
 
 /**
+ * The smallest range covering both — the shared y axis of a comparison overlay.
+ *
+ * Two cars drawn to their own ranges would not be comparable: the same pixel height
+ * would mean different speeds. The union keeps `speedRange`'s no-breathing rule —
+ * both inputs are whole-replay ranges, so the axis still changes only when the PAIR
+ * changes (a discrete human act), never per window.
+ */
+export function unionRange(a: SpeedRange, b: SpeedRange): SpeedRange {
+  return {
+    minKmh: Math.min(a.minKmh, b.minKmh),
+    maxKmh: Math.max(a.maxKmh, b.maxKmh),
+  };
+}
+
+/**
  * Build the visible window of the trace at `clock`.
  *
  * Screen y is inverted (fast is UP), which is the opposite of the track canvas's

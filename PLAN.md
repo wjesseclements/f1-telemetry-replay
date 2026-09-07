@@ -3219,6 +3219,80 @@ stop is where it breaks.
   moving the metric needs explaining before it ships.
 
 
+### [ ] Slice 15 — speed-trace comparison
+
+**The trace learns to hold two cars.** A "vs" control on each tower row overlays a
+second car's speed on the focused car's scrolling trace — same 20 s window, same
+y-scale — so a viewer can see exactly where one driver gains on another. App-only:
+no pipeline, no schema, no canvas changes. **Ordering note, on the human's explicit
+direction:** this slice was implemented ahead of the open Slice 9i, which remains the
+ledger's open defect slice; STATUS.md is updated in this PR accordingly.
+
+- **Scope:** `comparisonCarIndex` in the transport store; a compare button on every
+  non-focused tower row; a second dashed, team-coloured path in `SpeedTrace` drawn to
+  the union of both cars' speed ranges; a text legend; `unionRange` in
+  `engine/trace.ts`; a `--compare N` flag on `docs/perf/hud-tick.mjs`.
+- **Verify:** gates green; drawcall md5s identical both modes (canvas untouched);
+  hud-tick before/after; component tests for control presence/absence and for the
+  comparison surviving focus changes; 375px still usable (browser pass).
+- **Out of scope, filed not built (Backlog):** a delta-time (gap-over-time) trace;
+  highlighting the comparison car on the canvas.
+- **Amendment — the choice lives in the transport store, by the SECOND of focus's two
+  arguments alone.** The discriminator both recorded precedents use is "does the rAF
+  loop read it" — here it does not (the overlay is HUD SVG; the canvas never draws
+  it), so the loop-read argument that placed `focusedCarIndex` does not apply. What
+  settles store over `galleryOpen`-style local state is the replay-coupled invariant:
+  "comparison is a valid index into the current replay's cars, or null" is enforced
+  atomically inside `setReplay`, not in an effect that has to notice the replay
+  changed (`galleryOpen` has no such invariant, which is why it stayed local). Same
+  species as focus — an index into `cars[]`, never a tower row — and rule 1's
+  enumeration in CLAUDE.md moved with it, again.
+- **Amendment — default comparison is NONE, argued against "car directly ahead" and
+  chosen by the human.** "Ahead" is a per-tick derived value: the running order lives
+  as local state inside `Hud` (lifting it out was already rejected once, for Slice
+  14's lap indicator — rule-1 friction), and an auto-comparison would silently change
+  the overlaid line's identity at an overtake, mid-corner, with no human act. A
+  comparison is always an explicit choice with stable identity; it costs one click.
+- **Amendment — collision policy is KEEP-AND-SUPPRESS, chosen by the human over swap
+  and clear.** When the compared car becomes the focused car the store keeps the
+  value and the HUD simply does not draw the overlay (self-comparison is
+  meaningless). Swap would rewrite the comparison as focus cycles PAST the compared
+  car; clear would destroy deliberate state on an action that never mentioned
+  comparison. Suppress mutates nothing: focus moves off, the overlay returns.
+- **Amendment — `displaySignature` gains exactly what renders, which is NOTHING.**
+  The comparison car's identity arrives by store subscription (a re-render, like
+  focus); its curve is a function of the clock and static samples, and the clock is
+  the signature's first term — the same reasoning that removed position from the
+  signature in Slice 9e. Both signature-coupling suites pass untouched, hard-coded
+  changing-field lists and all.
+- **Amendment — no comparison control means no branch.** The focused row has no "vs"
+  button (self-comparison), so a single-car file — one row, always focused — shows no
+  control at all with no car-count branch anywhere (rule 2). The dash on the overlay
+  is the non-colour channel and the legend names both drivers in text, so colour
+  never carries the information alone.
+- **Pre-registered browser acceptance (human):** finale scenario, HAM focused, VER
+  compared — the two traces overlaid through a full lap, the softs' gain visible;
+  toggling off restores today's trace exactly; 375px layout reconfigures and stays
+  usable with the "vs" buttons present; screenshots to `docs/screenshots/slice-15-*`.
+- **Verified (2026-09-07):**
+  - `npm run check` green: typecheck, lint, format, 639 tests (622 → 639), engine
+    coverage 100% lines/branches/functions, build. Full-log warning grep
+    (`grep -ciE 'warn|error'`): **0**.
+  - **Drawcall md5s identical both modes**, captured BEFORE the first edit and after
+    the last: closed `04506b72f177b7447ecb7d230998d506`, open
+    `0aea33a376958344b1be15033399e8ec` — the canvas is untouched.
+  - **hud-tick** (`silverstone-2024-finale.json`, 4489 samples/car, focus HAM):
+
+    | run | points/tick | points DOM | µs/tick mean | % of 33.3 ms | µs/pair change |
+    |---|---|---|---|---|---|
+    | before (main) | 186.63 | 202 | 17.964 | 0.054% | 5.194 |
+    | after, no compare | 186.63 | 202 | 18.924 | 0.057% | 5.859 |
+    | after, `--compare 1` (VER) | 373.26 | 404 | 36.116 | 0.108% | 10.872 |
+
+    The no-compare run matches the baseline within noise; the overlay is the
+    predicted bound of exactly 2x the structural numbers and ~2x the time, at a
+    thousandth of the tick budget.
+
 ## Backlog (ideas — not committed)
 - **Fixture asymmetry overhaul** — rebuild the committed fixture with no symmetries,
   distinct angles, and no near-cancellations, so it can express handedness,
@@ -3242,6 +3316,12 @@ stop is where it breaks.
 - WebGL/3D escalation **only** if measured 20-car perf demands it (documented path).
 - Track-surface niceties: kerbs, sector coloring, mini-map.
 - Ghost/delta vs a reference lap; multi-lap stints.
+- **Delta-time (gap-over-time) trace for the comparison pair** — filed by Slice 15,
+  not built: the overlay shows where speed differs; a delta trace would show where
+  time is actually won and lost.
+- **Highlight the comparison car on the canvas** — filed by Slice 15, not built: it
+  would put `comparisonCarIndex` on the frame path, which reopens the store-placement
+  argument (the loop would then read it) and belongs to its own slice.
 - Per-team color tokens sourced from FastF1 plotting.
 - Shareable deep-links (session + driver in URL).
 - Pipeline: cache warming + a committed "golden" small real fixture for visual tests.
