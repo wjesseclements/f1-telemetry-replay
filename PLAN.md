@@ -3162,7 +3162,7 @@ a tyre story the data could not tell.
   - **375px width** — below the 412px record, the tower's first true mobile look;
     screenshots to `docs/screenshots/slice-14-*`.
 
-### [ ] Slice 9i — the global fraction mapping drifts, and pit stops are where
+### [x] Slice 9i — the global fraction mapping drifts, and pit stops are where
 
 **Filed by Slice 9h with its numbers, so it cannot be lost.** F3 above: placement error
 against the timing loops is **31–149 m for every car that pits** and **6.6–11.7 m for
@@ -3401,9 +3401,60 @@ stop is where it breaks.
   instrument's 17.8 / 33.8 / 47.6 m. A remedy that improves the metric without moving
   that ranking has not been seen by the eyes yet, and one that reorders it without
   moving the metric needs explaining before it ships.
+- **Browser pass — DONE (2026-09-07, human, rain at 0.5x on the PR #66 preview):
+  PASS, with graded ratings recorded as the NEW BASELINE for future re-watches:**
+  - **VER 97% smooth (near-perfect)** — the control did not regress and improved.
+  - **HAM 85%** — improved, but **an abrupt zigzag remains at his pit entry**;
+    filed as Slice 9j with 85% as the number to beat and VER's 97% as the target.
+  - **NOR unchanged** — the big zigzag stands, declined by design (the guard).
+  - Ranking **VER < HAM < NOR holds**, agreeing with the instrument's re-ranking.
+  - Monza visibly better; finale no regression.
+  - **Both flagged items ratified by eye**: the expected NOR-pair S/F gap
+    regression, and the rain NOR-VER L cell (+0.03/+0.04 s) — the
+    pre-registration correction is thereby resolved as eyes' territory, as the
+    rain-by-eyes ruling proposed.
+  - One product finding filed from the pass as Slice 16: the Monza pit cycle
+    shows LEC and NOR pitting on an UNDRAWN pit lane (the ribbon comes from
+    `cars[0]`, and VER never pits).
 
 
-### [x] Slice 15 — speed-trace comparison
+### [ ] Slice 9j — attribute HAM's residual pit-entry zigzag, then beat 85%
+
+**Filed by Slice 9i's browser pass with its numbers, so it cannot be lost.** At 0.5x
+HAM's rain pit entry still carries one abrupt zigzag; the human's rating is **85%
+smooth, with VER's 97% as the target**. Instrument-first, as always:
+
+- **Attribution FIRST, read-only.** Three candidates, two inherited from rider (c)
+  and one new from this slice's own remedy:
+  1. the **7.6 m cancellation residual**, spread 1.9 m onto each of four real seams
+     by the repair (9h-b quantified it);
+  2. **anchor noise** — new with 9i: each S/F and pit-span anchor pins the map to
+     one fix's own recorded arc position, injecting per-crossing noise (measured at
+     up to ~6 m on clean cars' S/F spreads);
+  3. something neither instrument has named yet.
+  The attribution decides the remedy; no fix is designed before it.
+- **Acceptance:** held-out sector cells hold or improve from 9i's banked table
+  (HAM 11.7/11.1 m); the human re-watches HAM's entry at 0.5x against the 85%
+  baseline; VER must stay at his 97%.
+- **Out of scope:** NOR (declined by ruling, unchanged); the pipeline's detectors'
+  thresholds (9i's rule stands: neither detector is what is wrong here).
+
+
+### [ ] Slice 16 — draw the pit lane any car in the file uses
+
+**Filed by Slice 9i's browser pass.** The track ribbon is traced from `cars[0]`'s
+path, so the pit lane is drawn only when the REFERENCE car pits — the Monza pit
+cycle shows LEC and NOR driving through an undrawn pit lane. Decouple the ribbon
+from `cars[0]`: draw the pit lane whenever any car in the file uses it.
+
+- **Scope sketch (app-side, render):** the ribbon's source stays the reference lap
+  for the CIRCUIT; the pit lane is an additional path, derived from the cars that
+  actually traverse it (their below-speed spans bound it, and their emitted samples
+  through it are its geometry). No schema change expected — the data is already in
+  every car's samples — but argue it before assuming it.
+- **Verify:** Monza pit cycle shows the lane under LEC and NOR; rain unchanged
+  (HAM's lane already draws — cars[0] pits there); drawcall capture re-baselined
+  deliberately (this slice DOES change the canvas, the first since 9e's family).
 
 **The trace learns to hold two cars.** A "vs" control on each tower row overlays a
 second car's speed on the focused car's scrolling trace — same 20 s window, same

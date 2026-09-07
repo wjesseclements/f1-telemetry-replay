@@ -32,29 +32,31 @@ the vs pill per the row's surrender order — were each fixed in-branch and
 re-verified on a fresh preview; the findings and fixes are amendments in its
 PLAN entry.
 
-**What is open, and what is blocked.** One slice is open and nearly done: **9i —
-anchor placement to the timing loops; retire the global ratio.** Phase 0 (the
-`replay_transform` package split) is merged; Phases 1–2 are implemented on
-`feat/slice-9i-loop-anchored-placement`: the ruled remedy is **C-UNION** — per-lap
-S/F loop-crossing anchors union pit-span brackets, both WITHHELD for a car carrying
-a declined displacement (NOR's 41.7 m stays declined and reported, per ruling) —
-chosen from a four-candidate simulation table scored by the committed instruments
-under a pre-registered held-out scheme (sector marks never anchor). Every
-regenerated gallery asset is byte-identical to its scored simulation; held-out
-placement lands at 10.6–15.7 m on the pitting cars (from 19.6–47.6), the dry
-finale tightens, and NOR-rain is untouched by design. **Open before merge: the
-human browser pass at 0.5x** (pre-registered per candidate, including the expected
-NOR-pair S/F gap regression and one flagged rain-L cell awaiting eyes'
-ratification). One standing constraint applies to all pipeline work: F1 blocks
+**What is open, and what is blocked.** **Slice 9i is DONE and PASSED** (2026-09-07,
+0.5x on the PR #66 preview): the ruled remedy is **C-UNION** — per-lap S/F
+loop-crossing anchors union pit-span brackets, both WITHHELD for a car carrying a
+declined displacement — chosen table-first from four simulated candidates under a
+pre-registered held-out scheme, with every shipped asset byte-identical to its
+scored simulation. Held-out placement on pitting cars fell from 19.6–47.6 m to
+10.6–15.7 m; the pass graded **VER 97% / HAM 85% / NOR unchanged (declined by
+design)**, ranking **VER < HAM < NOR** holding — those percentages are the new
+re-watch baseline. Two slices are open, both filed by that pass: **9j — attribute
+HAM's residual pit-entry zigzag** (read-only attribution first: cancellation-seam
+residual vs 9i's own anchor noise vs unknown; 85% is the number to beat, 97% the
+target) and **16 — draw the pit lane any car in the file uses** (the ribbon comes
+from `cars[0]`, so Monza's pit cycle shows LEC and NOR pitting on an undrawn
+lane). **Nothing is blocked.** The datacentre-IP constraint on `build_replay.py`
+stands (see CLAUDE.md Gotchas). One standing constraint applies to all pipeline work: F1 blocks
 datacentre IPs from live timing, so `build_replay.py` runs only from the human's home
 network (see CLAUDE.md Gotchas).
 
-**What happens next.** The human's 0.5x browser pass on all three scenarios closes
-Slice 9i: all three rain pit entries against the 2026-08-13 severity baseline
-(**VER < HAM < NOR**), finale and Monza checked for no visible regression since
-every asset changed, the pre-registered expectations in the PLAN entry (including
-the accepted NOR-pair S/F gap regression) judged by eyes. A pass merges the slice;
-any numeric miss triggers the pre-registered mechanical revert. After 9i comes
+**What happens next.** The next session implements **Slice 9j** in the
+instrument-first order: read-only attribution of HAM's remaining zigzag (the 9h-b
+cancellation seams, 9i's own anchor noise, or something new), and the attribution
+decides the remedy — nothing is designed before it. After 9j: **Slice 16** (the
+pit lane drawn for any car that uses it — an app render slice that deliberately
+re-baselines the drawcall captures), then the backlog's fixture asymmetry
+overhaul. After 9i comes
 the backlog's headline item, the **fixture asymmetry overhaul** (four recorded
 instances of the symmetric fixture hiding defect classes — Slice 14 worked around the
 same limitation again by putting its asymmetry in test tables rather than the fixture).
