@@ -20,6 +20,16 @@
   --c-throttle: #29e07a;
   --c-brake: #ff3b47;
   --c-drs: #2ec8ff;
+  /* Tyre compounds, the standard F1 colours. Deliberately NOT reusing --c-brake
+     and --c-accent even though they sit near soft-red and medium-yellow: a
+     compound is not a brake, and retuning one must not silently repaint the
+     other. UNKNOWN has no token — it renders in --c-dim, the same achromatic
+     "we don't know" the pipeline's fallback colour uses. */
+  --c-tyre-soft: #ff2d2d;
+  --c-tyre-medium: #ffd12e;
+  --c-tyre-hard: #f0f3f8;
+  --c-tyre-inter: #3ad55f;
+  --c-tyre-wet: #2e7bff;
 }
 
 body {

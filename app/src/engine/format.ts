@@ -92,6 +92,27 @@ export function formatGap(seconds: number | null, lapsDown: number): string {
 }
 
 /**
+ * The lap indicator as the transport bar shows it: `LAP 52`.
+ *
+ * A number, never a car — see `leaderLap`. The caller hides the indicator when
+ * there is no answer, so this takes a real lap; it does not spell `NO_VALUE`.
+ */
+export function formatLapIndicator(lap: number): string {
+  return `LAP ${lap}`;
+}
+
+/**
+ * A tyre set's age as the readout says it: `12 laps` (or `1 lap`).
+ *
+ * `null` is a real state — the stint's starting age is unknown — and it renders
+ * as `NO_VALUE` rather than as a zero that would read as a fresh set.
+ */
+export function formatTyreAge(age: number | null): string {
+  if (age === null || !Number.isFinite(age)) return NO_VALUE;
+  return `${age} lap${age === 1 ? "" : "s"}`;
+}
+
+/**
  * The same gap as ground, in whole metres.
  *
  * UNSIGNED: it always carries the same sign as the seconds beside it, and printing it

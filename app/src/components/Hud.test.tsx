@@ -133,6 +133,82 @@ describe("Hud DRS indicator (rule 8)", () => {
   });
 });
 
+describe("Hud tyre indicators (Slice 14, rule 8 shape)", () => {
+  /** The fixture carrying a lap table and one stint — clock 12.4 sits in lap 48. */
+  const tyreReplay = (
+    compound = "SOFT",
+    ageAtStart: number | null = 12, // null = "age unknown": the field is omitted
+  ): Replay => {
+    const raw = JSON.parse(JSON.stringify(sampleLap));
+    raw.cars[0].laps = [{ number: 48, startT: 0 }];
+    raw.cars[0].stints = [
+      ageAtStart === null
+        ? { compound, fromLap: 48, toLap: 48 }
+        : { compound, fromLap: 48, toLap: 48, ageAtStart },
+    ];
+    return parseReplay(raw, "tyres.json");
+  };
+
+  it("renders the compound dot with an ACCESSIBLE NAME, not colour alone", () => {
+    const { container } = renderHud(tyreReplay());
+    // The sr-only text is the information; the coloured dot is a mark.
+    expect(screen.getByText("SOFT tyres")).toBeInTheDocument();
+    expect(container.querySelector(".bg-tyre-soft")).not.toBeNull();
+  });
+
+  it("maps every compound to ITS colour class — an inverted map fails here", () => {
+    const expected: Record<string, string> = {
+      SOFT: "bg-tyre-soft",
+      MEDIUM: "bg-tyre-medium",
+      HARD: "bg-tyre-hard",
+      INTERMEDIATE: "bg-tyre-inter",
+      WET: "bg-tyre-wet",
+      UNKNOWN: "bg-dim",
+    };
+    for (const [compound, cls] of Object.entries(expected)) {
+      cleanup();
+      telemetry.reset();
+      const { container } = renderHud(tyreReplay(compound));
+      expect(container.querySelector(`.${cls}`), compound).not.toBeNull();
+      // ...and none of the OTHER compound colours leak in.
+      for (const other of Object.values(expected)) {
+        if (other !== cls && other !== "bg-dim") {
+          expect(
+            container.querySelector(`.${other}`),
+            `${compound} shows ${other}`,
+          ).toBeNull();
+        }
+      }
+    }
+  });
+
+  it("shows the focused chip with the letter and the set's age", () => {
+    renderHud(tyreReplay("SOFT", 12));
+    expect(screen.getByText("S")).toBeInTheDocument();
+    expect(screen.getByText(/12 laps/)).toBeInTheDocument();
+  });
+
+  it("omits the age (never zeroes it) when the starting age is unknown", () => {
+    renderHud(tyreReplay("HARD", null));
+    expect(screen.getByText("H")).toBeInTheDocument();
+    expect(screen.queryByText(/laps/)).toBeNull();
+    expect(screen.queryByText(/^0/)).toBeNull();
+  });
+
+  it("renders NO tyre marks at all for a replay without tyre data", () => {
+    // Every pre-Slice-14 file. Not a grey dot — nothing.
+    const { container } = renderHud(replay);
+    expect(container.querySelector('[class*="tyre-"]')).toBeNull();
+    expect(screen.queryByText(/tyres/)).toBeNull();
+  });
+
+  it("keys off the DATA, not the year — same fixture year either way", () => {
+    expect(tyreReplay().meta.year).toBe(replay.meta.year);
+    renderHud(replay);
+    expect(screen.queryByText(/tyres/)).toBeNull();
+  });
+});
+
 describe("Hud speed trace", () => {
   /** The fixture's lap repeated six times: 3510 samples, 351 s — a long open window. */
   const longReplay: Replay = (() => {

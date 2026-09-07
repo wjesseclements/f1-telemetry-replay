@@ -155,7 +155,17 @@ as a Zod schema; the loader validates against it; the Python pipeline emits it.
         // `drs` carries the RAW FastF1 code (12 here), decoded by engine/drs.ts.
         { "t": 0.0, "x": 0, "y": 0, "speed": 0,
           "throttle": 0, "brake": 0, "gear": 1, "drs": 12 }
-      ]
+      ],
+      // Slice 14, ADDITIVE within schemaVersion 1 (default [] when absent): laps
+      // intersecting the window and the tyre stints over them, from the FastF1
+      // lap table. `startT` is replay-relative seconds and MAY BE NEGATIVE on the
+      // first entry (a non-reference car's lap-in-progress at the window start).
+      // `compound` is an enum: SOFT/MEDIUM/HARD/INTERMEDIATE/WET plus in-band
+      // UNKNOWN (the pipeline maps unrecognised compounds to it; the loader
+      // rejects arbitrary strings). `ageAtStart` is laps ALREADY COMPLETED on
+      // the set (TyreLife - 1) and is omitted — never zeroed — when unknown.
+      "laps": [ { "number": 48, "startT": 0.0 } ],
+      "stints": [ { "compound": "SOFT", "fromLap": 48, "toLap": 48, "ageAtStart": 10 } ]
     }
   ]
 }

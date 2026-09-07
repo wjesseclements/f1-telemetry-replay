@@ -252,10 +252,51 @@ def parked_telemetry(
     }
 
 
-def window_car(driver: str, telemetry: "dict[str, np.ndarray]") -> WindowCar:
+#: Synthetic LAP TABLES, as the plain columns `lap_context` takes:
+#: `(numbers, starts_s, lap_times_s, compounds, tyre_lives)` on the session axis.
+#: Deliberately UNLIKE each other (the fixture-asymmetry lesson):
+#:
+#: * AAA — three laps, of which the first ends before the window opens (pinning the
+#:   intersection filter), the second is IN PROGRESS at the window start (pinning
+#:   the negative `startT`), and the third begins mid-window on a different
+#:   compound — so the golden carries a two-stint car with a mid-window change.
+#: * BBB — one lap with a missing LapTime (a retirement: the lap never ended in the
+#:   data) and a missing TyreLife, so the golden records what `ageAtStart` omission
+#:   actually emits rather than what it is assumed to.
+#: * CCC — no lap table at all (`window_car`'s default): the golden keeps the
+#:   fully-absent path — empty `laps`/`stints` — alive in the cross-language
+#:   contract.
+SESSION_LAP_TABLES = {
+    "AAA": (
+        [11, 12, 13],
+        [1004.5, 1024.5, 1044.5],
+        [20.0, 20.0, 20.0],
+        ["MEDIUM", "MEDIUM", "SOFT"],
+        [5.0, 6.0, 1.0],
+    ),
+    "BBB": ([12], [1030.2], [math.nan], ["HARD"], [math.nan]),
+}
+
+#: The single-lap tables for the two v1 goldens, same column order. `lap-drs` is the
+#: plain path (a known compound, a known age); `lap-nodrs` carries a compound the
+#: pipeline cannot recognise plus a missing TyreLife, so the UNKNOWN mapping and the
+#: age omission are pinned cross-language by a committed file.
+LAP_TABLE_DRS = ([7], [0.0], [3.0], ["SOFT"], [3.0])
+LAP_TABLE_NODRS = ([7], [0.0], [3.0], [None], [math.nan])
+
+
+def window_car(
+    driver: str,
+    telemetry: "dict[str, np.ndarray]",
+    laps=(),
+    stints=(),
+) -> WindowCar:
     """Wrap telemetry with a driver's identity, using the fixed synthetic teams."""
     team, color = TEAMS[driver]
-    return WindowCar(driver=driver, team=team, color=color, telemetry=telemetry)
+    return WindowCar(
+        driver=driver, team=team, color=color, telemetry=telemetry,
+        laps=laps, stints=stints,
+    )
 
 
 def session_distance_m(start: float, end: float, offset_s: float = 0.0) -> float:

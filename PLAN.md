@@ -2976,18 +2976,175 @@ are for.
   remainders are explicitly 9i's, not an unexplained miss. Expected severity
   ranking unchanged: **VER < HAM < NOR.**
 
-### [ ] Slice 14 — Laps and tyres (stub — plan in its own session)
+### [x] Slice 14 — Laps and tyres
 
-**Ordered ahead of Slice 9i (2026-09-07).** A stub so STATUS.md and this ledger agree
-on the order; the slice is planned when its session starts, and nothing here
-pre-commits a design.
+**The two things every comparable replay shows and this app lacked, carried as data
+rather than painted on.** Per car: `laps: [{number, startT}]` and `stints:
+[{compound, fromLap, toLap, ageAtStart?}]`, from the FastF1 lap table the pipeline
+already reads at `resolve_lap_window` and never touched. The finale scenario's whole
+drama (HAM softs vs VER hards) was invisible before this; its manifest hook promised
+a tyre story the data could not tell.
 
-- Surface lap context and tyre state for a v2 window: which lap each car is on, and
-  tyre compound/age, sourced from FastF1's lap data through the pipeline.
-- To be decided at planning time: exact scope, where it renders (HUD/tower), and the
-  schema impact — additive within `schemaVersion` 1 with optional fields (the Slice 8
-  precedent) or a justified bump. Tyre data is season-dependent; the Indicators rule
-  (CLAUDE.md rule 8) applies — the app never branches on year.
+- Schema: `COMPOUNDS` enum + two per-car fields in `CarSchema`, cross-field
+  refinements in its existing `superRefine`. Engine: `laps.ts` (`lapAt`,
+  `leaderLap`) and `tyres.ts` (`stintForLap`, `stintAt`, `tyreAge`, `tyreStateAt`,
+  `compoundLetter`), both 100% covered; `format.ts` gains `formatLapIndicator` and
+  `formatTyreAge`. Pipeline: pure `lap_context` + `stint_report` in
+  `replay_transform.py`, column extraction only in `build_replay.py`. UI: LAP
+  readout in `TransportBar`, compound dot per tower row, compound chip + age in the
+  focused readout, five `--c-tyre-*` tokens.
+- **Amendment — additive within `schemaVersion` 1 with `.default([])`, argued
+  against `meta.loop` rather than asserted.** The loop doctrine says `.default()`
+  is right when the default means the same as absence; an empty array means exactly
+  what absence means — "this replay carries no lap/tyre data" — so every existing
+  file, the fixture, and the goldens stay valid, `z.infer` keeps the parsed fields
+  required, and the engine branches on `length`, never `undefined`. A version bump
+  would have invalidated every file on disk to describe nothing new (Slice 8's
+  argument verbatim).
+- **Amendment — the compound enum degrades at the EMITTER, not the loader.**
+  `COMPOUNDS` = the 2024-era five plus in-band `UNKNOWN`. The pipeline maps
+  anything unrecognised (HYPERSOFT, test codes, NaN) to `UNKNOWN` and prints it in
+  the report; the schema then rejects arbitrary strings exactly as `LOOP_MODES`
+  rejects a typo. A 2018 session loads (UNKNOWN chips, `--c-dim` grey — the
+  achromatic-fallback precedent); a hand-mangled file fails loudly; no year branch
+  anywhere (rule 8).
+- **Amendment — a closed single-lap file carries one lap and one stint.** The file
+  IS one lap of a real session; its number and the set it was run on are facts (a
+  quali lap on used softs is a different lap from one on new). `startT` 0.0 by
+  construction. The indicator reads the same lap on every wrap — correct, the data
+  is one lap replayed, stated in `TransportBar`'s header so it is not filed as a bug.
+- **Amendment — `startT` may be NEGATIVE on the first entry, and real data does it
+  everywhere.** The window is the reference driver's lap range; another car's
+  lap-in-progress at t0 began before it, and the true value is emitted (a clamp
+  would lie about when the lap started). All six non-reference car-windows in the
+  gallery carry one.
+- **Amendment — the lap indicator is `leaderLap` = max lap across cars, in the
+  transport bar (user-confirmed in-session).** Not the tower's first row: the
+  running order lives inside `Hud` as local state, and lifting it out means a
+  second gap computation or a 30 Hz store write (rule-1 friction). The max lap is a
+  pure function of replay + clock, needs neither, and IS the race leader whenever
+  the number differs. It is a NUMBER, never a car — ties (the normal case) are not
+  broken, and an out-of-range lap would display honestly, not clamp. `TransportBar`
+  already subscribes at 30 Hz, so the indicator costs zero new subscriptions.
+- **Amendment — `lapAt` HOLDS the last lap after the last known start
+  (user-confirmed).** No lap-end times are carried, and a retired or
+  partial-coverage car honestly stopped ON that lap; returning `null` would blank a
+  dot and chip that were true a moment earlier. Pinned by a dedicated test;
+  `leaderLap` unaffected (a held lap cannot outrun live leaders).
+- **Amendment — `ageAtStart` = TyreLife − 1, measured rather than assumed.**
+  FastF1's TyreLife counts the lap in progress — a fresh set's first lap reads 1,
+  verified on 2024 Silverstone R (VER's lap-39 hards, FreshTyre=True, TyreLife=1) —
+  while the displayed age counts laps COMPLETED. Omitted (never zeroed) when
+  TyreLife is NaN: an unknown age is not a fresh set.
+- **Amendment — stint boundaries are inferred from Compound + TyreLife reset, and
+  the inference was verified against FastF1's own `Stint` column.** A new stint
+  starts where the compound changes or TyreLife fails to grow (a fresh set of the
+  same compound — STR's HARD age 19 → HARD age 2 in the 19-car window is the real
+  case). The independent survey below, grouped by the `Stint` column instead,
+  produced identical boundaries on all nine car-windows.
+- **Amendment — the tower row gets a DOT, the readout gets the chip, and the dot
+  carries an accessible name (user-required).** The `CarEntry` width-surrender
+  order is quoted law: a dot claims ~8px without displacing `gap_m`; a lettered
+  chip would compete with it. The dot is `aria-hidden` with an sr-only
+  "`<COMPOUND>` tyres" beside it inside the row's button, so the compound folds
+  into the row's accessible name — colour is a mark, never the information. An
+  inverted compound→colour map fails a dedicated test that checks every compound
+  against its own class and the absence of the others.
+- **Amendment — five new `--c-tyre-*` tokens; `--c-brake`/`--c-accent` NOT reused**
+  even though they sit near soft-red and medium-yellow: a compound is not a brake,
+  and retuning one must not repaint the other. Not added to `palette.ts` `TOKENS`
+  (the canvas never draws them), which is also what keeps the drawcall digests
+  untouchable by construction.
+- **Amendment — `CarSnapshot` and `displaySignature` are UNTOUCHED, with the
+  mechanical test consulted rather than assumed.** Laps and tyres are functions of
+  (replay, clock) exactly like Slice 9d's gaps — derived per HUD tick in
+  `Hud`/`TransportBar`, never published through the channel. The signature's
+  `floor(clock*1000)` term already forces an emit whenever the answer could change;
+  paused, nothing changes, which is also correct. The Hud signature-coupling suites
+  bind only if `CarSnapshot` gains fields, and it gains none — "displaySignature
+  gains exactly what renders" is satisfied by a zero-line diff.
+- **Amendment — `hud-tick.mjs` cannot see this slice's tick work, and that is
+  reported rather than papered over.** The instrument measures the trace half
+  (`buildTraceWindow`); the tyre derivation lives in the React half, which only the
+  browser probe sees (the 9e precedent, PLAN 1638-40). hud-tick was run anyway as
+  the trace-path no-regression check: 19.0 → 18.7 µs/tick mean on the 19-car file,
+  unchanged within noise. The per-tick cost added is 19 × (binary search over ≤7
+  laps + ≤2 stints) — arithmetic, not measurable at this scale.
+- **Amendment — O(log n) argued over rule 3's O(1), and over a scan.** The O(1)
+  rule targets the per-frame 60 fps sample path; these lookups run at ≤30 Hz over
+  at most ~80 entries, where a precomputed per-grid-sample index buys nothing
+  measurable. A linear scan is foreclosed because rule 3 is phrased absolutely;
+  the predecessor search is the `timeAtProgress` idiom.
+- **Amendment — the finale hook's "fresher softs" was CONTRADICTED by the data and
+  corrected, loudly.** HAM's softs are age 10 at lap 48; VER's hards are age 8 —
+  HAM's advantage is compound, not freshness. The hook now reads "softs against
+  hards". A page whose own chips would disprove its copy was not shippable; the
+  survey wins over prose (the measurement-contradicts-plan rule).
+- **The survey table (2026-09-07, FastF1 cache, read-only, independent arithmetic —
+  grouped by the `Stint` column, ages as TyreLife−1).** No such table existed
+  anywhere in the repo before this slice; it is the reference the browser pass is
+  scored against, written BEFORE that pass:
+
+  | window | car | laps in window | stints (age at first in-window lap) |
+  |---|---|---|---|
+  | finale (HAM 48-52) | HAM | 48-52 | SOFT L48-52 age 10 |
+  | | VER | 47-52 | HARD L47-52 age 8 |
+  | | NOR | 47-52 | SOFT L47-52 age 9 |
+  | rain (HAM 24-28) | HAM | 24-28 | MEDIUM L24-27 age 23 · INTER L28 age 0 |
+  | | NOR | 24-29 | MEDIUM L24-27 age 23 · INTER L28-29 age 0 |
+  | | VER | 23-28 | MEDIUM L23-26 age 22 · INTER L27-28 age 0 |
+  | Monza (VER 13-19) | VER | 13-19 | HARD L13-19 age 12 |
+  | | LEC | 13-19 | MEDIUM L13-15 age 12 · HARD L16-19 age 0 |
+  | | NOR | 13-19 | MEDIUM L13-14 age 12 · HARD L15-19 age 0 |
+
+  The pipeline's `tyre stints:` report lines match this table cell for cell, and
+  the rain window carries the INTERMEDIATE switch mid-window (VER at his lap 27,
+  HAM/NOR at 28) — the acceptance criterion written into the slice.
+
+- **Verified (2026-09-07):**
+  - `npm run check` green with **0 warnings** (`grep -ciE 'warn|error'` over the
+    full log = 0): **622 tests** (up from 572), engine coverage 100% per file
+    including the new `laps.ts` and `tyres.ts`. `pytest` green: **220 tests** (up
+    from 197), `replay_transform.py` **100% lines + branches** held.
+  - **Goldens refreshed and reviewed: 66 insertions, 0 deletions** — only
+    `laps`/`stints` keys appear; every `samples` array byte-identical. The three
+    cars stay unlike (AAA mid-window compound change with negative `startT` −18.0,
+    BBB ageless HARD on a lap that never ended, CCC no lap data at all), and the
+    two lap goldens split SOFT-with-age against the UNKNOWN mapping.
+    `pipelineContract.test.ts` pins the same shapes from the app side.
+  - **Drawcall md5s identical in both modes**, captured before touching a file and
+    re-captured after: closed `04506b72…`, open `0aea33a3…`. The canvas is
+    untouched.
+  - **hud-tick no-regression** (scope caveat above): 19.012 → 18.714 µs/tick mean,
+    p95 23.958 → 24.333, on `monza_full_field.json`, 6000 ticks.
+  - **All four real assets regenerated** (home network, verified working same day)
+    and each differs from its committed predecessor ONLY by the new keys —
+    `meta`, `track`, and every car's `samples` byte-equal, checked structurally
+    against `git show HEAD:`. Gallery total 4.09 MB (+2.7 KB) against the 6 MB
+    budget; `monza_full_field.json` rebuilt in its original uncompacted form
+    (9.99 MB) so the Slice 12 load baseline stays comparable. Every build's
+    position screening matched the known state, NOR's declined 41.7 m rain
+    relocation included — Slice 9i inherits it unchanged.
+  - The 19-car report line surfaced the real-data edge cases the synthetic
+    fixtures encode: SAI's mid-window stop (MEDIUM → HARD age 0) and STR's
+    same-compound fresh set (HARD age 19 → HARD age 2).
+- **Browser pass — PRE-REGISTERED, PENDING (no Chrome extension was connected to
+  the session; the checks are written before any eyes on them):**
+  - fps-probe on `monza_full_field.json` (production preview, visible tab) vs the
+    Slice 12 baseline: expect cb mean ≈ 0.97 ms, p95 ≤ ~2.2 ms family, >20 ms = 0 —
+    nothing per-frame changed, so any regression is a finding.
+  - Finale scenario tells the survey's story: LAP 48 at the suggested clock,
+    LAP 52 at the window end; HAM SOFT chip age 10→14, VER HARD 8→13, NOR SOFT
+    9→14; red/red/white dots in the tower.
+  - Rain scenario: every dot flips MEDIUM-yellow → INTER-green mid-window, VER
+    first (his lap 27), fresh-set ages reading 0 — not before clock ~380 s.
+  - 19-car tower legible with dots at 19 rows, and **HARD-white vs UNKNOWN-grey
+    distinguishable at dot size on the dark panel** — compared side by side via
+    `public/data/finale-unknown-dot.json` (NOR forced UNKNOWN, schema-validated).
+    If they read the same, that is a FINDING for the human's eyes, never a silent
+    retune.
+  - **375px width** — below the 412px record, the tower's first true mobile look;
+    screenshots to `docs/screenshots/slice-14-*`.
 
 ### [ ] Slice 9i — the global fraction mapping drifts, and pit stops are where
 

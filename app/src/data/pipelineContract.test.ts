@@ -151,6 +151,32 @@ describe("pipeline output against the schema", () => {
     expect(new Set(paths).size).toBe(replay.cars.length);
   });
 
+  it("carries each car's lap context through the schema, absence included", () => {
+    // Slice 14's fields, across the goldens' deliberately unlike cars: a
+    // mid-window compound change with a NEGATIVE first startT (the lap was in
+    // progress at the window start), a stint whose age is unknown and stays
+    // absent, a car with no lap data whose fields parse to [], and the UNKNOWN
+    // compound mapping surviving both languages.
+    const race = parseReplay(readGolden(RACE), RACE);
+    const [aaa, bbb, ccc] = race.cars;
+
+    expect(aaa.laps.map((lap) => lap.number)).toEqual([12, 13]);
+    expect(aaa.laps[0].startT).toBeLessThan(0);
+    expect(aaa.stints.map((s) => s.compound)).toEqual(["MEDIUM", "SOFT"]);
+    expect(bbb.stints).toEqual([{ compound: "HARD", fromLap: 12, toLap: 12 }]);
+    expect(bbb.stints[0].ageAtStart).toBeUndefined();
+    expect(ccc.laps).toEqual([]);
+    expect(ccc.stints).toEqual([]);
+
+    const lap = parseReplay(readGolden(WITH_DRS), WITH_DRS).cars[0];
+    expect(lap.laps).toEqual([{ number: 7, startT: 0 }]);
+    expect(lap.stints).toEqual([
+      { compound: "SOFT", fromLap: 7, toLap: 7, ageAtStart: 2 },
+    ]);
+    const unknown = parseReplay(readGolden(WITHOUT_DRS), WITHOUT_DRS).cars[0];
+    expect(unknown.stints[0].compound).toBe("UNKNOWN");
+  });
+
   it("computes a real start/finish angle rather than a hard-coded zero", () => {
     const replay = parseReplay(readGolden(WITH_DRS), WITH_DRS);
     const { startFinish } = replay.track;

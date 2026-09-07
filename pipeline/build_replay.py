@@ -73,10 +73,12 @@ from replay_transform import (
     color_lookup_warning,
     fix_rejection_report,
     frame_repair_report,
+    lap_context,
     reject_impossible_fixes,
     repair_frame_displacements,
     dump_json,
     parse_lap_range,
+    stint_report,
     time_base_stretch,
     motion_fidelity,
     window_car_report,
@@ -160,11 +162,29 @@ def build_lap_replay(year, gp, session_id, driver, cache_dir=".f1cache"):
         rotation=float(circuit.rotation),
     )
 
+    # The lap context of a single closed lap: its own span, zero-based like its
+    # samples. `total_seconds()` can meet a NaT on exotic data; the context then
+    # degrades (see `lap_context`) rather than failing a fetch over a label.
+    try:
+        lap_time_s = float(lap["LapTime"].total_seconds())
+    except (AttributeError, ValueError):
+        lap_time_s = math.nan
+    car_laps, car_stints = lap_context(
+        [int(lap["LapNumber"])],
+        [0.0],
+        [lap_time_s],
+        [lap.get("Compound")],
+        [lap.get("TyreLife", math.nan)],
+        (0.0, lap_time_s if math.isfinite(lap_time_s) else math.inf),
+    )
+
     replay = build_replay_dict(
         telemetry,
         meta,
         corners=[row for _, row in circuit.corners.iterrows()],
         rate=SAMPLE_RATE_HZ,
+        laps=car_laps,
+        stints=car_stints,
     )
     # Reported so the numbers behind the emitted time base are visible: what the
     # telemetry recorded, and how much had to be added to close the loop. Both are
@@ -247,6 +267,31 @@ def _session_seconds(column):
     return column.dt.total_seconds().to_numpy()
 
 
+def _lap_context_for(laps, window):
+    """
+    A driver's `(laps, stints)` for `window`, from their lap table.
+
+    Pure column extraction — the derivation itself is `replay_transform.lap_context`,
+    where it is testable. Compound/TyreLife may be absent in exotic sessions; absence
+    degrades per column (UNKNOWN compounds, ages omitted), never fatally.
+    """
+    n = len(laps)
+    compounds = laps["Compound"].tolist() if "Compound" in laps.columns else [None] * n
+    lives = (
+        laps["TyreLife"].to_numpy(dtype=float)
+        if "TyreLife" in laps.columns
+        else [math.nan] * n
+    )
+    return lap_context(
+        laps["LapNumber"].to_numpy(dtype=float).astype(int),
+        _session_seconds(laps["LapStartTime"]),
+        _session_seconds(laps["LapTime"]),
+        compounds,
+        lives,
+        window,
+    )
+
+
 def _driver_window_telemetry(session, driver, t0, t1):
     """
     One driver's telemetry over `[t0, t1]` session seconds, on the SHARED axis.
@@ -294,7 +339,15 @@ def _driver_window_telemetry(session, driver, t0, t1):
     telemetry["Time"] = covered
 
     team, color = _team_and_color(session, laps, driver)
-    car = WindowCar(driver=str(driver), team=team, color=color, telemetry=telemetry)
+    car_laps, car_stints = _lap_context_for(laps, (t0, t1))
+    car = WindowCar(
+        driver=str(driver),
+        team=team,
+        color=color,
+        telemetry=telemetry,
+        laps=car_laps,
+        stints=car_stints,
+    )
     return car, (float(covered[0]), float(covered[-1]))
 
 
@@ -484,6 +537,14 @@ def report_window(replay, window, cars, coverage, compact: bool = False) -> None
             f"  Check the source telemetry before using this replay.\n"
         )
 
+    # What was actually WRITTEN, read back off the replay dict rather than
+    # recomputed, so the report and the file cannot disagree. A strange session —
+    # UNKNOWN compounds, missing ages, a car with no lap data — announces itself
+    # on these lines instead of in somebody's browser.
+    print("  tyre stints:")
+    for car in replay["cars"]:
+        print("  " + stint_report(car["driver"], car["laps"], car["stints"]))
+
     size_mb = len(dump_json(replay, compact=compact)) / 1e6
     print(f"  estimated file size: {size_mb:.1f} MB")
     if size_mb > 20.0:
@@ -626,6 +687,8 @@ def _run_lap(args) -> int:
     )
     print("position screening:")
     print(frame_repair_report(args.driver, repair))
+    print("tyre stints:")
+    print(stint_report(args.driver, data["cars"][0]["laps"], data["cars"][0]["stints"]))
     # The tripwire for the case the synthetic tests can only simulate: telemetry that
     # leaves more than a whole grid step unrecorded (or runs more than one past the
     # line). Beyond that the closing chord is no longer a rounding correction — the

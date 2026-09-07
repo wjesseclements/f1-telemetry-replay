@@ -15,13 +15,13 @@
         "session": "2024 British Grand Prix \u00b7 Race",
         "laps": "24-28",
         "drivers": ["HAM", "NOR", "VER"],
-        "generated": "2026-08-08"
+        "generated": "2026-09-07"
       }
     },
     {
       "id": "silverstone-2024-finale",
       "title": "Silverstone 2024 \u00b7 the last laps",
-      "hook": "Hamilton holding Verstappen off on fresher softs, with Norris in range.",
+      "hook": "Hamilton holding Verstappen off, softs against hards, with Norris in range.",
       "file": "silverstone-2024-finale.json",
       "suggested": {
         "driver": "HAM",
@@ -32,7 +32,7 @@
         "session": "2024 British Grand Prix \u00b7 Race",
         "laps": "48-52",
         "drivers": ["HAM", "VER", "NOR"],
-        "generated": "2026-08-08"
+        "generated": "2026-09-07"
       }
     },
     {
@@ -49,7 +49,7 @@
         "session": "2024 Italian Grand Prix \u00b7 Race",
         "laps": "13-19",
         "drivers": ["VER", "LEC", "NOR"],
-        "generated": "2026-08-08"
+        "generated": "2026-09-07"
       }
     }
   ]

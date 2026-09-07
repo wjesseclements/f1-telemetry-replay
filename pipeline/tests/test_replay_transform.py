@@ -47,9 +47,14 @@ from replay_transform import (
     IMPOSSIBLE_MIN_STEP_M,
     forward_fill,
     interp_continuous,
+    lap_context,
     normalise_brake,
     normalise_color,
+    normalise_compound,
     parse_lap_range,
+    stint_report,
+    KNOWN_COMPOUNDS,
+    UNKNOWN_COMPOUND,
     resample_positions_by_travel,
     source_times,
     time_base_stretch,
@@ -2414,3 +2419,235 @@ def test_a_repaired_car_reaches_the_emitted_path_through_both_builders():
     # spans the oval it was generated from.
     assert ys.max() < clean.max() + 200.0
     assert ys.min() > clean.min() - 200.0
+
+
+# --- lap context: laps, stints, and the report line (Slice 14) --------------------
+
+
+def test_normalise_compound_passes_the_named_set_and_maps_the_rest_to_unknown():
+    for name in KNOWN_COMPOUNDS:
+        assert normalise_compound(name) == name
+        assert normalise_compound(name.lower()) == name
+    for junk in ("HYPERSOFT", "TEST_UNKNOWN", "", None, float("nan"), 3):
+        assert normalise_compound(junk) == UNKNOWN_COMPOUND
+
+
+def _table():
+    """The synthetic AAA lap table, spread for readability."""
+    return synthetic.SESSION_LAP_TABLES["AAA"]
+
+
+def test_lap_context_keeps_only_laps_intersecting_the_window():
+    laps, _ = lap_context(*_table(), (1042.5, 1046.5))
+    # Lap 11 ends at 1024.5, before the window opens; laps 12 and 13 intersect.
+    assert [lap["number"] for lap in laps] == [12, 13]
+
+
+def test_lap_context_rebases_startT_onto_the_window_and_keeps_it_negative():
+    laps, _ = lap_context(*_table(), (1042.5, 1046.5))
+    # Lap 12 began 18.0 s before the window: the TRUE value is emitted, because a
+    # clamp to zero would lie about when the lap started (see LapSchema).
+    assert laps[0]["startT"] == -18.0
+    assert laps[1]["startT"] == 2.0
+
+
+def test_lap_context_rounds_startT_like_a_sample_t():
+    laps, _ = lap_context([1], [1000.12345], [20.0], ["SOFT"], [1.0], (1000.0, 1030.0))
+    assert laps[0]["startT"] == 0.123
+
+
+def test_lap_context_splits_stints_on_compound_change():
+    _, stints = lap_context(*_table(), (1042.5, 1046.5))
+    assert stints == [
+        {"compound": "MEDIUM", "fromLap": 12, "toLap": 12, "ageAtStart": 5},
+        {"compound": "SOFT", "fromLap": 13, "toLap": 13, "ageAtStart": 0},
+    ]
+
+
+def test_lap_context_splits_stints_on_a_tyrelife_reset_within_one_compound():
+    # A soft-to-fresh-soft stop never changes the compound; the reset in TyreLife
+    # (4 -> 1) is the only evidence a new set was fitted.
+    _, stints = lap_context(
+        [20, 21, 22, 23],
+        [0.0, 20.0, 40.0, 60.0],
+        [20.0, 20.0, 20.0, 20.0],
+        ["SOFT", "SOFT", "SOFT", "SOFT"],
+        [3.0, 4.0, 1.0, 2.0],
+        (0.0, 80.0),
+    )
+    assert stints == [
+        {"compound": "SOFT", "fromLap": 20, "toLap": 21, "ageAtStart": 2},
+        {"compound": "SOFT", "fromLap": 22, "toLap": 23, "ageAtStart": 0},
+    ]
+
+
+def test_lap_context_age_is_tyrelife_minus_one_and_never_negative():
+    # TyreLife counts the lap in progress (a fresh set's first lap reads 1 —
+    # verified on 2024 Silverstone R), so the displayed age of laps COMPLETED is
+    # life - 1. A zero TyreLife, seen on some out-laps, must not emit -1.
+    _, stints = lap_context(
+        [1], [0.0], [20.0], ["MEDIUM"], [0.0], (0.0, 20.0)
+    )
+    assert stints[0]["ageAtStart"] == 0
+
+
+def test_lap_context_omits_age_when_tyrelife_is_missing():
+    _, stints = lap_context(*synthetic.SESSION_LAP_TABLES["BBB"], (1042.5, 1046.5))
+    assert stints == [{"compound": "HARD", "fromLap": 12, "toLap": 12}]
+    assert "ageAtStart" not in stints[0]
+
+
+def test_lap_context_grows_a_stint_across_consecutive_laps():
+    _, stints = lap_context(
+        [30, 31, 32],
+        [0.0, 20.0, 40.0],
+        [20.0, 20.0, 20.0],
+        ["HARD", "HARD", "HARD"],
+        [10.0, 11.0, 12.0],
+        (0.0, 60.0),
+    )
+    assert stints == [{"compound": "HARD", "fromLap": 30, "toLap": 32, "ageAtStart": 9}]
+
+
+def test_lap_context_uses_the_next_start_when_a_lap_time_is_missing():
+    # Lap 5's LapTime is NaT but lap 6 starts at 20.0, so lap 5 ends there — before
+    # this window opens — and only lap 6 is kept.
+    laps, _ = lap_context(
+        [5, 6],
+        [0.0, 20.0],
+        [math.nan, 20.0],
+        ["SOFT", "SOFT"],
+        [1.0, 2.0],
+        (25.0, 40.0),
+    )
+    assert [lap["number"] for lap in laps] == [6]
+
+
+def test_lap_context_keeps_a_final_lap_that_never_ended():
+    # A retirement: the last lap has no LapTime and no successor. The car was still
+    # on it, so it stays.
+    laps, stints = lap_context(
+        [12], [1030.2], [math.nan], ["HARD"], [math.nan], (1042.5, 1046.5)
+    )
+    assert [lap["number"] for lap in laps] == [12]
+    assert laps[0]["startT"] == -12.3
+
+
+def test_lap_context_drops_laps_with_no_start_time():
+    laps, _ = lap_context(
+        [1, 2, 3],
+        [0.0, math.nan, 40.0],
+        [20.0, 20.0, 20.0],
+        ["SOFT", "SOFT", "SOFT"],
+        [1.0, 2.0, 3.0],
+        (0.0, 60.0),
+    )
+    assert [lap["number"] for lap in laps] == [1, 3]
+
+
+def test_lap_context_returns_empty_for_a_window_no_lap_touches():
+    laps, stints = lap_context(*_table(), (2000.0, 2010.0))
+    assert laps == [] and stints == []
+
+
+def test_lap_context_rejects_mismatched_columns():
+    with pytest.raises(TelemetryShapeError, match="disagree"):
+        lap_context([1, 2], [0.0], [20.0], ["SOFT"], [1.0], (0.0, 20.0))
+
+
+def test_lap_context_rejects_an_unsorted_lap_table():
+    with pytest.raises(TelemetryShapeError, match="strictly increasing"):
+        lap_context(
+            [2, 1],
+            [0.0, 20.0],
+            [20.0, 20.0],
+            ["SOFT", "SOFT"],
+            [1.0, 2.0],
+            (0.0, 40.0),
+        )
+    with pytest.raises(TelemetryShapeError, match="strictly increasing"):
+        lap_context(
+            [1, 2],
+            [20.0, 0.0],
+            [20.0, 20.0],
+            ["SOFT", "SOFT"],
+            [1.0, 2.0],
+            (0.0, 40.0),
+        )
+
+
+def test_stint_report_prints_the_window_and_the_age_span():
+    laps, stints = lap_context(*_table(), (1042.5, 1046.5))
+    line = stint_report("AAA", laps, stints)
+    assert line == "  AAA: laps 12-13 · L12-12 MEDIUM age 5->5 · L13-13 SOFT age 0->0"
+
+
+def test_stint_report_announces_unknown_age_and_unknown_compound_by_name():
+    line = stint_report(
+        "BBB",
+        [{"number": 12, "startT": -12.3}],
+        [{"compound": "UNKNOWN", "fromLap": 12, "toLap": 12}],
+    )
+    assert "UNKNOWN" in line
+    assert "age unknown" in line
+
+
+def test_stint_report_says_no_lap_data_rather_than_printing_nothing():
+    # Silence is indistinguishable from a column that was never read.
+    assert stint_report("CCC", [], []) == "  CCC: no lap data"
+
+
+def test_stint_report_spans_a_multi_lap_stint_age_arithmetically():
+    line = stint_report(
+        "VER",
+        [{"number": 48, "startT": 0.0}, {"number": 52, "startT": 80.0}],
+        [{"compound": "HARD", "fromLap": 48, "toLap": 52, "ageAtStart": 9}],
+    )
+    assert "L48-52 HARD age 9->13" in line
+
+
+def test_stint_report_names_missing_stint_data_next_to_real_laps():
+    line = stint_report("DEV", [{"number": 3, "startT": 0.0}], [])
+    assert line == "  DEV: laps 3-3 · no stint data"
+
+
+def test_build_replay_dict_emits_lap_context_and_defaults_it_empty():
+    laps, stints = lap_context(*synthetic.LAP_TABLE_DRS, (0.0, 3.0))
+    with_context = build_replay_dict(
+        synthetic.telemetry(), synthetic.META, laps=laps, stints=stints
+    )
+    car = with_context["cars"][0]
+    assert car["laps"] == [{"number": 7, "startT": 0.0}]
+    assert car["stints"] == [
+        {"compound": "SOFT", "fromLap": 7, "toLap": 7, "ageAtStart": 2}
+    ]
+
+    bare = build_replay_dict(synthetic.telemetry(), synthetic.META)
+    assert bare["cars"][0]["laps"] == []
+    assert bare["cars"][0]["stints"] == []
+
+
+def test_window_cars_carry_their_own_lap_context_per_car():
+    start = synthetic.SESSION_T0
+    window = (start, start + 4.0)
+    laps, stints = lap_context(*synthetic.SESSION_LAP_TABLES["AAA"], window)
+    replay = build_window_replay_dict(
+        [
+            synthetic.window_car(
+                "AAA", synthetic.session_telemetry(start, window[1]),
+                laps, stints,
+            ),
+            synthetic.window_car(
+                "BBB", synthetic.session_telemetry(start, window[1], offset_s=1.5)
+            ),
+        ],
+        synthetic.SESSION_META,
+        window,
+        corners=synthetic.CORNERS,
+    )
+    aaa, bbb = replay["cars"]
+    # A per-car fact stays per-car: AAA's context does not leak onto BBB, and the
+    # car without one still emits the keys, empty.
+    assert [lap["number"] for lap in aaa["laps"]] == [12, 13]
+    assert len(aaa["stints"]) == 2
+    assert bbb["laps"] == [] and bbb["stints"] == []

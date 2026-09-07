@@ -3,6 +3,16 @@
     {
       "color": "#3671C6",
       "driver": "AAA",
+      "laps": [
+        {
+          "number": 12,
+          "startT": -18.0
+        },
+        {
+          "number": 13,
+          "startT": 2.0
+        }
+      ],
       "samples": [
         {
           "brake": 0,
@@ -415,11 +425,31 @@
           "y": 678.8
         }
       ],
+      "stints": [
+        {
+          "ageAtStart": 5,
+          "compound": "MEDIUM",
+          "fromLap": 12,
+          "toLap": 12
+        },
+        {
+          "ageAtStart": 0,
+          "compound": "SOFT",
+          "fromLap": 13,
+          "toLap": 13
+        }
+      ],
       "team": "Alpha Racing"
     },
     {
       "color": "#F91536",
       "driver": "BBB",
+      "laps": [
+        {
+          "number": 12,
+          "startT": -12.3
+        }
+      ],
       "samples": [
         {
           "brake": 0,
@@ -832,11 +862,19 @@
           "y": 799.5
         }
       ],
+      "stints": [
+        {
+          "compound": "HARD",
+          "fromLap": 12,
+          "toLap": 12
+        }
+      ],
       "team": "Beta Racing"
     },
     {
       "color": "#FF8000",
       "driver": "CCC",
+      "laps": [],
       "samples": [
         {
           "brake": 1,
@@ -1249,6 +1287,7 @@
           "y": -200.0
         }
       ],
+      "stints": [],
       "team": "Gamma Racing"
     }
   ],

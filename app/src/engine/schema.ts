@@ -33,6 +33,26 @@ export const LOOP_MODES = ["closed", "open"] as const;
 /** Speed is km/h everywhere: the engine's thermal color stops are km/h-calibrated. */
 export const SPEED_UNIT = "km/h";
 
+/**
+ * Tyre compounds, 2024-era, plus `"UNKNOWN"` as an in-band member.
+ *
+ * The degradation contract for compounds the pipeline does not recognise
+ * (historical HYPERSOFT/ULTRASOFT, test-session codes, missing data) is that the
+ * PIPELINE maps them to `"UNKNOWN"` and says so in its report — the loader then
+ * rejects arbitrary strings exactly as `LOOP_MODES` rejects a typo. So a strange
+ * season still loads (as UNKNOWN, rendered neutrally), while a hand-mangled file
+ * still fails loudly. Season-dependence never reaches the app (CLAUDE.md rule 8):
+ * the UI only ever looks at what the data carries.
+ */
+export const COMPOUNDS = [
+  "SOFT",
+  "MEDIUM",
+  "HARD",
+  "INTERMEDIATE",
+  "WET",
+  "UNKNOWN",
+] as const;
+
 const MetaSchema = z.object({
   schemaVersion: z.literal(SCHEMA_VERSION, {
     error: `replay.meta.schemaVersion must be ${SCHEMA_VERSION}; regenerate the JSON with a matching pipeline`,
@@ -101,6 +121,31 @@ const SampleSchema = z.object({
   drs: z.number().int().optional(),
 });
 
+const LapSchema = z.object({
+  /** The session's lap number — real, not window-relative. */
+  number: z.number().int().positive(),
+  /**
+   * Replay-relative seconds at which this lap began. MAY BE NEGATIVE for the
+   * first entry: a v2 window is the reference driver's lap range, and another
+   * car's lap-in-progress at the window start began before it. The pipeline
+   * emits the true value; clamping would lie about when the lap started.
+   */
+  startT: z.number(),
+});
+
+const StintSchema = z.object({
+  compound: z.enum(COMPOUNDS),
+  fromLap: z.number().int().positive(),
+  toLap: z.number().int().positive(),
+  /**
+   * Laps already on this tyre set at the stint's first in-window lap (FastF1
+   * `TyreLife`, which counts other sessions' use of a used set). OPTIONAL:
+   * absent means the age is unknown, which is not the same as zero — the UI
+   * shows the compound without an age rather than inventing a fresh set.
+   */
+  ageAtStart: z.number().int().nonnegative().optional(),
+});
+
 const CarSchema = z
   .object({
     driver: z.string().min(1),
@@ -112,6 +157,18 @@ const CarSchema = z
     samples: z.array(SampleSchema).min(2, {
       error: "a car needs at least 2 samples to interpolate between",
     }),
+    /**
+     * Laps intersecting the replay window, in order. ADDITIVE within
+     * schemaVersion 1 with `.default([])`, per the `meta.loop` doctrine: an
+     * empty array means exactly what absence means — "this replay carries no
+     * lap data" — so every file written before the field existed still
+     * validates and still behaves identically, while `z.infer` makes the
+     * parsed value REQUIRED and the engine branches on `length`, never on
+     * `undefined` (the `carHasDrs` shape).
+     */
+    laps: z.array(LapSchema).default([]),
+    /** Tyre stints over `laps`, in order. Same additive contract as `laps`. */
+    stints: z.array(StintSchema).default([]),
   })
   .superRefine((car, ctx) => {
     // Time must be sorted: interpolation and seek assume it. Unsorted or duplicate
@@ -137,6 +194,51 @@ const CarSchema = z
         path: ["samples"],
         message: `drs must be present on every sample or none: ${withDrs} of ${car.samples.length} samples carry it`,
       });
+    }
+    // Laps are looked up by predecessor search on startT, so both orderings are
+    // load-bearing: unsorted startT mis-answers the search, and unsorted numbers
+    // would show laps counting backwards.
+    for (let i = 1; i < car.laps.length; i++) {
+      const prev = car.laps[i - 1];
+      const cur = car.laps[i];
+      if (cur.startT <= prev.startT || cur.number <= prev.number) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["laps", i],
+          message: `laps must be strictly increasing in number and startT: lap ${cur.number} (startT=${cur.startT}) does not follow lap ${prev.number} (startT=${prev.startT})`,
+        });
+        break; // one issue is enough to reject; don't flood the error message
+      }
+    }
+    // Stints are located via the lap table (stintAt goes through lapAt), so a
+    // stint without laps is unreachable data — pipeline drift, rejected loudly.
+    if (car.stints.length > 0 && car.laps.length === 0) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["stints"],
+        message:
+          "stints without laps are unreachable: a stint is located via the lap table",
+      });
+    }
+    // Each stint spans an ordered, non-overlapping lap range.
+    for (let i = 0; i < car.stints.length; i++) {
+      const stint = car.stints[i];
+      if (stint.toLap < stint.fromLap) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["stints", i],
+          message: `stint ${i} runs from lap ${stint.fromLap} to lap ${stint.toLap}, which is backwards`,
+        });
+        break;
+      }
+      if (i > 0 && stint.fromLap <= car.stints[i - 1].toLap) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["stints", i],
+          message: `stints must be ordered and non-overlapping: stint ${i} starts at lap ${stint.fromLap} but the previous stint runs to lap ${car.stints[i - 1].toLap}`,
+        });
+        break;
+      }
     }
   });
 
@@ -214,5 +316,9 @@ export type Track = Replay["track"];
 export type Corner = Track["corners"][number];
 export type Car = Replay["cars"][number];
 export type Sample = Car["samples"][number];
+export type Lap = Car["laps"][number];
+export type Stint = Car["stints"][number];
+/** One of `COMPOUNDS` — 2024-era names plus in-band `"UNKNOWN"`. */
+export type Compound = Stint["compound"];
 /** `"closed"` (a lap) or `"open"` (a session-time window). See `LOOP_MODES`. */
 export type LoopMode = Meta["loop"];

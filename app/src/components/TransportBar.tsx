@@ -10,8 +10,21 @@
  * loop's ref and this component cannot reach it, which is the point — `seek` is a
  * request the loop applies exactly, so the UI never has to know where the clock is in
  * order to move it.
+ *
+ * THE LAP INDICATOR, AND WHOSE LAP IT IS
+ * --------------------------------------
+ * `leaderLap` — the highest lap any car is on — not the tower's first row. The
+ * running order lives inside `Hud` (local state, hysteresis and all), and lifting it
+ * out would mean a second gap computation here or a 30 Hz store write; the max lap is
+ * a pure function of the replay and the clock, needs neither, and IS the race leader
+ * whenever the number differs. It is a NUMBER, never a car: ties are the normal case
+ * and are not broken, and a number past the window's advertised range would display
+ * honestly rather than clamp. Hidden entirely when no car carries lap data, so every
+ * pre-Slice-14 file renders this bar exactly as before. On a closed single-lap file
+ * it reads the same lap on every wrap — correct: the data is one lap, replayed.
  */
-import { formatLapTime } from "../engine/format";
+import { formatLapIndicator, formatLapTime } from "../engine/format";
+import { leaderLap } from "../engine/laps";
 import type { Replay } from "../engine/schema";
 import { useTransport } from "../store/transport";
 import { useTelemetry } from "../telemetry/useTelemetry";
@@ -32,6 +45,7 @@ export function TransportBar({ replay }: TransportBarProps) {
   const seek = useTransport((s) => s.seek);
 
   const { duration, sampleRateHz } = replay.meta;
+  const lap = leaderLap(replay, clock);
 
   return (
     <section
@@ -62,6 +76,15 @@ export function TransportBar({ replay }: TransportBarProps) {
       <output className="font-mono text-xs tabular-nums text-txt">
         {formatLapTime(clock)}
       </output>
+
+      {/* See the header: leaderLap's number, or nothing at all for a replay
+          with no lap data. An <output> like the clock beside it — it is the
+          same kind of transport-derived readout. */}
+      {lap !== null && (
+        <output className="font-mono text-xs font-bold tabular-nums tracking-wider text-txt">
+          {formatLapIndicator(lap)}
+        </output>
+      )}
 
       {/* The scrubber is the one control that needs length rather than room. It takes
           the leftover width on a wide bar and a full row of its own once the bar
