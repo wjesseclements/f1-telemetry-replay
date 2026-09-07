@@ -3270,14 +3270,32 @@ ledger's open defect slice; STATUS.md is updated in this PR accordingly.
   control at all with no car-count branch anywhere (rule 2). The dash on the overlay
   is the non-colour channel and the legend names both drivers in text, so colour
   never carries the information alone.
+- **Amendment — the first browser pass (2026-09-07, Vercel preview) blocked the merge
+  on two legibility findings, both fixed as principles rather than patches.**
+  (1) The "vs" control was borderless grey text and could not be found: it is now a
+  bordered pill in the DRS pill's shape, pressed state in the accent tone.
+  (2) Red Bull's navy overlay nearly vanished on `--c-bg`: the comparison colour now
+  passes through `floorLuminance` (`app/src/engine/color.ts:211` — a closed-form mix
+  toward white in linear-light space, where luminance is linear, so the fraction that
+  lands exactly on the floor is `t = (floor − L₀)/(1 − L₀)`; bright colours pass
+  byte-for-byte), and the line is fully opaque at a width above the old 0.75@65%.
+  The focused line stays most prominent by continuity and z-order (solid, on top),
+  not weight. **The two knobs are tunable `COMET_SECONDS`-style:
+  `COMPARISON_STROKE_WIDTH` and `COMPARISON_MIN_LUMINANCE` at
+  `app/src/engine/trace.ts:79-80`** — 0.25 is a measured ≥5.5:1 contrast against
+  `--c-bg` (luminance ≈ 0.004). One value feeds line and legend swatch alike.
 - **Pre-registered browser acceptance (human):** finale scenario, HAM focused, VER
   compared — the two traces overlaid through a full lap, the softs' gain visible;
   toggling off restores today's trace exactly; 375px layout reconfigures and stays
   usable with the "vs" buttons present; screenshots to `docs/screenshots/slice-15-*`.
+  **Re-check after the legibility fixes:** the "vs" pill findable at a glance, the
+  VER overlay clearly readable against the background, focused line still dominant.
 - **Verified (2026-09-07):**
-  - `npm run check` green: typecheck, lint, format, 639 tests (622 → 639), engine
-    coverage 100% lines/branches/functions, build. Full-log warning grep
-    (`grep -ciE 'warn|error'`): **0**.
+  - `npm run check` green: typecheck, lint, format, 650 tests (622 → 639 at the
+    first review, → 650 after the legibility fixes: `floorLuminance` /
+    `relativeLuminance` units and the dark-colour overlay test), engine coverage
+    100% lines/branches/functions, build. Full-log warning grep
+    (`grep -ciE 'warn|error'`): **0**, re-confirmed after the fixes.
   - **Drawcall md5s identical both modes**, captured BEFORE the first edit and after
     the last: closed `04506b72f177b7447ecb7d230998d506`, open
     `0aea33a376958344b1be15033399e8ec` — the canvas is untouched.

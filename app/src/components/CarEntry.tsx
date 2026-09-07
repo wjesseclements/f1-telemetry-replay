@@ -54,10 +54,11 @@
  * because self-comparison is meaningless, and that absence is what makes a single-car
  * file show no compare control at all: its one row is always focused, so requirement
  * "nothing to compare" falls out of the `focused` branch that already exists, with no
- * count branch anywhere (rule 2). Against the width-surrender list it claims ~20px of
- * the row's right edge, ahead of nothing on the list — flagged for the 375px browser
- * pass rather than guessed. Its visible text "vs" is contained in its accessible name
- * "vs {driver}" (WCAG 2.5.3, same rule as the gap digits).
+ * count branch anywhere (rule 2). It is a bordered pill in the DRS pill's shape —
+ * the first cut was borderless grey text and the browser pass could not find it —
+ * claiming ~30px of the row's right edge, ahead of nothing on the width-surrender
+ * list. Its visible text "vs" is contained in its accessible name "vs {driver}"
+ * (WCAG 2.5.3, same rule as the gap digits).
  */
 import { carHasDrs, isDrsOpen } from "../engine/drs";
 import {
@@ -192,16 +193,19 @@ export function CarEntry({
             </span>
           )}
         </button>
+        {/* The DRS pill's shape (border always visible, state = border+text tone) —
+            the browser pass found the borderless grey text unfindable. Pressed goes
+            accent, the same "this one is live" tone as the Focus tag. */}
         {!focused && (
           <button
             type="button"
             onClick={onCompare}
             aria-pressed={compared}
             aria-label={`vs ${car.driver}`}
-            className={`shrink-0 rounded border px-1 font-mono text-[10px] uppercase tracking-wider ${
+            className={`shrink-0 self-center rounded border px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-widest ${
               compared
-                ? "border-line bg-panel2 text-txt"
-                : "border-transparent text-dim hover:border-line"
+                ? "border-accent bg-panel2 text-accent"
+                : "border-line text-dim hover:border-dim hover:text-txt"
             } ${FOCUS_RING}`}
           >
             vs

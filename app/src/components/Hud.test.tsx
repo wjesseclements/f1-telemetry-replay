@@ -13,6 +13,11 @@ import { parseReplay } from "../engine/load";
 import type { CarSnapshot } from "../engine/interpolate";
 import type { Replay } from "../engine/schema";
 import { NO_VALUE } from "../engine/format";
+import { floorLuminance } from "../engine/color";
+import {
+  COMPARISON_MIN_LUMINANCE,
+  COMPARISON_STROKE_WIDTH,
+} from "../engine/trace";
 import { useTransport } from "../store/transport";
 import { displaySignature, telemetry } from "../telemetry/channel";
 import { Hud } from "./Hud";
@@ -746,11 +751,14 @@ describe("Hud speed-trace comparison", () => {
     expect(useTransport.getState().comparisonCarIndex).toBe(1);
     const [overlay, focused] = tracePaths();
     expect(tracePaths()).toHaveLength(2);
-    // The overlay: SEC's team colour, thinner, dimmer, dashed — the dash being the
+    // The overlay: SEC's team colour (bright enough to pass the luminance floor
+    // untouched), fully opaque at the tunable width, dashed — the dash being the
     // channel that survives colour-blindness.
     expect(overlay.getAttribute("stroke")).toBe("#ff8000");
-    expect(overlay.getAttribute("stroke-width")).toBe("0.75");
-    expect(overlay.getAttribute("stroke-opacity")).toBe("0.65");
+    expect(overlay.getAttribute("stroke-width")).toBe(
+      String(COMPARISON_STROKE_WIDTH),
+    );
+    expect(overlay.getAttribute("stroke-opacity")).toBeNull();
     expect(overlay.getAttribute("stroke-dasharray")).toBe("3 2");
     expect(overlay.getAttribute("d")).not.toBe("");
     // The focused line is untouched by the overlay's arrival.
@@ -760,6 +768,40 @@ describe("Hud speed-trace comparison", () => {
       "aria-pressed",
       "true",
     );
+  });
+
+  it("floors a dark team colour to the trace's minimum luminance — the browser-pass fix", () => {
+    // Red Bull's navy (#3671C6, luminance ≈ 0.17) vanished on --c-bg; the overlay
+    // must stroke the LIFTED colour, and the legend swatch must agree with the line.
+    const darkReplay: Replay = (() => {
+      const raw = JSON.parse(JSON.stringify(sampleLap));
+      const n = raw.cars[0].samples.length;
+      raw.cars.push({
+        ...raw.cars[0],
+        driver: "SEC",
+        team: "Second Team",
+        color: "#3671C6",
+        samples: raw.cars[0].samples.map((s: { t: number }, k: number) => ({
+          ...raw.cars[0].samples[(k + SHIFT) % n],
+          t: s.t,
+        })),
+      });
+      return parseReplay(raw, "dark.json");
+    })();
+    const lifted = floorLuminance("#3671C6", COMPARISON_MIN_LUMINANCE);
+    expect(lifted).not.toBe("#3671C6"); // the fixture really exercises the floor
+
+    renderTower(4, atSample(20), darkReplay);
+    fireEvent.click(screen.getByRole("button", { name: "vs SEC" }));
+
+    const [overlay] = tracePaths();
+    expect(overlay.getAttribute("stroke")).toBe(lifted);
+    const legendLines = screen
+      .getByRole("img", { name: /compared with SEC/ })
+      .closest("figure")
+      ?.querySelectorAll("svg[aria-hidden] line");
+    expect(legendLines).toHaveLength(2);
+    expect(legendLines?.[1].getAttribute("stroke")).toBe(lifted);
   });
 
   it("labels the pair and shows a legend naming both drivers in text", () => {

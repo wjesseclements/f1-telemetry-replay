@@ -18,6 +18,8 @@ import {
   THERMAL,
   bucketColor,
   bucketOf,
+  floorLuminance,
+  relativeLuminance,
   speedColor,
   speedRgb,
   thermalGradientCss,
@@ -275,5 +277,70 @@ describe("thermalGradientCss", () => {
     for (let i = 1; i < pcts.length; i++) {
       expect(pcts[i]).toBeGreaterThan(pcts[i - 1]);
     }
+  });
+});
+
+describe("relativeLuminance", () => {
+  it("anchors at black 0 and white 1", () => {
+    expect(relativeLuminance("#000000")).toBe(0);
+    expect(relativeLuminance("#ffffff")).toBeCloseTo(1, 10);
+  });
+
+  it("matches the hand-computed WCAG value for a mid colour", () => {
+    // #ff8000: 0.2126·1 + 0.7152·linear(128) + 0.0722·0 — worked by hand.
+    expect(relativeLuminance("#ff8000")).toBeCloseTo(0.367, 3);
+    // Red Bull's blue, the colour the Slice 15 browser pass caught vanishing.
+    expect(relativeLuminance("#3671C6")).toBeCloseTo(0.1667, 3);
+  });
+
+  it("expands 3-digit hex the way CSS does", () => {
+    expect(relativeLuminance("#fff")).toBeCloseTo(1, 10);
+    expect(relativeLuminance("#f80")).toBeCloseTo(
+      relativeLuminance("#ff8800"),
+      10,
+    );
+  });
+});
+
+describe("floorLuminance", () => {
+  it("returns a bright colour VERBATIM — team identity preserved where it reads", () => {
+    expect(floorLuminance("#ff8000", 0.25)).toBe("#ff8000");
+  });
+
+  it("lifts black exactly to the floor, hand-computed", () => {
+    // t = 0.25, every linear channel 0.25 → sRGB 137 = 0x89.
+    expect(floorLuminance("#000000", 0.25)).toBe("#898989");
+    expect(relativeLuminance("#898989")).toBeCloseTo(0.25, 2);
+  });
+
+  it("lands a dark team colour ON the floor, not merely above black", () => {
+    const lifted = floorLuminance("#3671C6", 0.25);
+    expect(lifted).not.toBe("#3671C6");
+    expect(relativeLuminance(lifted)).toBeCloseTo(0.25, 2);
+  });
+
+  it("never darkens: output luminance >= input luminance", () => {
+    for (const hex of ["#000000", "#3671C6", "#ff8000", "#ffffff", "#048"]) {
+      expect(
+        relativeLuminance(floorLuminance(hex, 0.25)),
+      ).toBeGreaterThanOrEqual(relativeLuminance(hex) - 1e-9);
+    }
+  });
+
+  it("accepts the schema's 3-digit form and returns 6-digit hex", () => {
+    const lifted = floorLuminance("#048", 0.25);
+    expect(lifted).toMatch(/^#[0-9a-f]{6}$/);
+    expect(relativeLuminance(lifted)).toBeCloseTo(0.25, 2);
+  });
+
+  it("treats a colour exactly at the floor as already passing", () => {
+    const at = relativeLuminance("#ff8000");
+    expect(floorLuminance("#ff8000", at)).toBe("#ff8000");
+  });
+
+  it("encodes through the sRGB curve's linear segment near black", () => {
+    // t = 0.001: every linear channel 0.001 ≤ 0.0031308, so the encode takes the
+    // ×12.92 leg — 0.001 · 12.92 · 255 = 3.29 → 3. Hand-computed like the rest.
+    expect(floorLuminance("#000000", 0.001)).toBe("#030303");
   });
 });

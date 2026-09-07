@@ -19,14 +19,20 @@
  * their own axes would make equal heights mean unequal speeds. The union still only
  * changes when the pair changes (a click), so the axis never breathes per tick.
  *
- * The overlay is dashed as well as team-coloured and dimmer: the dash is the channel a
+ * The overlay is dashed as well as team-coloured: the dash is the channel a
  * colour-blind viewer keeps, and the legend binds each style to a driver code in text.
+ * Its colour is floored to `COMPARISON_MIN_LUMINANCE` and its width is
+ * `COMPARISON_STROKE_WIDTH` — both tunable in `engine/trace.ts`; the focused line
+ * stays the most prominent by continuity and z-order (solid, drawn on top).
  * With no comparison the markup is exactly the single-line trace it always was — no
  * legend, the same label — which is what keeps a single-car file looking like today.
  */
 import { useMemo } from "react";
+import { floorLuminance } from "../engine/color";
 import {
   buildTraceWindow,
+  COMPARISON_MIN_LUMINANCE,
+  COMPARISON_STROKE_WIDTH,
   speedRange,
   unionRange,
   TRACE_H,
@@ -67,8 +73,7 @@ function LegendEntry({
           x2={16}
           y2={2}
           stroke={color}
-          strokeWidth={dashed ? 0.75 : 1}
-          strokeOpacity={dashed ? 0.65 : 1}
+          strokeWidth={dashed ? COMPARISON_STROKE_WIDTH : 1}
           strokeDasharray={dashed ? "3 2" : undefined}
           vectorEffect="non-scaling-stroke"
         />
@@ -120,6 +125,13 @@ export function SpeedTrace({
   // absolute speed — the readout's number is what says absolute.
   const spanS = Math.round(endS - startS);
 
+  // Team colour, lifted to the trace's minimum luminance when the livery is too dark
+  // for `--c-bg` (Slice 15 browser pass: Red Bull's navy vanished). One value feeds
+  // both the line and the legend swatch, so they cannot disagree.
+  const overlayColor = comparisonCar
+    ? floorLuminance(comparisonCar.color, COMPARISON_MIN_LUMINANCE)
+    : null;
+
   const label = comparisonCar
     ? `Speed trace for ${car.driver} compared with ${comparisonCar.driver}, the last ${spanS} seconds, ${range.minKmh} to ${range.maxKmh} km/h over the replay`
     : `Speed trace for ${car.driver}, the last ${spanS} seconds, ${range.minKmh} to ${range.maxKmh} km/h over the replay`;
@@ -137,13 +149,12 @@ export function SpeedTrace({
         aria-label={label}
       >
         {/* Under the focused line and the playhead: the overlay is context, not focus. */}
-        {comparisonCar && comparisonPath !== null && (
+        {overlayColor !== null && comparisonPath !== null && (
           <path
             d={comparisonPath}
             fill="none"
-            stroke={comparisonCar.color}
-            strokeWidth={0.75}
-            strokeOpacity={0.65}
+            stroke={overlayColor}
+            strokeWidth={COMPARISON_STROKE_WIDTH}
             strokeDasharray="3 2"
             vectorEffect="non-scaling-stroke"
           />
@@ -167,7 +178,7 @@ export function SpeedTrace({
           vectorEffect="non-scaling-stroke"
         />
       </svg>
-      {comparisonCar && (
+      {comparisonCar && overlayColor !== null && (
         <div className="mt-1 flex gap-3 font-mono text-[10px] tracking-wider text-dim">
           <LegendEntry
             driver={car.driver}
@@ -176,7 +187,7 @@ export function SpeedTrace({
           />
           <LegendEntry
             driver={comparisonCar.driver}
-            color={comparisonCar.color}
+            color={overlayColor}
             dashed
           />
         </div>
