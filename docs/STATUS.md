@@ -15,10 +15,11 @@ focused readout, all additive within `schemaVersion` 1. Quality state at the las
 merge: `npm run check` green with 622 tests and 0 warnings, 220 pytest with
 `replay_transform.py` at 100% lines + branches, drawcall md5s unchanged on both
 render modes, every regenerated asset byte-identical to its predecessor outside the
-two new keys. **Two pre-registered browser passes are pending**: 9h-b's rain re-watch
-at 0.5x, and Slice 14's (fps-probe, the finale tyre story against its survey table,
-the HARD-white vs UNKNOWN-grey dot check, and a first-ever 375px pass) — both written
-in their PLAN entries before any eyes on them.
+two new keys. **Both pre-registered browser passes are done (2026-09-07, one
+sitting): PASS.** Slice 14's pass confirmed the finale tyre story against its survey
+table, the first-ever 375px layout, and the HARD-white vs UNKNOWN-grey dot
+distinction; 9h-b's rain re-watch at 0.5x held its prediction — severity ranking
+**VER < HAM < NOR** unchanged, which is the baseline Slice 9i re-ranks against.
 
 **What is open, and what is blocked.** One slice is open: **9i — the global fraction
 mapping drifts, and pit stops are where** (placement error 31–149 m for every car that

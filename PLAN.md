@@ -2975,6 +2975,11 @@ are for.
   attributed — the 7.6 m residual at 1.9 m per seam, plus F3's drift — and both
   remainders are explicitly 9i's, not an unexplained miss. Expected severity
   ranking unchanged: **VER < HAM < NOR.**
+- **Re-watch DONE (2026-09-07, human, 0.5x, in the same sitting as Slice 14's
+  pass): the pre-registration HELD.** VER smooth (control unchanged); HAM less
+  smooth than VER but no worse than 9h's pass; NOR still worst. Severity ranking
+  observed **VER < HAM < NOR**, matching the prediction — 9i's baseline to
+  re-rank against stands as written.
 
 ### [x] Slice 14 — Laps and tyres
 
@@ -3135,8 +3140,12 @@ a tyre story the data could not tell.
   cancelled the whole preview). It now diffs `VERCEL_GIT_PREVIOUS_SHA..HEAD` limited
   to `app/`, and every failure mode (first deploy, var absent, sha outside the
   shallow clone) exits non-zero, which Vercel reads as BUILD — the safe direction.
-- **Browser pass — PRE-REGISTERED, PENDING (no Chrome extension was connected to
-  the session; the checks are written before any eyes on them):**
+- **Browser pass — DONE (2026-09-07, human, on the PR #63 Vercel preview): PASS on
+  every pre-registered item.** Reported specifics: lap counter visible; tyre dots
+  and chips correct against the survey (HAM SOFT, VER HARD, NOR SOFT); the 375px
+  layout reconfigures and stays usable; the UNKNOWN grey dot IS distinguishable
+  from the HARD white dot at dot size, so no retune was needed. The items as
+  pre-registered before the pass:
   - fps-probe on `monza_full_field.json` (production preview, visible tab) vs the
     Slice 12 baseline: expect cb mean ≈ 0.97 ms, p95 ≤ ~2.2 ms family, >20 ms = 0 —
     nothing per-frame changed, so any regression is a finding.
