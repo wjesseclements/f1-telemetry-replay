@@ -588,3 +588,36 @@ describe("parseReplay — trackStatus", () => {
     expect(parseReplay(ok).trackStatus).toEqual(INTERVALS);
   });
 });
+
+describe("parseReplay — retiredAt (Slice 9l)", () => {
+  it("defaults to absent — never retired is the unmarked state", () => {
+    expect(sampleLap.cars[0]).not.toHaveProperty("retiredAt");
+    expect(parseReplay(sampleLap).cars[0].retiredAt).toBeUndefined();
+  });
+
+  it("accepts a retirement inside the window, zero included", () => {
+    const ok = clone();
+    ok.cars[0].retiredAt = 30.5;
+    expect(parseReplay(ok).cars[0].retiredAt).toBe(30.5);
+    // 0 is a real value — retired at the window's first instant — which is
+    // exactly why absence is spelled `.optional()` and never defaulted to it.
+    ok.cars[0].retiredAt = 0;
+    expect(parseReplay(ok).cars[0].retiredAt).toBe(0);
+  });
+
+  it("rejects a negative retirement and a null one", () => {
+    const bad = clone();
+    bad.cars[0].retiredAt = -1;
+    expectRejection(bad);
+    bad.cars[0].retiredAt = null;
+    expectRejection(bad);
+  });
+
+  it("rejects a retirement past the window's end, naming the car", () => {
+    const bad = clone();
+    bad.cars[0].retiredAt = 60; // fixture duration is 58.5
+    const err = expectRejection(bad);
+    expect(err.message).toContain("retires at 60");
+    expect(err.message).toContain("meta.duration");
+  });
+});

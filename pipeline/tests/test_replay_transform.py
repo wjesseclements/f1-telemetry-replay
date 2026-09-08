@@ -65,6 +65,11 @@ from replay_transform import (
     normalise_compound,
     parse_lap_range,
     map_status_code,
+    dead_feed_report,
+    detect_dead_feed,
+    freeze_telemetry,
+    ALIVE,
+    DeadFeedResult,
     status_report,
     stint_report,
     window_status_intervals,
@@ -3134,3 +3139,182 @@ def test_resample_channels_zeroes_garbage_gear_before_the_fill():
     }
     channels = resample_channels(src, t, telemetry)
     assert channels["gear"].tolist() == [3, 3, 0, 0]
+
+# --- the dead-feed screen (Slice 9l) ------------------------------------------------
+# Thresholds are corpus-calibrated (PLAN 9l: at a 20 s window NO live car in the
+# 52-car corpus qualifies at all; the one measured death drifts 14 km/h). These
+# tests pin the rule's mechanics on synthetic data with deliberately awkward shapes;
+# the corpus itself is the calibration evidence, re-checked by the byte-identical
+# rebuild of every 2024 window.
+
+
+def _feed(rows):
+    """Columns from (t, speed, throttle, brake) tuples."""
+    t, v, th, br = (np.array(x, dtype=float) for x in zip(*rows))
+    return t, v, th, br
+
+
+def _dead_rows(t_start, t_end, speed=160.0, step=0.25):
+    """A fabricating feed: pace held flat, pedals silent."""
+    return [(t, speed, 0.0, 0) for t in np.arange(t_start, t_end, step)]
+
+
+def _alive_rows(t_start, t_end, step=0.25):
+    """A live car: throttle working, speed varying."""
+    return [
+        (t, 200.0 + 60.0 * np.sin(t / 3.0), 80.0, 0)
+        for t in np.arange(t_start, t_end, step)
+    ]
+
+
+def test_dead_feed_fires_on_the_measured_signature_and_freezes_at_the_last_pedal():
+    rows = _alive_rows(0.0, 30.0) + _dead_rows(30.0, 90.0)
+    t, v, th, br = _feed(rows)
+    result = detect_dead_feed(t, v, th, br, (0.0, 90.0))
+    assert result.frozen and not result.declined
+    # The freeze is the last pedal-alive sample, not the trigger.
+    assert result.freeze_t == pytest.approx(29.75, abs=0.3)
+    assert result.trigger_t >= 30.0
+    assert result.drift == 0.0
+
+
+def test_dead_feed_ignores_short_lift_and_coast():
+    # 8 s of zero throttle at pace with real drag decay — ordinary racing.
+    coast = [(30.0 + k * 0.25, 250.0 - 4.0 * (k * 0.25), 0.0, 0) for k in range(32)]
+    rows = _alive_rows(0.0, 30.0) + coast + _alive_rows(38.0, 60.0)
+    t, v, th, br = _feed(rows)
+    assert detect_dead_feed(t, v, th, br, (0.0, 60.0)) .frozen is False
+
+
+def test_dead_feed_ignores_a_long_zero_throttle_stretch_that_decays_like_physics():
+    # 25 s of zero pedal but speed falling 250 -> 150: drift 100 km/h >> 25.
+    coast = [(30.0 + k * 0.25, 250.0 - 1.0 * k, 0.0, 0) for k in range(100)]
+    t, v, th, br = _feed(_alive_rows(0.0, 30.0) + coast)
+    assert detect_dead_feed(t, v, th, br, (0.0, 60.0)).frozen is False
+
+
+def test_dead_feed_ignores_flat_speed_below_the_pace_floor():
+    # Parked, grid-sitting and crawling cars are legitimate flat-speed data.
+    rows = _alive_rows(0.0, 20.0) + [(20.0 + k * 0.25, 0.0, 0.0, 0) for k in range(200)]
+    t, v, th, br = _feed(rows)
+    assert detect_dead_feed(t, v, th, br, (0.0, 70.0)).frozen is False
+
+
+def test_dead_feed_declines_when_the_pedals_come_back():
+    # Collapse-shaped stretch, then real throttle: a dropout that resumed.
+    rows = _alive_rows(0.0, 30.0) + _dead_rows(30.0, 55.0) + _alive_rows(55.0, 70.0)
+    t, v, th, br = _feed(rows)
+    result = detect_dead_feed(t, v, th, br, (0.0, 70.0))
+    assert result.declined and not result.frozen
+    assert result.trigger_t is not None
+
+
+def test_dead_feed_brake_counts_as_alive():
+    # Brake-only activity before the collapse moves the freeze point to it.
+    rows = (
+        _alive_rows(0.0, 28.0)
+        + [(28.5, 180.0, 0.0, 1), (29.0, 170.0, 0.0, 1)]
+        + _dead_rows(29.5, 80.0, speed=150.0)
+    )
+    t, v, th, br = _feed(rows)
+    result = detect_dead_feed(t, v, th, br, (0.0, 80.0))
+    assert result.frozen
+    assert result.freeze_t == pytest.approx(29.0, abs=0.01)
+
+
+def test_dead_feed_dead_from_the_first_row_freezes_at_window_start():
+    t, v, th, br = _feed(_dead_rows(100.0, 160.0))
+    result = detect_dead_feed(t, v, th, br, (100.0, 160.0))
+    assert result.frozen and result.freeze_t == 100.0
+
+
+def test_dead_feed_needs_real_row_coverage_not_row_counts():
+    # Four rows spanning 20 s is not 20 s of evidence.
+    rows = [(0.0, 160.0, 0.0, 0), (1.0, 160.0, 0.0, 0), (2.0, 161.0, 0.0, 0),
+            (30.0, 160.0, 0.0, 0)]
+    t, v, th, br = _feed(rows)
+    assert detect_dead_feed(t, v, th, br, (0.0, 30.0)).frozen is False
+
+
+def test_dead_feed_trigger_must_start_inside_the_window():
+    rows = _alive_rows(0.0, 30.0) + _dead_rows(30.0, 90.0)
+    t, v, th, br = _feed(rows)
+    # The window ends before the collapse begins: nothing to freeze here.
+    assert detect_dead_feed(t, v, th, br, (0.0, 25.0)).frozen is False
+
+
+def test_freeze_telemetry_truncates_and_appends_one_honest_rest_row():
+    telemetry = {
+        "Time": np.array([0.0, 0.5, 1.0, 1.5, 2.0]),
+        "Speed": np.array([100.0, 110.0, 120.0, 160.0, 160.0]),
+        "Throttle": np.array([50.0, 40.0, 2.0, 0.0, 0.0]),
+        "Brake": np.array([False, False, True, False, False]),
+        "nGear": np.array([5, 5, 5, 5, 5]),
+        "DRS": np.array([10, 10, 10, 10, 10]),
+        "X": np.array([0.0, 10.0, 20.0, 30.0, 40.0]),
+        "Y": np.array([0.0, 0.0, 0.0, 0.0, 0.0]),
+    }
+    out = freeze_telemetry(telemetry, 1.0)
+    assert out["Time"].tolist() == [0.0, 0.5, 1.0, 1.5]  # rest row one step later
+    assert out["Speed"].tolist()[-1] == 0
+    assert out["Throttle"].tolist()[-1] == 0
+    assert out["nGear"].tolist()[-1] == 0
+    # Position holds; DRS holds its last REAL value rather than being invented.
+    assert out["X"].tolist() == [0.0, 10.0, 20.0, 20.0]
+    assert out["DRS"].tolist()[-1] == 10
+    assert not out["Brake"].tolist()[-1]
+
+
+def test_freeze_telemetry_refuses_a_freeze_before_the_data():
+    with pytest.raises(ValueError, match="precedes every telemetry row"):
+        freeze_telemetry({"Time": np.array([5.0, 6.0])}, 1.0)
+
+
+def test_window_builder_freezes_a_dead_feed_and_emits_retiredAt():
+    start, end = 1042.5, 1102.5
+    healthy = synthetic.window_car("AAA", synthetic.session_telemetry(start, end))
+    # A car alive for 20 s, then fabricating for the rest of the window.
+    n = None
+    dead_t = np.arange(start, end, 0.2)
+    alive = dead_t < start + 20.0
+    tel = {
+        "Time": dead_t,
+        "Speed": np.where(alive, 150.0 + 50.0 * np.sin(dead_t), 140.0),
+        "Throttle": np.where(alive, 60.0, 0.0),
+        "Brake": np.zeros(len(dead_t), dtype=bool),
+        "nGear": np.full(len(dead_t), 6),
+        "X": np.cumsum(np.full(len(dead_t), 8.0)),
+        "Y": np.zeros(len(dead_t)),
+    }
+    dead = synthetic.window_car("BBB", tel)
+    replay = build_window_replay_dict(
+        [healthy, dead], synthetic.SESSION_META, (start, end)
+    )
+    cars = {c["driver"]: c for c in replay["cars"]}
+    assert "retiredAt" not in cars["AAA"]
+    assert "retiredAt" in cars["BBB"]
+    # The freeze is the last pedal-alive instant, window-relative.
+    assert cars["BBB"]["retiredAt"] == pytest.approx(19.8, abs=0.4)
+    # From the freeze on, the emitted car is parked: position frozen, speed 0.
+    samples = cars["BBB"]["samples"]
+    rate = replay["meta"]["sampleRateHz"]
+    frozen = samples[int((cars["BBB"]["retiredAt"] + 2.0) * rate):]
+    assert all(s["speed"] == 0 for s in frozen)
+    assert len({(s["x"], s["y"]) for s in frozen}) == 1
+    # The healthy car is untouched by its neighbour's death.
+    assert all(s["speed"] > 0 for s in cars["AAA"]["samples"][:10])
+
+
+def test_dead_feed_report_names_all_three_states():
+    frozen = DeadFeedResult(frozen=True, declined=False, freeze_t=174.6,
+                            trigger_t=191.0, drift=14.0)
+    line = dead_feed_report("LEC", frozen, t0=0.0)
+    assert "DEAD FEED" in line and "174.60" in line and "191.00" in line
+    assert "retiredAt emitted" in line
+
+    declined = DeadFeedResult(frozen=False, declined=True, freeze_t=None,
+                              trigger_t=50.0, drift=3.0)
+    line = dead_feed_report("XXX", declined, t0=10.0)
+    assert "DECLINED" in line and "40.00" in line and "dropout" in line
+
+    assert "no dead feed" in dead_feed_report("YYY", ALIVE)

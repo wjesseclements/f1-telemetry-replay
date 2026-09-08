@@ -46,8 +46,7 @@
           "ALO",
           "LEC"
         ],
-        "generated": "2026-09-08",
-        "note": "Known data artifact: LEC's telemetry fails at the Parabolica impact (~2:50 into the window). The half-lap ‘limp’ before his car halts is the dead feed, not the car — constant ~160 km/h with throttle stuck at zero — which stopped at the wall."
+        "generated": "2026-09-08"
       }
     },
     {

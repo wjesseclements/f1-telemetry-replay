@@ -71,6 +71,16 @@ export interface Scene {
   /** Car colours, in `replay.cars` order — parallel to the snapshot array. */
   carColors: readonly string[];
   /**
+   * The sample index at which each car's feed died (`retiredAt * sampleRateHz`),
+   * or `Infinity` for a car that never did. From this index the car is a parked
+   * dot with no trail: its samples all hold one position, so a trail would be
+   * zero-length segments stroked for nothing — and a wake is a statement of
+   * MOTION, which a dead car no longer makes. The marker still draws; the car
+   * is parked, not vanished. Precomputed here so the frame path compares two
+   * numbers and never learns what a retirement is (Slice 9l).
+   */
+  carRetiredIndex: readonly number[];
+  /**
    * How many segments an unfocused car's tail spans.
    *
    * Derived from `TAIL_SECONDS` and the grid rate here, once, so the tail is a
@@ -150,6 +160,11 @@ export function buildScene(replay: Replay): Scene {
     bounds: computeBounds(carPaths.flat()),
     rotationDeg: rotation,
     carColors: replay.cars.map((car) => car.color),
+    carRetiredIndex: replay.cars.map((car) =>
+      car.retiredAt === undefined
+        ? Infinity
+        : Math.round(car.retiredAt * replay.meta.sampleRateHz),
+    ),
     tailSegments: Math.max(
       1,
       Math.round(TAIL_SECONDS * replay.meta.sampleRateHz),
@@ -241,7 +256,11 @@ export function drawFrame(
     at[i * 2] = p.x;
     at[i * 2 + 1] = p.y;
 
-    if (i === focusedIndex) {
+    if (snapshot.index >= scene.carRetiredIndex[i]) {
+      // A dead-feed car past its retirement is a parked dot: no trail, focused
+      // or not — a wake is a statement of motion (Slice 9l). The marker below
+      // still draws it, parked where its feed died.
+    } else if (i === focusedIndex) {
       // Which painter this is was decided by `meta.loop` at build time (`paths.ts`),
       // so there is no mode branch here — a closed lap's covered-portion trail and an
       // open window's bounded comet are the same call from where this stands. Both

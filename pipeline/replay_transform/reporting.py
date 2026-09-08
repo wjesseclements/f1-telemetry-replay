@@ -17,6 +17,7 @@ from .contract import SAMPLE_RATE_HZ
 from .placement import KMH_S_PER_METRE, covers_ground, cumulative_travel
 from .repair import FixRejection, FrameDisplacement, ReversalRejection
 from .assembly import AnchorPlan, WindowCar
+from .dead_feed import DEAD_FEED_WINDOW_S, DeadFeedResult
 
 def stint_report(driver: str, laps: "Sequence[Mapping[str, Any]]", stints: "Sequence[Mapping[str, Any]]") -> str:
     """
@@ -38,6 +39,29 @@ def stint_report(driver: str, laps: "Sequence[Mapping[str, Any]]", stints: "Sequ
     lap_span = f"laps {laps[0]['number']}-{laps[-1]['number']}"
     body = " · ".join(parts) if parts else "no stint data"
     return f"  {driver}: {lap_span} · {body}"
+
+
+def dead_feed_report(driver: str, result: "DeadFeedResult", t0: float = 0.0) -> str:
+    """
+    One line per car for the dead-feed screen, silent-never like every other
+    screen: a healthy car prints "no dead feed" rather than nothing, a frozen
+    car prints where it was parked and why, and a decline names the evidence
+    that stopped the freeze (pedal activity after the trigger = a dropout that
+    resumed, not a death — the 9g surrender doctrine).
+    """
+    if result.frozen and result.freeze_t is not None and result.trigger_t is not None:
+        return (
+            f"  {driver}: DEAD FEED - frozen at t={result.freeze_t - t0:.2f}s "
+            f"(last pedal input; trigger at t={result.trigger_t - t0:.2f}s, "
+            f"{result.drift:.1f} km/h drift over {int(DEAD_FEED_WINDOW_S)}s of zero throttle at pace); "
+            "retiredAt emitted"
+        )
+    if result.declined and result.trigger_t is not None:
+        return (
+            f"  {driver}: dead-feed trigger at t={result.trigger_t - t0:.2f}s DECLINED - "
+            "pedal activity after it; a feed that resumes is a dropout, not a death"
+        )
+    return f"  {driver}: no dead feed"
 
 
 def status_report(intervals: "Sequence[Mapping[str, Any]]", unknown_codes: "Sequence[str]" = ()) -> str:

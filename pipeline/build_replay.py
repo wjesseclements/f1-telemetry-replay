@@ -81,6 +81,8 @@ from replay_transform import (
     reject_impossible_fixes,
     repair_frame_displacements,
     count_out_of_range_gears,
+    dead_feed_report,
+    detect_dead_feed,
     dump_json,
     gear_anomaly_warning,
     parse_lap_range,
@@ -448,6 +450,21 @@ def build_race_replay(year, gp, session_id, drivers, laps, cache_dir=".f1cache")
         bad_gears = count_out_of_range_gears(car.telemetry["nGear"])
         if bad_gears:
             print(gear_anomaly_warning(driver, bad_gears))
+        # The dead-feed screen, recomputed for reporting exactly as the window
+        # builder applies it (Slice 9l) — silent-never, like every screen.
+        print(
+            dead_feed_report(
+                driver,
+                detect_dead_feed(
+                    car.telemetry["Time"],
+                    car.telemetry["Speed"],
+                    car.telemetry["Throttle"],
+                    car.telemetry["Brake"],
+                    (t0, t1),
+                ),
+                t0,
+            )
+        )
 
     circuit = session.get_circuit_info()
     meta = SessionMeta(
