@@ -158,11 +158,43 @@ def clamp_throttle(values: Any) -> np.ndarray:
     """
     Clamp throttle into the schema's 0-100.
 
-    The one channel clamped on purpose. Speed and gear are NOT clamped: an
-    out-of-range value there is impossible rather than merely dirty, so the right
-    outcome is the schema rejecting it loudly, not the pipeline hiding it.
+    Speed is NOT clamped: an out-of-range speed is impossible rather than merely
+    dirty, so the right outcome is the schema rejecting it loudly, not the
+    pipeline hiding it. Gear once carried the same claim — `normalise_gear` says
+    what measurement did to it.
     """
     return np.clip(np.asarray(values, dtype=float), 0.0, 100.0)
+
+
+def normalise_gear(values: Any) -> np.ndarray:
+    """
+    Round gear to int and send anything outside 0-8 to 0 (neutral).
+
+    This module used to claim an out-of-range gear was "impossible rather than
+    merely dirty" and left it to the schema to reject. The 2026 Italian GP measured
+    that claim away: LEC's wrecked car streamed an nGear channel that counts
+    monotonically 0→128 while parked at idle — garbage from a damaged gearbox, not
+    a gear. Clamping to 8 would invent a parked car in top gear; zero is the one
+    in-range value that claims nothing ("no gear engaged"), the same honesty as
+    UNKNOWN compounds and "unknown" flags. `gear_anomaly_warning` puts the count in
+    the report, so a corrupt channel announces itself there, never in the browser.
+    """
+    gears = np.rint(np.asarray(values, dtype=float)).astype(int)
+    return np.where((gears >= 0) & (gears <= 8), gears, 0)
+
+
+def count_out_of_range_gears(values: Any) -> int:
+    """How many source gear readings `normalise_gear` would zero out."""
+    gears = np.rint(np.asarray(values, dtype=float)).astype(int)
+    return int(np.count_nonzero((gears < 0) | (gears > 8)))
+
+
+def gear_anomaly_warning(driver: str, count: int) -> str:
+    """The report line for a corrupt gear channel. Call only when `count` > 0."""
+    return (
+        f"  WARNING: {driver}: {count} out-of-range gear reading(s) emitted as "
+        "neutral - a damaged car's gearbox telemetry is not a gear"
+    )
 
 
 def normalise_brake(values: Any) -> np.ndarray:

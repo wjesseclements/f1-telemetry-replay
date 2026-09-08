@@ -18,6 +18,7 @@
  * offline trap in `src/test/setup.ts` is untouched and still armed.
  */
 import { readFileSync } from "node:fs";
+import { gzipSync } from "node:zlib";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -80,16 +81,24 @@ describe.each(SCENARIOS.map((s) => [s.id, s] as const))(
 );
 
 describe("the gallery as a whole", () => {
-  it("stays inside its committed size budget", () => {
-    // 6 MB is the budget agreed for Slice 13; 15 MB is the escalation line at which
-    // the answer stops being "commit it" and becomes "propose an alternative".
-    // Measured on the real three: 4.09 MB. This fails before a fourth scenario or a
-    // widened window quietly turns the repo into a data host.
-    const total = SCENARIOS.reduce(
-      (bytes, s) => bytes + readFileSync(join(GALLERY_DIR, s.file)).byteLength,
-      0,
-    );
-    expect(total / 1e6).toBeLessThan(6);
+  it("stays inside the ruled escalation lines: 50 MB per file, ~100 MB of pack", () => {
+    // Slice 13's 6 MB budget is RETIRED (Slice 17, ruled): its reasons — deploy
+    // weight and repo bloat — were answered by measurement. Gallery JSON packs
+    // ~6.5:1 in git (1.57 MB → 237 KB, measured), so plain git carries these
+    // files for free at any size this project will reach; the lines that remain
+    // are GitHub's own 50 MB per-file warning threshold and ~100 MB of COMPRESSED
+    // weight, at which the pre-agreed escape hatch is Git LFS. gzip here is the
+    // test's proxy for git's pack compression — coarser, but the same order.
+    let compressed = 0;
+    for (const s of SCENARIOS) {
+      const bytes = readFileSync(join(GALLERY_DIR, s.file));
+      expect(
+        bytes.byteLength / 1e6,
+        `${s.file} is over GitHub's per-file warning line`,
+      ).toBeLessThan(50);
+      compressed += gzipSync(bytes).byteLength;
+    }
+    expect(compressed / 1e6).toBeLessThan(100);
   });
 
   it("ships the assets minified, as deployed files rather than reviewable ones", () => {

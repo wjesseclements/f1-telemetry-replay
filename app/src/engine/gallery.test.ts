@@ -160,3 +160,59 @@ describe("resolveStartClock — never lands on a frozen final frame", () => {
     expect(resolveStartClock(replay, Number.POSITIVE_INFINITY)).toBe(0);
   });
 });
+
+describe("parseGalleryManifest — events and chaining (Slice 17)", () => {
+  it("defaults events to empty and next to absent on entries that carry neither", () => {
+    const parsed = parseGalleryManifest(manifest);
+    const plain = parsed.scenarios.find((s) => s.id === "monza-2024-pit-cycle");
+    expect(plain?.events).toEqual([]);
+    expect(plain?.next).toBeUndefined();
+  });
+
+  it("the committed red-flag chain resolves: next names a real entry with events in clock order", () => {
+    const parsed = parseGalleryManifest(manifest);
+    const first = parsed.scenarios.find((s) => s.id === "monza-2026-red-flag");
+    expect(first?.events.length).toBeGreaterThanOrEqual(1);
+    expect(
+      parsed.scenarios.some((s) => s.id === first?.next),
+      "next must name a manifest entry",
+    ).toBe(true);
+  });
+
+  it("rejects a next that names no entry — a dangling chain is a build-time mistake", () => {
+    const bad = clone();
+    bad.scenarios[0].next = "no-such-scenario";
+    expect(() => parseGalleryManifest(bad)).toThrow(GalleryManifestError);
+    expect(() => parseGalleryManifest(bad)).toThrow(/not in the manifest/);
+  });
+
+  it("rejects a scenario chained to itself", () => {
+    const bad = clone();
+    bad.scenarios[0].next = bad.scenarios[0].id;
+    expect(() => parseGalleryManifest(bad)).toThrow(/chains to itself/);
+  });
+
+  it("accepts several events in strictly increasing clock order", () => {
+    const ok = clone();
+    ok.scenarios[0].events = [
+      { clock: 50, title: "A", body: "a" },
+      { clock: 100, title: "B", body: "b" },
+    ];
+    expect(parseGalleryManifest(ok).scenarios[0].events).toHaveLength(2);
+  });
+
+  it("rejects events out of clock order — the watcher trusts the order", () => {
+    const bad = clone();
+    bad.scenarios[0].events = [
+      { clock: 100, title: "B", body: "b" },
+      { clock: 50, title: "A", body: "a" },
+    ];
+    expect(() => parseGalleryManifest(bad)).toThrow(/strictly increase/);
+  });
+
+  it("rejects an event with empty copy — the card renders it verbatim", () => {
+    const bad = clone();
+    bad.scenarios[0].events = [{ clock: 10, title: "", body: "x" }];
+    expect(() => parseGalleryManifest(bad)).toThrow(GalleryManifestError);
+  });
+});

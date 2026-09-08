@@ -80,12 +80,17 @@ from replay_transform import (
     lap_context,
     reject_impossible_fixes,
     repair_frame_displacements,
+    count_out_of_range_gears,
     dump_json,
+    gear_anomaly_warning,
     parse_lap_range,
+    status_report,
     stint_report,
     time_base_stretch,
     motion_fidelity,
     window_car_report,
+    window_grid,
+    window_status_intervals,
     WindowCar,
 )
 
@@ -137,6 +142,10 @@ def build_lap_replay(year, gp, session_id, driver, cache_dir=".f1cache"):
     absent = [name for name in OPTIONAL_COLUMNS if name not in set(tel.columns)]
     if absent:
         print(f"optional channel(s) absent, will be omitted from output: {', '.join(absent)}")
+    # Same corrupt-gear announcement as the window path — see `normalise_gear`.
+    bad_gears = count_out_of_range_gears(tel["nGear"])
+    if bad_gears:
+        print(gear_anomaly_warning(driver, bad_gears))
 
     telemetry = {
         name: tel[name].to_numpy()
@@ -434,6 +443,11 @@ def build_race_replay(year, gp, session_id, drivers, laps, cache_dir=".f1cache")
             f"  {driver}: {len(car.telemetry['Time'])} source rows covering "
             f"{covered[0]:.2f}s -> {covered[1]:.2f}s"
         )
+        # A corrupt gear channel (first seen: LEC's wrecked car, 2026 Monza)
+        # announces itself here; `normalise_gear` emits the readings as neutral.
+        bad_gears = count_out_of_range_gears(car.telemetry["nGear"])
+        if bad_gears:
+            print(gear_anomaly_warning(driver, bad_gears))
 
     circuit = session.get_circuit_info()
     meta = SessionMeta(
@@ -444,12 +458,31 @@ def build_race_replay(year, gp, session_id, drivers, laps, cache_dir=".f1cache")
         rotation=float(circuit.rotation),
     )
 
+    # Track status, clipped to the window through the pure transform. The emitted
+    # duration is derived from the builder's own grid so the intervals' final row
+    # covers the holding step exactly (see `window_status_intervals`). An absent or
+    # empty feed emits no intervals — absence is not green.
+    grid, _ = window_grid(t0, t1, SAMPLE_RATE_HZ)
+    duration = round(len(grid) / SAMPLE_RATE_HZ, 3)
+    feed = getattr(session, "track_status", None)
+    if feed is None or len(feed) == 0:
+        status = window_status_intervals([], [], (t0, t1), duration)
+    else:
+        status = window_status_intervals(
+            [float(v) for v in feed["Time"].dt.total_seconds()],
+            [str(v) for v in feed["Status"]],
+            (t0, t1),
+            duration,
+        )
+    print(status_report(status.intervals, status.unknown_codes))
+
     replay = build_window_replay_dict(
         window_cars,
         meta,
         (t0, t1),
         corners=[row for _, row in circuit.corners.iterrows()],
         rate=SAMPLE_RATE_HZ,
+        status=status.intervals,
     )
     return replay, (t0, t1), window_cars, coverage
 

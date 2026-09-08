@@ -370,6 +370,7 @@ def build_window_replay_dict(
     window: "tuple[float, float]",
     corners: Sequence[Mapping[str, Any]] = (),
     rate: int = SAMPLE_RATE_HZ,
+    status: "Sequence[Mapping[str, Any]]" = (),
 ) -> "dict[str, Any]":
     """
     Build a schema-conforming MULTI-CAR replay from one session-time window.
@@ -499,6 +500,11 @@ def build_window_replay_dict(
             }
             for car, _, _, samples in built
         ],
+        # Same "always emitted" doctrine as laps: an empty list is the explicit
+        # spelling of "this window carries no status data". Rows come pre-clipped
+        # and pre-rebased from `status.window_status_intervals` — the builder does
+        # not re-derive them, so the caller's report and the file cannot disagree.
+        "trackStatus": [dict(row) for row in status],
     }
 
 

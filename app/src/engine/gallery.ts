@@ -51,6 +51,22 @@ const SuggestedSchema = z.object({
   speedMult: z.number().positive(),
 });
 
+/**
+ * A narrated moment: when the clock passes `clock`, the app pauses and shows this
+ * as a dismissible card (Slice 17's red-flag ruling — the stoppage is narrated and
+ * skipped, never spliced into the data).
+ *
+ * `title` and `body` are COPY, owned by the human like `hook`; the card renders
+ * them verbatim. `clock` is window seconds, clamped at use exactly like
+ * `suggested.clock`, because a rebuilt window can be shorter than the one the
+ * manifest was written against.
+ */
+const ScenarioEventSchema = z.object({
+  clock: z.number().nonnegative(),
+  title: z.string().min(1),
+  body: z.string().min(1),
+});
+
 /** Provenance, so a curated excerpt can always be traced back to its session. */
 const ProvenanceSchema = z.object({
   session: z.string().min(1),
@@ -60,6 +76,14 @@ const ProvenanceSchema = z.object({
   generated: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, {
     error: "generated must be an ISO date, e.g. 2026-08-08",
   }),
+  /**
+   * A known-data-artifact disclosure, rendered verbatim with the provenance
+   * (Slice 17 browser pass): when a source feed is wrong in a way the replay
+   * faithfully reproduces — LEC's dead telemetry "driving on" after his
+   * Parabolica impact — honesty belongs NEXT TO the data, not in a commit
+   * message. Optional: most scenarios have nothing to disclose.
+   */
+  note: z.string().min(1).optional(),
 });
 
 const ScenarioSchema = z.object({
@@ -81,19 +105,65 @@ const ScenarioSchema = z.object({
   }),
   suggested: SuggestedSchema,
   provenance: ProvenanceSchema,
+  /**
+   * Narrated moments, in clock order (enforced below). ADDITIVE with
+   * `.default([])`, the schema's usual doctrine: existing entries carry none and
+   * behave exactly as before.
+   */
+  events: z.array(ScenarioEventSchema).default([]),
+  /**
+   * The scenario this one hands over to — the id of another manifest entry,
+   * offered as the event card's "continue" action. An ID, never a filename: the
+   * chained scenario's own entry says how to load and land in it.
+   */
+  next: z.string().min(1).optional(),
 });
 
-export const GalleryManifestSchema = z.object({
-  schemaVersion: z.literal(GALLERY_SCHEMA_VERSION, {
-    error: `gallery manifest schemaVersion must be ${GALLERY_SCHEMA_VERSION}`,
-  }),
-  scenarios: z.array(ScenarioSchema).min(1, {
-    error: "the gallery needs at least one scenario",
-  }),
-});
+export const GalleryManifestSchema = z
+  .object({
+    schemaVersion: z.literal(GALLERY_SCHEMA_VERSION, {
+      error: `gallery manifest schemaVersion must be ${GALLERY_SCHEMA_VERSION}`,
+    }),
+    scenarios: z.array(ScenarioSchema).min(1, {
+      error: "the gallery needs at least one scenario",
+    }),
+  })
+  .superRefine((manifest, ctx) => {
+    // The manifest is committed and bundled, so a dangling chain or unordered
+    // events are build-time mistakes — caught here, by a test, before a visitor
+    // can ever click them.
+    const ids = new Set(manifest.scenarios.map((scenario) => scenario.id));
+    manifest.scenarios.forEach((scenario, i) => {
+      if (scenario.next !== undefined && !ids.has(scenario.next)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["scenarios", i, "next"],
+          message: `scenario "${scenario.id}" chains to "${scenario.next}", which is not in the manifest`,
+        });
+      }
+      if (scenario.next === scenario.id) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["scenarios", i, "next"],
+          message: `scenario "${scenario.id}" chains to itself`,
+        });
+      }
+      for (let k = 1; k < scenario.events.length; k++) {
+        if (scenario.events[k].clock <= scenario.events[k - 1].clock) {
+          ctx.addIssue({
+            code: "custom",
+            path: ["scenarios", i, "events", k],
+            message: `scenario "${scenario.id}" events must strictly increase in clock`,
+          });
+          break;
+        }
+      }
+    });
+  });
 
 export type GalleryScenario = z.infer<typeof ScenarioSchema>;
 export type GalleryManifest = z.infer<typeof GalleryManifestSchema>;
+export type ScenarioEvent = GalleryScenario["events"][number];
 
 /** Thrown when the committed manifest does not match its own schema. */
 export class GalleryManifestError extends Error {

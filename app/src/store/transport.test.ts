@@ -14,6 +14,7 @@ beforeEach(() => {
     seekTarget: null,
     focusedCarIndex: 0,
     comparisonCarIndex: null,
+    scenario: null,
   });
 });
 
@@ -147,5 +148,33 @@ describe("useTransport comparison", () => {
     useTransport.getState().setFocusedCarIndex(1);
     expect(useTransport.getState().comparisonCarIndex).toBe(1);
     expect(useTransport.getState().focusedCarIndex).toBe(1);
+  });
+});
+
+describe("useTransport scenario", () => {
+  const scenario = {
+    id: "s1",
+    title: "T",
+    hook: "H",
+    file: "s1.json",
+    suggested: { driver: "VER", clock: 0, speedMult: 1 },
+    provenance: {
+      session: "S",
+      laps: "1-2",
+      drivers: ["VER"],
+      generated: "2026-09-08",
+    },
+    events: [],
+  };
+
+  it("starts with no scenario — a fixture boot narrates nothing", () => {
+    expect(useTransport.getState().scenario).toBeNull();
+  });
+
+  it("rides setReplay atomically: a scenario load names it, a plain load clears it", () => {
+    useTransport.getState().setReplay(replay, scenario);
+    expect(useTransport.getState().scenario).toBe(scenario);
+    useTransport.getState().setReplay(replay);
+    expect(useTransport.getState().scenario).toBeNull();
   });
 });

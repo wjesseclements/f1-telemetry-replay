@@ -53,6 +53,40 @@ export const COMPOUNDS = [
   "UNKNOWN",
 ] as const;
 
+/**
+ * Track-status flags, plus `"unknown"` as an in-band member.
+ *
+ * The same degradation contract as `COMPOUNDS`: the PIPELINE maps FastF1 codes it
+ * does not recognise to `"unknown"` and says so in its report, so a strange season
+ * still loads (rendered as no flag), while a hand-mangled file still fails loudly.
+ * `"sc"`/`"vsc"` are the Safety Car and Virtual Safety Car; no year branch anywhere
+ * (CLAUDE.md rule 8) — the UI only ever looks at what the data carries.
+ */
+export const TRACK_STATUSES = [
+  "green",
+  "yellow",
+  "sc",
+  "vsc",
+  "red",
+  "unknown",
+] as const;
+
+/**
+ * One track-status interval, in replay-window seconds.
+ *
+ * Intervals are the pipeline's clipped, merged view of the session's status
+ * transitions: sorted, non-overlapping (enforced below), and covering only the
+ * stretches the source data actually describes — a gap means "no answer", which the
+ * UI renders as nothing rather than inventing green.
+ */
+const StatusIntervalSchema = z.object({
+  status: z.enum(TRACK_STATUSES),
+  /** Seconds from the start of the replay, inclusive. */
+  fromT: z.number().nonnegative(),
+  /** Seconds from the start of the replay; must exceed `fromT`. */
+  toT: z.number(),
+});
+
 const MetaSchema = z.object({
   schemaVersion: z.literal(SCHEMA_VERSION, {
     error: `replay.meta.schemaVersion must be ${SCHEMA_VERSION}; regenerate the JSON with a matching pipeline`,
@@ -259,8 +293,53 @@ export const ReplaySchema = z
     cars: z.array(CarSchema).min(1, {
       error: "replay.cars must contain at least one car",
     }),
+    /**
+     * Track-status intervals over the window, in order. ADDITIVE within
+     * schemaVersion 1 with `.default([])`, per the `meta.loop` doctrine: an empty
+     * array means exactly what absence means — "this replay carries no status
+     * data" — so every file written before the field existed still validates and
+     * still behaves identically, while `z.infer` makes the parsed value REQUIRED
+     * and the engine branches on `length`, never on `undefined`.
+     *
+     * TOP-LEVEL, not in `meta`, by ruling: `meta` holds scalar facts about the
+     * recording; this is window DATA like `cars`, and its duration cross-check
+     * below needs `meta.sampleRateHz`'s replay-level vantage anyway.
+     */
+    trackStatus: z.array(StatusIntervalSchema).default([]),
   })
   .superRefine((replay, ctx) => {
+    // Status intervals are looked up by scan at the HUD tick, so ordering and
+    // non-overlap are load-bearing: an unsorted or overlapping list would answer
+    // with whichever interval happened to come first. Bounds are pinned to the
+    // replay's duration because the pipeline clips before emitting — an interval
+    // past the end is pipeline drift, rejected loudly like everything else.
+    for (let i = 0; i < replay.trackStatus.length; i++) {
+      const cur = replay.trackStatus[i];
+      if (cur.toT <= cur.fromT) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["trackStatus", i],
+          message: `status intervals must run forwards: interval ${i} runs from ${cur.fromT} to ${cur.toT}`,
+        });
+        break; // one issue is enough to reject; don't flood the error message
+      }
+      if (cur.toT > replay.meta.duration + GRID_TOLERANCE_S) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["trackStatus", i],
+          message: `status intervals must lie inside the replay: interval ${i} ends at ${cur.toT} but meta.duration is ${replay.meta.duration}`,
+        });
+        break;
+      }
+      if (i > 0 && cur.fromT < replay.trackStatus[i - 1].toT) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["trackStatus", i],
+          message: `status intervals must be ordered and non-overlapping: interval ${i} starts at ${cur.fromT} but the previous one ends at ${replay.trackStatus[i - 1].toT}`,
+        });
+        break;
+      }
+    }
     // Uniform-grid guard. `interpolate.ts` looks samples up with `index = t *
     // sampleRateHz` and never reads `t` again (CLAUDE.md architecture rule 3), so
     // irregular spacing would silently place the car in the wrong spot rather than
@@ -322,3 +401,7 @@ export type Stint = Car["stints"][number];
 export type Compound = Stint["compound"];
 /** `"closed"` (a lap) or `"open"` (a session-time window). See `LOOP_MODES`. */
 export type LoopMode = Meta["loop"];
+/** One track-status interval in window seconds. See `TRACK_STATUSES`. */
+export type StatusInterval = Replay["trackStatus"][number];
+/** One of `TRACK_STATUSES` — semantic flag states plus in-band `"unknown"`. */
+export type TrackStatus = StatusInterval["status"];

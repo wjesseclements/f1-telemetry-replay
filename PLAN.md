@@ -3634,6 +3634,278 @@ ledger's open defect slice; STATUS.md is updated in this PR accordingly.
     predicted bound of exactly 2x the structural numbers and ~2x the time, at a
     thousandth of the tick budget.
 
+### [x] Slice 17 — 2026 Monza red flag: track-status flags, the first 2026 session, Git LFS ruled on
+
+**STUB — runs in phases; nothing is built until the human rules on the Phase 1 design
+cards. Ordered AHEAD of the open Slice 16 by the human's explicit direction** (the
+precedent is Slice 15's ordering note); STATUS.md updated in this PR accordingly.
+
+The scenario: the 2026 Italian GP race (2026-09-06) — the start, LEC's lap-2 off at
+the Parabolica, the red flag, and the restart — as a new gallery entry (or entries),
+carrying the feature this scenario exists to force: **track-status flags**
+(green/yellow/SC/VSC/red) as additive schema + pipeline emission + a ≤30 Hz HUD
+treatment. Also ruled in this slice: **Git LFS for `app/public/gallery/*.json` from
+now on** (no history rewrite — the three existing assets stay normal git objects at
+their current hashes) and the fate of CLAUDE.md's 6 MB gallery budget.
+
+- **Phase 1 — survey and design (DONE 2026-09-08, read-only against FastF1, home
+  network).** Key facts, all in session time from the fetched data, not memory:
+  race start (lap 1) 00:56:55.761; LEC and HAM touch at Turn 2 ~00:57:09 (lap 1);
+  LEC off at the Parabolica ~00:59:48 (lap 2), limps at ~160 km/h and parks on the
+  della Roggia approach at 01:00:43; Yellow 00:59:57.9, SC 01:00:14.4, **RED
+  01:01:07.8**; field pits at the end of lap 3 (01:01:47–01:02:46); resume from the
+  pit lane 01:32:24.9 (laps 4–6 behind the SC, which FastF1's track_status does NOT
+  mark — the board stayed green); green racing from lap 7 at 01:40:35.3. 22 cars /
+  11 teams (Audi, Cadillac join); DRS all-zeros for every car (rule 8's omission
+  path, already implemented in `replay_transform`, gets its first real exercise);
+  compounds are plain SOFT/MEDIUM/HARD; dry, 31–33 °C air.
+- **Phase 1 checkpoint — RULED (2026-09-08), with one product revision and one
+  reversal by measurement:**
+  1. Stoppage: **(b) two gallery entries, CHAINED** — entry 1 plays to the red
+     flag, where an EVENT CARD (title + narration, dismissible DOM overlay,
+     playback paused) offers "Continue" into entry 2 at its landing clock. The
+     stoppage is narrated and skipped, never spliced. The manifest gains
+     per-entry `events` (clock/title/body) and `next`.
+  2. Ranges: **laps 1–3 and 6–9 (ref RUS), full 22-car field.**
+  3. Landing: entry 1 focus LEC, clock 0, speedMult 2; entry 2 focus ANT,
+     clock 150, speedMult 1.
+  4. Flag UI: **(B)** transport-bar chip + tinted seek bar.
+  5. `trackStatus`: **top-level**, sibling of `cars`.
+  6. Assets: **plain git; the 6 MB budget retired** on the 6.5:1 pack
+     measurement; escalation at 50 MB/file or ~100 MB pack; LFS the pre-agreed
+     escape hatch. **The human's original LFS direction was refuted by
+     measurement and withdrawn at the checkpoint** — recorded per the standing
+     rule that a measurement contradicting an approved plan is flagged, never
+     smoothed over. (Blob was disqualified on the offline law regardless of
+     bandwidth.)
+  Plus: the luminance floor extended to TOWER dots/rows for Cadillac's `#444444`;
+  track status rendered exactly as the data carries it (the laps 4–6 SC train
+  reads green because the feed said green); the undrawn pit lane in entry 1's
+  final seconds accepted pending Slice 16.
+- **Phase 2 — BUILT (2026-09-08), the record:**
+  - **Schema (additive, no version bump):** top-level
+    `trackStatus: [{status, fromT, toT}].default([])`, enum
+    `green|yellow|sc|vsc|red|unknown` with `unknown` as the in-band degradation
+    member (the COMPOUNDS doctrine applied to flags); superRefine pins forwards,
+    inside-the-replay (± `GRID_TOLERANCE_S`), ordered, non-overlapping. Gaps are
+    legal and mean "no answer" — absence is never green.
+  - **Engine:** `engine/trackStatus.ts` — `statusAt` (closed intervals, first
+    match wins, so the final interval still answers at the parked clock) and
+    `statusSegments` (duration-fractions for the tint), 100% covered.
+  - **Pipeline:** `replay_transform/status.py` owns the FastF1 code map
+    (1/2/4/5/6/7; 6 and 7 both "vsc" — "ending" is a VSC phase, not green),
+    clip + rebase to window time, merge of adjacent equals, final interval
+    extended to the emitted duration (the holding step), unknown codes degraded
+    in-band and reported by `status_report`. Wired through
+    `build_window_replay_dict(status=…)`; the race-window golden now pins the
+    carried-in status, the VSC merge and the holding-step extension
+    cross-language. The v1 lap builder is untouched (`.default([])` covers it).
+  - **AMENDMENT — a second doctrine revised by measurement: out-of-range gear is
+    DIRTY, not impossible.** `contract.py` claimed "Speed and gear are NOT
+    clamped: an out-of-range value there is impossible rather than merely dirty."
+    LEC's wrecked car refuted the gear half: from the crash to data end his
+    nGear channel counts monotonically 0→128 at idle — 97 readings inside window
+    A. `normalise_gear` now sends anything outside 0–8 to **0 (neutral)** — never
+    a clamp to 8, which would invent a parked car in top gear — applied before
+    the forward-fill so garbage cannot propagate over real samples, and
+    announced per car by `gear_anomaly_warning`. Speed keeps the old doctrine.
+  - **UI:** `StatusFlag` chip beside the clock (DRS-pill shape, per-status flag
+    tokens `--c-flag-*`; RED alone inverts to a solid fill; `unknown` and
+    uncovered render NOTHING, which is what keeps every pre-17 file's bar
+    pixel-identical); `flagTint.segmentGradient` paints the scrubber's own
+    background with hard stops (green/unknown → base `--c-line`), computed once
+    per replay. Rule 1: the chip reads the existing ≤30 Hz snapshot, the tint is
+    static, the rAF loop learns nothing.
+  - **Chained entries:** manifest `events` + `next` (superRefine: no dangling or
+    self chains, events strictly increasing — build-time failures, since the
+    manifest is bundled); `ScenarioEvents` watches the ≤30 Hz clock as a canvas
+    SIBLING (App still subscribes to nothing). Firing semantics: an upward
+    crossing fires — playback or seek alike; a dismissed event re-arms only
+    below its mark; the first frame under a new scenario ARMS rather than fires;
+    frames describing another replay's cars are dropped whole (the Hud
+    stale-frame guard, reused); an event past a rebuilt shorter window clamps to
+    the duration. Firing pauses; "Continue" applies the next scenario through
+    the shared `applyScenario` (extracted from `FeaturedPanel` so two buttons
+    cannot drift) and resumes; dismissal stays paused. Focus: into the primary
+    action on mount, back to the prior holder or the play/pause toggle
+    (`PLAY_TOGGLE_ID`) on close — the control that undoes what the card did.
+  - **AMENDMENT — the store gains `scenario`, by the replay-coupled-invariant
+    argument alone** (the `comparisonCarIndex` precedent): it changes on a
+    click, the loop never reads it, and "the scenario describes the loaded
+    replay" is enforced atomically inside `setReplay` (a plain load clears it),
+    never by an effect that has to notice. CLAUDE.md rule 1's enumeration moved
+    with it, again.
+  - **Tower floor:** `CarEntry`'s swatch passes through
+    `floorLuminance(color, SWATCH_MIN_LUMINANCE = 0.25)` — Cadillac's `#444444`
+    lifts, bright liveries pass byte-for-byte. **Flagged, not silently absorbed:
+    the CANVAS still paints raw team colour** (tails and markers via
+    `scene.carColors`), so Cadillac is dim there too; flooring the scene would
+    re-baseline the drawcall md5s and lift Red Bull's navy everywhere, which is
+    a deliberate render decision this slice's ruling did not cover. Filed below.
+  - **Assets:** `monza-2026-red-flag.json` (22 cars, 294.8 s, 5.15 MB) and
+    `monza-2026-restart.json` (21 cars, 425.3 s, 7.10 MB), both `--compact`,
+    both validated through the app's real schema at emit; emitted status arcs
+    green 0–182.186 / yellow –198.651 / sc –252.076 / **red –294.8** and
+    green 0–129.257 / yellow –136.824 / green –425.3. DRS omitted by the
+    existing all-zero path — rule 8's first shipped exercise, zero code change.
+    The three 2024 assets are byte-identical (only the new files are untracked).
+    CLAUDE.md's budget law rewritten; `galleryAssets.test.ts` now enforces
+    50 MB/file and a ~100 MB gzip-proxy ceiling.
+  - **Copy (human-owned, drafted for edit before merge):** two hooks, two
+    titles, and the event card's body ("Leclerc and Hamilton touched at the
+    first chicane…"), all drafted from race control and the survey — edit at
+    will in `src/gallery/manifest.json` and README's scenario table.
+- **Verified (2026-09-08):**
+  - `npm run check` green: typecheck, lint, format, **714 tests** (650 → 714),
+    engine coverage **100% lines/branches/functions/statements**, build. Full-log
+    warning grep (`grep -ciE 'warn|error'`): **0**.
+  - `pytest` green: **260 tests** (241 → 260), **100% lines + branches on every
+    module**, `status.py` included.
+  - **Drawcall md5s IDENTICAL both modes**, captured before the first edit and
+    after the last: closed `04506b72f177b7447ecb7d230998d506`, open
+    `0aea33a376958344b1be15033399e8ec` — the canvas is untouched, as ruled.
+  - **The 22-car question, answered by instrument rather than extrapolation
+    alone:** drawcall `auto` on the red-flag asset measures **762.80 calls/frame**
+    against Slice 12's linear law `148 + 28·22 = 764` — the law holds at 22.
+    hud-tick on the same file: **19.28 µs/tick mean (0.058% of the 33.3 ms
+    budget)**, p99 33.2 µs, focus change 3.9 µs.
+  - Both assets pass `parseReplay` + the full gallery-honesty suite (drivers
+    advertised = drivers present, suggested clocks inside the windows).
+- **Browser pass — first look (2026-09-08, human, on the Vercel preview): three
+  findings fixed in-branch, two follow-up slices filed, and TWO OF THIS SLICE'S
+  OWN CLAIMS CORRECTED by the human watching the actual race:**
+  1. **Entry 2's landing clock 150 → 0, and the restart was STANDING, not behind
+     the SC.** The human's screenshot shows the field stationary on the grid;
+     measured from the emitted asset, cars roll to the grid over t = 16–60 s and
+     the whole field launches at **t ≈ 79.6 s**. The checkpoint's "SC train, land
+     just before the release" reading came from the quirky status codes (the feed
+     showed green through the resume) — a survey error the watched race
+     corrected. Landing at 0 shows grid-forming, the hold, and lights-out; card
+     copy and both hooks rewritten accordingly.
+  2. **The flag treatment is now A+B, ruled on the look.** The transport chip
+     stays (the accessible carrier); a `StatusBanner` strip now appears over the
+     canvas ONLY under an abnormal flag (yellow/SC/VSC/red — green is racing's
+     ordinary state and gets no signage). A DOM overlay, `aria-hidden` (the chip
+     already says it in text), `pointer-events-none`, its own ≤30 Hz
+     subscription as a canvas sibling; **drawcall md5s re-verified identical.**
+  3. **LEC's "limp" was the telemetry dying, not the car — diagnosed read-only
+     before touching anything, and the survey's account stands corrected.** The
+     human watched him hit the wall at the Parabolica and go to the medical
+     centre. The channels' own record: braking from 320 km/h at 00:59:42, impact
+     at **00:59:48** (234→117→20→0 in ~1.3 s, RPM collapsing to ~3500); from
+     ~00:59:50 the feed fabricates — speed near-constant 162 km/h (σ = 6 over
+     45 s) with **throttle exactly 0.0 and brake never**, RPM decaying smoothly
+     (8444 σ 303, no combustion signature), and the position stream "agreeing"
+     because F1's tracker dead-reckons a dead transponder along the racing line.
+     The physics screens are structurally blind to it: they test channels against
+     EACH OTHER, and every channel is downstream of the same dead bus. The one
+     value-level impossibility (gear > 8) first appears at **01:01:40** — 110 s
+     after the collapse — so it cannot anchor a freeze at the wall. Verdict per
+     the human's pre-authorised branch: a collapse detector needs a windowed
+     multi-signal plausibility screen with measured thresholds and adversarial
+     negative controls (every 9-series screen earned exactly that), so **the
+     freeze rule is filed as Slice 9l**, and TODAY the truth ships in copy: the
+     card tells the real story, and the manifest gains an optional
+     `provenance.note` — a known-data-artifact disclosure rendered with the
+     scenario (the red-flag entry carries the LEC note; scenarios with nothing
+     to disclose carry nothing).
+  Follow-ups filed from the same pass: **Slice 19** (retired/stopped/pit-lane
+  car semantics in tower + gaps — LEC's parked car broke the gap frame and read
+  as leading) and **Slice 20** (Aston Martin and Cadillac read alike after the
+  luminance floor — hue-aware floor or per-team override, argued there).
+- **Browser pass — re-check (2026-09-08, human, on the fixed preview): PASS.**
+  Standing restart lands at 0:00, the banner is prominent, the card is true.
+  **Copy pass applied:** the card body is now the human's own two sentences
+  verbatim ("Leclerc hit the wall at the Parabolica at the end of the second
+  lap… resumed from a standing restart."); the known-artifact `provenance.note`
+  stays by ruling **until Slice 9l retires it**. Auto-merge (squash) enabled on
+  the human's instruction.
+- **Sequencing ruled at acceptance:** the board after this slice runs
+  **9l (dead-feed freeze) → 19 (DNF/retired display + pit-lane/pre-start gap
+  rules) → 21 (tower reshuffle animation, filed at acceptance) → 18 (corner
+  lore) → 20 (Aston/Cadillac colour)**.
+- **Filed, not built (this slice):** flooring `scene.carColors` on the canvas for
+  dark liveries — a deliberate drawcall re-baseline, paired naturally with
+  Slice 16's already-planned re-baseline if the human wants it.
+
+### [ ] Slice 9l — freeze a car at the point its telemetry collapses
+
+**Filed 2026-09-08 by Slice 17's browser pass; diagnosis already done and recorded
+in that entry.** When a car's feed dies (LEC's Parabolica impact: dead-bus
+fabrication — near-constant speed with zero throttle forever, smoothly decaying
+RPM, dead-reckoned positions, a gear counter that goes value-impossible only 110 s
+late), the replay currently animates the fabrication. The rule to build: a
+windowed multi-signal plausibility screen (constant-speed + zero-pedal + RPM-decay
+over N seconds, thresholds MEASURED, not guessed) that finds the collapse onset,
+then freezes the car at its last trusted fix — `hold_positions` from that instant,
+speed to zero — and reports it like every other screen. Adversarial negative
+controls are the hard half and the point: real lift-and-coast, formation laps, and
+damaged-but-driving cars must NOT freeze. Same family as 9g/9j; sequence freely
+among the 9-series. When it ships, regenerate the red-flag asset and retire the
+`provenance.note` disclosure it currently needs.
+
+### [ ] Slice 19 — retired, stopped and pit-lane car semantics (tower + gaps)
+
+**Filed 2026-09-08 by Slice 17's browser pass.** Two observed wrongnesses in the
+red-flag scenario: LEC parked on track breaks the gap frame when focused (he read
+as leading everyone), and pit-lane starters sort to the top before the start. The
+rule to build, argued in-slice (refined by the human at 17's acceptance): gaps
+are meaningful only between MOVING cars on the racing line; a DNF/retired car
+displays at the BOTTOM of the tower, desaturated, with no gap (the tower says
+"OUT" or similar, not a number); pit-lane and pre-start clocks get explicit gap
+rules (grid order or nothing). Touches `engine/gaps.ts` / `runningOrder.ts` /
+the tower — rule 1 untouched (all ≤30 Hz derived state).
+
+### [ ] Slice 21 — tower reshuffle animation
+
+**Filed 2026-09-08 at Slice 17's acceptance.** When the running order changes,
+tower rows animate to their new positions so the eye can follow an overtake
+instead of seeing a teleport. FLIP-style transforms, compositor-only: measure
+row positions on a resort, apply inverted transforms, transition to identity —
+CSS does the frames, React commits only on the resort itself (which
+`orderByGap`'s hysteresis already makes rare), so rule 1's "no per-frame React
+work" holds by construction. To argue in-slice: honouring
+`prefers-reduced-motion` (the store's existing `motion.ts` doctrine), what
+happens when a resort lands mid-animation, and whether the focused row's
+readout (which changes height) animates or snaps. Sequenced after 19 — a
+retired car's row should learn where it BELONGS before it learns to travel
+there.
+
+### [ ] Slice 20 — colour distinction under the luminance floor
+
+**Filed 2026-09-08 by Slice 17's browser pass.** The floor fixes visibility, not
+identity: Aston Martin's green and Cadillac's floored grey read alike in the
+tower. Options to argue with measurements: a hue-aware floor (preserve chroma
+while lifting luminance — the current mix-toward-white desaturates), a minimum
+pairwise colour-difference check over the loaded field with per-team overrides,
+or a secondary mark (pattern/initial) when two swatches collide. Interacts with
+the filed canvas-flooring rider and Slice 16's re-baseline.
+
+### [ ] Slice 18 — corner lore (after Slice 17)
+
+**Filed 2026-09-08 by the human's direction, not built.** A curated per-circuit
+data file — corner name and origin story (Maggotts and Becketts, the Hamilton
+straight, the Parabolica that is officially the Curva Alboreto) — surfaced as
+clickable corner badges on the canvas's existing corner labels, each opening a
+small info card. Curated content, so it is a committed data file with its own
+schema and validation (the gallery-manifest doctrine: bundled, build-time
+checked), never fetched and never generated. Scope to argue when it runs: badge
+hit-testing against rule 1 (the labels are painted by the canvas; a DOM overlay
+positioned from the same static scene geometry avoids touching the frame path),
+one file per circuit vs one file keyed by event, and how a circuit with no lore
+degrades (to today's plain labels, obviously — but argued, not assumed).
+
+### [ ] Slice 9k — adjudicate NOR's declined relocation structurally (after Slice 16)
+
+**Filed 2026-09-08, not built — sequenced AFTER Slice 16.** NOR's 41.7 m pit-entry
+relocation has stayed declined by ruling since 9i because no instrument could say
+which of his two branches is real. Slice 16 produces explicit pit-lane geometry from
+the cars that traverse it; that geometry is the missing adjudicator. The test is
+STRUCTURAL, not statistical: whichever of NOR's two branches lies on the pit-lane
+geometry is the real one — translate the displacement if the answer is decisive,
+keep declining if it is not. No new detector; this is the existing decline path
+gaining the one input it lacked.
+
 ## Backlog (ideas — not committed)
 - **Fixture asymmetry overhaul** — rebuild the committed fixture with no symmetries,
   distinct angles, and no near-cancellations, so it can express handedness,

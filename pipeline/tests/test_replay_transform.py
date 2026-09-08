@@ -42,6 +42,9 @@ from replay_transform import (
     check_columns,
     clamp_throttle,
     closing_time,
+    count_out_of_range_gears,
+    gear_anomaly_warning,
+    normalise_gear,
     color_lookup_warning,
     cumulative_arclength,
     cumulative_travel,
@@ -61,7 +64,10 @@ from replay_transform import (
     normalise_color,
     normalise_compound,
     parse_lap_range,
+    map_status_code,
+    status_report,
     stint_report,
+    window_status_intervals,
     KNOWN_COMPOUNDS,
     UNKNOWN_COMPOUND,
     resample_positions_by_travel,
@@ -2938,3 +2944,193 @@ def test_window_builder_withholds_the_reversal_screen_for_a_declined_car():
         for a, b in zip(build(declined_tel), build(spiked_tel))
     )
     assert worst > 2.0, "the spike was screened despite the declined guard"
+
+# --- track status (Slice 17) --------------------------------------------------------
+# `window_status_intervals` is the pure transform from FastF1's transition log to the
+# schema's interval list. The tests use asymmetric spans and windows that straddle the
+# feed's edges — a window aligned to its transitions could not distinguish clipping
+# from luck (the fixture-asymmetry lesson).
+
+
+def test_status_codes_map_and_unknown_degrades_in_band():
+    assert map_status_code("1") == "green"
+    assert map_status_code(2) == "yellow"
+    assert map_status_code(" 4 ") == "sc"
+    assert map_status_code("5") == "red"
+    assert map_status_code("6") == "vsc"
+    assert map_status_code("7") == "vsc"
+    # Unassigned and alien codes degrade to the schema's in-band member, never raise.
+    assert map_status_code("3") == "unknown"
+    assert map_status_code("CODE60") == "unknown"
+
+
+def test_status_intervals_clip_and_rebase_to_the_window():
+    result = window_status_intervals(
+        [100.0, 130.0, 150.0], ["1", "2", "1"], (120.0, 160.0), 40.1
+    )
+    assert result.intervals == (
+        {"status": "green", "fromT": 0.0, "toT": 10.0},
+        {"status": "yellow", "fromT": 10.0, "toT": 30.0},
+        {"status": "green", "fromT": 30.0, "toT": 40.1},
+    )
+    assert result.unknown_codes == ()
+
+
+def test_status_carried_in_takes_the_last_word_before_the_window():
+    # Two transitions before t0: the LATER one is the status the window opens under.
+    result = window_status_intervals(
+        [0.0, 90.0], ["1", "5"], (100.0, 110.0), 10.0
+    )
+    assert result.intervals == ({"status": "red", "fromT": 0.0, "toT": 10.0},)
+
+
+def test_status_head_before_any_transition_is_uncovered_not_green():
+    # The feed starts mid-window: no interval covers the head. Absence is the
+    # honest answer, and the schema accepts the gap.
+    result = window_status_intervals([105.0], ["2"], (100.0, 110.0), 10.0)
+    assert result.intervals == ({"status": "yellow", "fromT": 5.0, "toT": 10.0},)
+
+
+def test_status_adjacent_equal_statuses_merge():
+    # Codes 6 and 7 are both VSC phases; the emitted list must not show a seam.
+    result = window_status_intervals(
+        [0.0, 4.0, 6.0, 8.0], ["1", "6", "7", "1"], (0.0, 10.0), 10.0
+    )
+    assert result.intervals == (
+        {"status": "green", "fromT": 0.0, "toT": 4.0},
+        {"status": "vsc", "fromT": 4.0, "toT": 8.0},
+        {"status": "green", "fromT": 8.0, "toT": 10.0},
+    )
+
+
+def test_status_final_interval_extends_to_the_emitted_duration():
+    # duration runs one grid step past t1 (the holding step); the last interval
+    # covers it so the app's parked clock still has an answer.
+    result = window_status_intervals([0.0], ["5"], (0.0, 4.0), 4.1)
+    assert result.intervals == ({"status": "red", "fromT": 0.0, "toT": 4.1},)
+
+
+def test_status_transitions_at_or_past_the_window_end_are_ignored():
+    result = window_status_intervals(
+        [0.0, 10.0, 12.0], ["1", "2", "5"], (0.0, 10.0), 10.0
+    )
+    assert result.intervals == ({"status": "green", "fromT": 0.0, "toT": 10.0},)
+
+
+def test_status_unknown_codes_are_emitted_and_reported_once_each():
+    result = window_status_intervals(
+        [0.0, 2.0, 4.0, 6.0], ["1", "9", "9", "8"], (0.0, 8.0), 8.0
+    )
+    assert result.intervals == (
+        {"status": "green", "fromT": 0.0, "toT": 2.0},
+        {"status": "unknown", "fromT": 2.0, "toT": 8.0},
+    )
+    assert result.unknown_codes == ("9", "8")
+
+
+def test_status_zero_width_rows_vanish_and_coincident_transitions_keep_the_last():
+    result = window_status_intervals(
+        [0.0, 5.0, 5.0], ["1", "2", "5"], (0.0, 10.0), 10.0
+    )
+    assert result.intervals == (
+        {"status": "green", "fromT": 0.0, "toT": 5.0},
+        {"status": "red", "fromT": 5.0, "toT": 10.0},
+    )
+
+
+def test_status_times_are_rounded_like_every_other_emitted_time():
+    result = window_status_intervals(
+        [0.0, 1.23456], ["1", "2"], (0.0, 3.0), 3.1
+    )
+    assert result.intervals[0]["toT"] == 1.235
+    assert result.intervals[1]["fromT"] == 1.235
+
+
+def test_status_rejects_mismatched_columns_and_backwards_input():
+    with pytest.raises(TelemetryShapeError, match="one code per instant"):
+        window_status_intervals([0.0, 1.0], ["1"], (0.0, 4.0), 4.0)
+    with pytest.raises(TelemetryShapeError, match="run forwards"):
+        window_status_intervals([0.0], ["1"], (5.0, 5.0), 4.0)
+    with pytest.raises(TelemetryShapeError, match="non-decreasing"):
+        window_status_intervals([2.0, 1.0], ["1", "2"], (0.0, 4.0), 4.0)
+    with pytest.raises(TelemetryShapeError, match="duration must be positive"):
+        window_status_intervals([0.0], ["1"], (0.0, 4.0), 0.0)
+
+
+def test_status_empty_feed_emits_no_intervals():
+    result = window_status_intervals([], [], (0.0, 4.0), 4.1)
+    assert result.intervals == ()
+    assert result.unknown_codes == ()
+
+
+def test_window_builder_emits_status_rows_and_defaults_them_empty():
+    start, end = 1042.5, 1046.5
+    cars = [synthetic.window_car("AAA", synthetic.session_telemetry(start, end))]
+    with_status = build_window_replay_dict(
+        cars, synthetic.SESSION_META, (start, end),
+        status=[{"status": "green", "fromT": 0.0, "toT": 4.1}],
+    )
+    assert with_status["trackStatus"] == [
+        {"status": "green", "fromT": 0.0, "toT": 4.1}
+    ]
+    without = build_window_replay_dict(cars, synthetic.SESSION_META, (start, end))
+    assert without["trackStatus"] == []
+
+
+def test_status_report_prints_the_arc_and_warns_on_unknown_codes():
+    line = status_report(
+        [
+            {"status": "green", "fromT": 0.0, "toT": 182.2},
+            {"status": "red", "fromT": 182.2, "toT": 294.8},
+        ]
+    )
+    assert "green 0-182.2s" in line
+    assert "red 182.2-294.8s" in line
+    warned = status_report(
+        [{"status": "unknown", "fromT": 0.0, "toT": 1.0}], unknown_codes=("9",)
+    )
+    assert "WARNING" in warned and "'unknown'" in warned and "9" in warned
+
+
+def test_status_report_says_no_status_data_rather_than_printing_nothing():
+    assert "no status data" in status_report([])
+
+# --- gear normalisation (Slice 17) --------------------------------------------------
+# The doctrine "an out-of-range gear is impossible rather than merely dirty" was
+# refuted by measurement: LEC's wrecked car at 2026 Monza streamed nGear counting
+# monotonically to 128 while parked at idle. Garbage from a damaged gearbox is not a
+# gear, and clamping it to 8 would invent a parked car in top gear — it is emitted as
+# neutral and announced in the report.
+
+
+def test_normalise_gear_passes_real_gears_and_zeroes_garbage():
+    out = normalise_gear([0, 1, 8, 9, 128, -1, 5.4])
+    assert out.tolist() == [0, 1, 8, 0, 0, 0, 5]
+
+
+def test_count_out_of_range_gears_counts_only_the_garbage():
+    assert count_out_of_range_gears([0, 1, 8]) == 0
+    assert count_out_of_range_gears([9, 128, -1, 3]) == 3
+
+
+def test_gear_anomaly_warning_names_the_driver_and_the_count():
+    line = gear_anomaly_warning("LEC", 99)
+    assert "LEC" in line and "99" in line and "WARNING" in line
+
+
+def test_resample_channels_zeroes_garbage_gear_before_the_fill():
+    # The garbage reading must not forward-fill over real samples: normalised
+    # first, the zero is what propagates.
+    src = np.array([0.0, 0.5, 1.0, 1.5])
+    t = np.array([0.0, 1.0, 2.0])
+    telemetry = {
+        "Time": t,
+        "Speed": np.array([100.0, 100.0, 100.0]),
+        "Throttle": np.array([50.0, 50.0, 50.0]),
+        "Brake": np.array([0, 0, 0]),
+        "nGear": np.array([3, 128, 4]),
+        "X": np.zeros(3),
+        "Y": np.zeros(3),
+    }
+    channels = resample_channels(src, t, telemetry)
+    assert channels["gear"].tolist() == [3, 3, 0, 0]

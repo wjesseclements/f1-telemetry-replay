@@ -73,3 +73,78 @@ describe("TransportBar lap indicator", () => {
     expect(screen.queryByText(/^LAP /)).toBeNull();
   });
 });
+
+/** The fixture with a trackStatus interval list laid over it (Slice 17). */
+function withStatus(
+  intervals: { status: string; fromT: number; toT: number }[],
+): Replay {
+  const raw = JSON.parse(JSON.stringify(sampleLap));
+  raw.trackStatus = intervals;
+  return parseReplay(raw, "status.json");
+}
+
+describe("TransportBar status flag", () => {
+  it("shows the flag the clock is under, full name in the accessible text", () => {
+    renderBar(
+      withStatus([
+        { status: "green", fromT: 0, toT: 30 },
+        { status: "sc", fromT: 30, toT: 58.5 },
+      ]),
+      40,
+    );
+    expect(screen.getByText("SC")).toBeInTheDocument();
+    expect(screen.getByText(/Track status: Safety Car/)).toBeInTheDocument();
+    expect(screen.queryByText("GREEN")).not.toBeInTheDocument();
+  });
+
+  it("shows GREEN as data, not as decoration — a green board is a statement", () => {
+    renderBar(withStatus([{ status: "green", fromT: 0, toT: 58.5 }]), 10);
+    expect(screen.getByText("GREEN")).toBeInTheDocument();
+  });
+
+  it("shows RED at the red-flag clock", () => {
+    renderBar(
+      withStatus([
+        { status: "sc", fromT: 0, toT: 40 },
+        { status: "red", fromT: 40, toT: 58.5 },
+      ]),
+      50,
+    );
+    expect(screen.getByText("RED")).toBeInTheDocument();
+    expect(screen.getByText(/Track status: Red flag/)).toBeInTheDocument();
+  });
+
+  it("renders NO chip at all for a replay without status data", () => {
+    renderBar(bare, 10);
+    expect(screen.queryByText(/Track status:/)).not.toBeInTheDocument();
+  });
+
+  it("renders no chip in a coverage gap and none for unknown — absence is not green", () => {
+    const replay = withStatus([
+      { status: "green", fromT: 0, toT: 10 },
+      { status: "unknown", fromT: 20, toT: 30 },
+    ]);
+    const first = renderBar(replay, 15);
+    expect(screen.queryByText(/Track status:/)).not.toBeInTheDocument();
+    first.unmount();
+    renderBar(replay, 25);
+    expect(screen.queryByText(/Track status:/)).not.toBeInTheDocument();
+  });
+
+  it("tints the scrubber over abnormal stretches and leaves a bare replay's bar alone", () => {
+    const tinted = renderBar(
+      withStatus([
+        { status: "green", fromT: 0, toT: 40 },
+        { status: "red", fromT: 40, toT: 58.5 },
+      ]),
+      10,
+    );
+    const slider = screen.getByRole("slider", { name: "Lap position" });
+    expect(slider.style.background).toContain("--c-flag-red");
+    tinted.unmount();
+
+    renderBar(bare, 10);
+    const bareSlider = screen.getByRole("slider", { name: "Lap position" });
+    expect(bareSlider.style.background).toBe("");
+  });
+});

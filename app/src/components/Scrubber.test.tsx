@@ -12,6 +12,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadFixtureReplay } from "../data/fixture";
 import { Scrubber } from "./Scrubber";
+import { segmentGradient } from "./flagTint";
 
 const replay = loadFixtureReplay();
 const { duration, sampleRateHz } = replay.meta;
@@ -171,3 +172,44 @@ describe("Scrubber drag race", () => {
 // "Scrubbing never pauses playback" is asserted in `App.test.tsx`, where `isPlaying` is
 // actually observable. Here it would be vacuous: `Scrubber` is handed no play/pause
 // capability at all, so there is nothing for a test at this level to catch.
+
+describe("segmentGradient", () => {
+  it("returns null when nothing needs tinting — the bg-line class alone paints the bar", () => {
+    expect(segmentGradient([])).toBeNull();
+    expect(segmentGradient([{ status: "green", from: 0, to: 1 }])).toBeNull();
+    expect(segmentGradient([{ status: "unknown", from: 0, to: 1 }])).toBeNull();
+  });
+
+  it("paints an abnormal stretch with its token and fills around it with the base", () => {
+    const gradient = segmentGradient([
+      { status: "green", from: 0, to: 0.4 },
+      { status: "red", from: 0.4, to: 0.6 },
+      { status: "green", from: 0.6, to: 1 },
+    ]);
+    expect(gradient).toBe(
+      "linear-gradient(to right, var(--c-line) 0.00% 40.00%, var(--c-flag-red) 40.00% 60.00%, var(--c-line) 60.00% 100%)",
+    );
+  });
+
+  it("keeps each flag family's own token — sc, vsc and yellow are distinguishable", () => {
+    const gradient = segmentGradient([
+      { status: "yellow", from: 0, to: 0.2 },
+      { status: "sc", from: 0.2, to: 0.5 },
+      { status: "vsc", from: 0.5, to: 0.7 },
+    ]);
+    expect(gradient).toContain("var(--c-flag-yellow) 0.00% 20.00%");
+    expect(gradient).toContain("var(--c-flag-sc) 20.00% 50.00%");
+    expect(gradient).toContain("var(--c-flag-vsc) 50.00% 70.00%");
+    // The uncovered tail is base-coloured, not left to the previous stop.
+    expect(gradient).toContain("var(--c-line) 70.00% 100%");
+  });
+
+  it("bridges a coverage gap with the base colour", () => {
+    const gradient = segmentGradient([
+      { status: "red", from: 0.1, to: 0.2 },
+      { status: "yellow", from: 0.8, to: 1 },
+    ]);
+    expect(gradient).toContain("var(--c-line) 0.00% 10.00%");
+    expect(gradient).toContain("var(--c-line) 20.00% 80.00%");
+  });
+});

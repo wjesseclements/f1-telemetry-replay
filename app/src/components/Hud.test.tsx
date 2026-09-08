@@ -13,7 +13,7 @@ import { parseReplay } from "../engine/load";
 import type { CarSnapshot } from "../engine/interpolate";
 import type { Replay } from "../engine/schema";
 import { NO_VALUE } from "../engine/format";
-import { floorLuminance } from "../engine/color";
+import { SWATCH_MIN_LUMINANCE, floorLuminance } from "../engine/color";
 import {
   COMPARISON_MIN_LUMINANCE,
   COMPARISON_STROKE_WIDTH,
@@ -881,5 +881,39 @@ describe("Hud speed-trace comparison", () => {
         name: /Speed trace for TRD compared with SEC/,
       }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("Hud swatch luminance floor (Slice 17)", () => {
+  it("lifts a livery too dark for the panel — Cadillac's #444444 — and passes bright ones verbatim", () => {
+    const raw = JSON.parse(JSON.stringify(sampleLap));
+    raw.cars.push({
+      ...raw.cars[0],
+      driver: "CAD",
+      team: "Cadillac",
+      color: "#444444",
+    });
+    const dark = parseReplay(raw, "dark-swatch.json");
+    useTransport.setState({ focusedCarIndex: 0, comparisonCarIndex: null });
+    telemetry.reset();
+    telemetry.publish(1000, 0, [snapshot(), snapshot()]);
+    const { container } = render(<Hud replay={dark} />);
+
+    const swatches = Array.from(
+      container.querySelectorAll<HTMLElement>('span[aria-hidden="true"]'),
+    ).filter((el) => el.style.backgroundColor !== "");
+    expect(swatches.length).toBeGreaterThanOrEqual(2);
+
+    const floored = floorLuminance("#444444", SWATCH_MIN_LUMINANCE);
+    expect(floored).not.toBe("#444444"); // the fixture colour genuinely needs the lift
+    const colors = swatches.map((el) => el.style.backgroundColor);
+    // jsdom normalises hex to rgb(); compare through the same normalisation.
+    const toRgb = (hex: string) => {
+      const el = document.createElement("span");
+      el.style.backgroundColor = hex;
+      return el.style.backgroundColor;
+    };
+    expect(colors).toContain(toRgb(floored));
+    expect(colors).not.toContain(toRgb("#444444"));
   });
 });

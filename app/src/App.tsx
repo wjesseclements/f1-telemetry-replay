@@ -4,6 +4,8 @@ import { FOCUS_RING } from "./components/focus";
 import { Hud } from "./components/Hud";
 import { ReplayError } from "./components/ReplayError";
 import { ReplayFilePicker } from "./components/ReplayFilePicker";
+import { ScenarioEvents } from "./components/ScenarioEvents";
+import { StatusBanner } from "./components/StatusBanner";
 import { SpeedLegend } from "./components/SpeedLegend";
 import { TransportBar } from "./components/TransportBar";
 import { useTransportKeys } from "./keyboard/useTransportKeys";
@@ -105,6 +107,13 @@ export default function App({ bootstrapError = null }: AppProps) {
                   scrim without interruption. Pinned in `App.test.tsx`. */}
               <TrackCanvas replay={replay} />
               <SpeedLegend />
+              {/* The abnormal-flag strip and the narrated-moment overlay
+                  (Slice 17): siblings of the canvas with their own ≤30 Hz
+                  telemetry subscriptions, exactly like Hud — App itself still
+                  subscribes to nothing per-frame. The banner sits under the
+                  panel and the card (z-5 vs z-10): narration outranks signage. */}
+              <StatusBanner replay={replay} />
+              <ScenarioEvents />
               {galleryOpen && (
                 <FeaturedPanel id={GALLERY_PANEL_ID} onClose={closeGallery} />
               )}

@@ -2,8 +2,96 @@
   "schemaVersion": 1,
   "scenarios": [
     {
+      "id": "monza-2026-red-flag",
+      "title": "Monza 2026 · the red flag",
+      "hook": "Lights out, Leclerc into the wall at the Parabolica on lap 2 — yellow, Safety Car, red flag, and the whole field files into the pits.",
+      "file": "monza-2026-red-flag.json",
+      "suggested": {
+        "driver": "LEC",
+        "clock": 0,
+        "speedMult": 2
+      },
+      "events": [
+        {
+          "clock": 252.1,
+          "title": "RED FLAG",
+          "body": "Leclerc hit the wall at the Parabolica at the end of the second lap, bringing out a red flag. The field parked in the pit lane for 29 minutes before the race resumed from a standing restart."
+        }
+      ],
+      "next": "monza-2026-restart",
+      "provenance": {
+        "session": "2026 Italian Grand Prix · Race",
+        "laps": "1-3",
+        "drivers": [
+          "RUS",
+          "GAS",
+          "VER",
+          "PIA",
+          "COL",
+          "NOR",
+          "LIN",
+          "BEA",
+          "HAM",
+          "BOR",
+          "OCO",
+          "HUL",
+          "ANT",
+          "TSU",
+          "SAI",
+          "PER",
+          "ALB",
+          "LAW",
+          "STR",
+          "BOT",
+          "ALO",
+          "LEC"
+        ],
+        "generated": "2026-09-08",
+        "note": "Known data artifact: LEC's telemetry fails at the Parabolica impact (~2:50 into the window). The half-lap ‘limp’ before his car halts is the dead feed, not the car — constant ~160 km/h with throttle stuck at zero — which stopped at the wall."
+      }
+    },
+    {
+      "id": "monza-2026-restart",
+      "title": "Monza 2026 · the restart",
+      "hook": "The field forms up on the grid for a standing restart — lights out again at 1:20 in, then three green laps of scramble, Antonelli climbing.",
+      "file": "monza-2026-restart.json",
+      "suggested": {
+        "driver": "ANT",
+        "clock": 0,
+        "speedMult": 1
+      },
+      "provenance": {
+        "session": "2026 Italian Grand Prix · Race",
+        "laps": "6-9",
+        "drivers": [
+          "RUS",
+          "GAS",
+          "VER",
+          "PIA",
+          "COL",
+          "NOR",
+          "LIN",
+          "BEA",
+          "HAM",
+          "BOR",
+          "OCO",
+          "HUL",
+          "ANT",
+          "TSU",
+          "SAI",
+          "PER",
+          "ALB",
+          "LAW",
+          "STR",
+          "BOT",
+          "ALO"
+        ],
+        "generated": "2026-09-08"
+      }
+    },
+    {
       "id": "silverstone-2024-rain",
-      "title": "Silverstone 2024 \u00b7 the rain arrives",
+      "title": "Silverstone 2024 · the rain arrives",
       "hook": "Watch the thermal trail go cold as the shower lands and the speeds collapse.",
       "file": "silverstone-2024-rain.json",
       "suggested": {
@@ -12,7 +100,7 @@
         "speedMult": 2
       },
       "provenance": {
-        "session": "2024 British Grand Prix \u00b7 Race",
+        "session": "2024 British Grand Prix · Race",
         "laps": "24-28",
         "drivers": ["HAM", "NOR", "VER"],
         "generated": "2026-09-07"
@@ -20,7 +108,7 @@
     },
     {
       "id": "silverstone-2024-finale",
-      "title": "Silverstone 2024 \u00b7 the last laps",
+      "title": "Silverstone 2024 · the last laps",
       "hook": "Hamilton holding Verstappen off, softs against hards, with Norris in range.",
       "file": "silverstone-2024-finale.json",
       "suggested": {
@@ -29,7 +117,7 @@
         "speedMult": 1
       },
       "provenance": {
-        "session": "2024 British Grand Prix \u00b7 Race",
+        "session": "2024 British Grand Prix · Race",
         "laps": "48-52",
         "drivers": ["HAM", "VER", "NOR"],
         "generated": "2026-09-07"
@@ -37,7 +125,7 @@
     },
     {
       "id": "monza-2024-pit-cycle",
-      "title": "Monza 2024 \u00b7 the pit cycle",
+      "title": "Monza 2024 · the pit cycle",
       "hook": "Seven laps of stops and undercuts: the timing tower reshuffles as they go.",
       "file": "monza-2024-pit-cycle.json",
       "suggested": {
@@ -46,7 +134,7 @@
         "speedMult": 2
       },
       "provenance": {
-        "session": "2024 Italian Grand Prix \u00b7 Race",
+        "session": "2024 Italian Grand Prix · Race",
         "laps": "13-19",
         "drivers": ["VER", "LEC", "NOR"],
         "generated": "2026-09-07"

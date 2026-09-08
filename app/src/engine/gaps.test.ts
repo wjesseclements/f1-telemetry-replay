@@ -68,6 +68,7 @@ function replayOf(...cars: Sample[][]): Replay {
       laps: [],
       stints: [],
     })),
+    trackStatus: [],
   } as Replay;
 }
 

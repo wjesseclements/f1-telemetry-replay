@@ -208,6 +208,19 @@ export function relativeLuminance(hex: string): number {
  * through untouched, byte-for-byte, so team identity is preserved wherever it already
  * reads.
  */
+/**
+ * The luminance floor for the timing tower's team swatches, `floorLuminance`d in
+ * `CarEntry` (Slice 17, ruled): 2026's Cadillac livery arrives as `#444444`, which
+ * is a 1.7:1 ghost against `--c-panel` — the first real livery dark enough to
+ * vanish in the TOWER rather than the trace. The value is `COMPARISON_MIN_LUMINANCE`'s
+ * measured 0.25 (≥5.5:1 on the app's darks), named separately for the tyre-token
+ * reason: retuning the trace overlay must not silently repaint the tower, and
+ * vice versa. The CANVAS is deliberately not floored — its tails and markers
+ * still paint raw team colour, a scoped ruling flagged in PLAN (re-flooring the
+ * scene would re-baseline the drawcall md5s and lift Red Bull's navy too).
+ */
+export const SWATCH_MIN_LUMINANCE = 0.25;
+
 export function floorLuminance(hex: string, floor: number): string {
   const lum = relativeLuminance(hex);
   if (lum >= floor) return hex;
