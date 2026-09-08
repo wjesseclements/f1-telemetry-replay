@@ -3634,6 +3634,57 @@ ledger's open defect slice; STATUS.md is updated in this PR accordingly.
     predicted bound of exactly 2x the structural numbers and ~2x the time, at a
     thousandth of the tick budget.
 
+### [ ] Slice 17 — 2026 Monza red flag: track-status flags, the first 2026 session, Git LFS ruled on
+
+**STUB — runs in phases; nothing is built until the human rules on the Phase 1 design
+cards. Ordered AHEAD of the open Slice 16 by the human's explicit direction** (the
+precedent is Slice 15's ordering note); STATUS.md updated in this PR accordingly.
+
+The scenario: the 2026 Italian GP race (2026-09-06) — the start, LEC's lap-2 off at
+the Parabolica, the red flag, and the restart — as a new gallery entry (or entries),
+carrying the feature this scenario exists to force: **track-status flags**
+(green/yellow/SC/VSC/red) as additive schema + pipeline emission + a ≤30 Hz HUD
+treatment. Also ruled in this slice: **Git LFS for `app/public/gallery/*.json` from
+now on** (no history rewrite — the three existing assets stay normal git objects at
+their current hashes) and the fate of CLAUDE.md's 6 MB gallery budget.
+
+- **Phase 1 — survey and design (DONE 2026-09-08, read-only against FastF1, home
+  network).** Key facts, all in session time from the fetched data, not memory:
+  race start (lap 1) 00:56:55.761; LEC and HAM touch at Turn 2 ~00:57:09 (lap 1);
+  LEC off at the Parabolica ~00:59:48 (lap 2), limps at ~160 km/h and parks on the
+  della Roggia approach at 01:00:43; Yellow 00:59:57.9, SC 01:00:14.4, **RED
+  01:01:07.8**; field pits at the end of lap 3 (01:01:47–01:02:46); resume from the
+  pit lane 01:32:24.9 (laps 4–6 behind the SC, which FastF1's track_status does NOT
+  mark — the board stayed green); green racing from lap 7 at 01:40:35.3. 22 cars /
+  11 teams (Audi, Cadillac join); DRS all-zeros for every car (rule 8's omission
+  path, already implemented in `replay_transform`, gets its first real exercise);
+  compounds are plain SOFT/MEDIUM/HARD; dry, 31–33 °C air.
+- **Phase 1 checkpoint (pending ruling):** the stoppage card (cut / two windows /
+  one window — numbers say two windows), lap ranges with sizes (proposed laps 1–3
+  ref RUS = 294.8 s and laps 6–9 ref RUS = 425.2 s, full 22-car field), the flag-UI
+  placement card, the schema shape for status intervals, and LFS vs Blob vs plain
+  git with quota math (GitHub LFS free tier is now 10 GiB storage + 10 GiB/month
+  bandwidth, metered overage; gallery JSON packs 6.5:1 under plain git).
+- **Phase 2 — build per the rulings:** pipeline emission + schema + tests + goldens;
+  flag UI with tests; the LFS/budget decision executed; scenario(s) generated and
+  manifested with provenance and landing clocks; README/gallery copy; both
+  languages' gates; drawcall md5s (canvas expected untouched); /review; no push
+  until the human has seen it.
+- **Acceptance (human, pre-registered):** click the new gallery entry — see the
+  start, watch LEC go off at the Parabolica, see the RED flag appear, and the
+  restart plays — with the existing three scenarios unchanged.
+
+### [ ] Slice 9k — adjudicate NOR's declined relocation structurally (after Slice 16)
+
+**Filed 2026-09-08, not built — sequenced AFTER Slice 16.** NOR's 41.7 m pit-entry
+relocation has stayed declined by ruling since 9i because no instrument could say
+which of his two branches is real. Slice 16 produces explicit pit-lane geometry from
+the cars that traverse it; that geometry is the missing adjudicator. The test is
+STRUCTURAL, not statistical: whichever of NOR's two branches lies on the pit-lane
+geometry is the real one — translate the displacement if the answer is decisive,
+keep declining if it is not. No new detector; this is the existing decline path
+gaining the one input it lacked.
+
 ## Backlog (ideas — not committed)
 - **Fixture asymmetry overhaul** — rebuild the committed fixture with no symmetries,
   distinct angles, and no near-cancellations, so it can express handedness,

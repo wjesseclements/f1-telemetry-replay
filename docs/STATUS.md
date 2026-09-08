@@ -21,23 +21,24 @@ shipped asset byte-identical to the simulation its acceptance table was scored o
 placement adjudicated by the committed instruments (`placement-error.py`,
 `gap-error.py`) under a held-out scheme in which sector marks are never anchors.
 
-**What is open, and what is blocked.** **Slices 9i and 9j are DONE and PASSED.** 9i
-(2026-09-07): held-out placement on pitting cars fell from 19.6–47.6 m to
-10.6–15.7 m; NOR's 41.7 m relocation stays declined by ruling. 9j (2026-09-08):
-HAM's residual pit-entry zigzag was attributed to a sub-bar single-fix excursion —
-legs individually legal to the ratio screen while the pair reverses at 250 km/h — and
-the reversal screen removed it; **HAM now rates 97% at 0.5x, level with VER, and the
-re-watch baseline is 97 (VER) / 97 (HAM) / NOR unchanged-by-ruling.** One slice is
-open: **16 — draw the pit lane any car in the file uses** (the ribbon comes from
-`cars[0]`, so Monza's pit cycle shows LEC and NOR pitting on an undrawn lane).
-**Nothing is blocked.** One standing constraint applies to all pipeline work: F1
-blocks datacentre IPs from live timing, so `build_replay.py` runs only from the
-human's home network (see CLAUDE.md Gotchas).
+**What is open, and what is blocked.** Two slices are open. **Slice 17 — the 2026
+Monza red-flag scenario (track-status flags, the first 2026 session this app has
+loaded, and the gallery asset policy/LFS ruling) — runs FIRST, ordered ahead of
+Slice 16 by the human's explicit direction.** It runs in phases: Phase 1 (survey of
+the 2026 Italian GP + design cards) is done and sits at its checkpoint awaiting the
+human's rulings; nothing is built until then. **Slice 16 — draw the pit lane any
+car in the file uses** — follows (the ribbon comes from `cars[0]`, so Monza's pit
+cycle shows LEC and NOR pitting on an undrawn lane), and **Slice 9k** (adjudicate
+NOR's declined 41.7 m relocation structurally, against the pit-lane geometry 16
+produces) is filed to run after it. **Nothing is blocked.** One standing constraint
+applies to all pipeline work: F1 blocks datacentre IPs from live timing, so
+`build_replay.py` runs only from the human's home network (see CLAUDE.md Gotchas).
 
-**What happens next.** The next session implements **Slice 16**: decouple the ribbon
-from `cars[0]` and draw the pit lane whenever any car uses it — an app render slice
-whose scope sketch is in its PLAN entry (the lane's geometry from the cars that
-traverse it; no schema change expected but to be argued, not assumed), with a
-deliberate drawcall re-baseline since it is the first canvas change since the 9e
-family. After 16 comes the backlog's headline item, the **fixture asymmetry
-overhaul** (four recorded instances of the symmetric fixture hiding defect classes).
+**What happens next.** Slice 17 Phase 2 builds per the checkpoint rulings:
+track-status intervals as additive schema + pipeline emission, a ≤30 Hz flag UI,
+the LFS/budget decision executed, and the new gallery scenario(s) — acceptance is
+clicking the new entry and watching the start, LEC's Parabolica off, the RED flag,
+and the restart, with the existing three scenarios unchanged. Then Slice 16 (with
+its deliberate drawcall re-baseline), then Slice 9k, then the backlog's headline
+item, the **fixture asymmetry overhaul** (four recorded instances of the symmetric
+fixture hiding defect classes).
