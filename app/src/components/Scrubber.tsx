@@ -25,6 +25,8 @@
  */
 import { useEffect, useState } from "react";
 import { formatLapTime } from "../engine/format";
+import type { StatusSegment } from "../engine/trackStatus";
+import { segmentGradient } from "./flagTint";
 import { FOCUS_RING } from "./focus";
 
 export interface ScrubberProps {
@@ -36,6 +38,14 @@ export interface ScrubberProps {
   sampleRateHz: number;
   /** Commit a position. Wired to the transport store's `seek`. */
   onSeek: (seconds: number) => void;
+  /**
+   * Track-status stretches to tint the bar with, as duration-fractions
+   * (`statusSegments`). Optional and default-empty so every non-status caller
+   * and every pre-Slice-17 replay renders the bar exactly as before. Purely
+   * decorative: the information lives in the `StatusFlag` chip and the event
+   * card, so colour never carries it alone.
+   */
+  segments?: readonly StatusSegment[];
 }
 
 export function Scrubber({
@@ -43,6 +53,7 @@ export function Scrubber({
   duration,
   sampleRateHz,
   onSeek,
+  segments = [],
 }: ScrubberProps) {
   /** Non-null only while a pointer drag is in progress. */
   const [dragValue, setDragValue] = useState<number | null>(null);
@@ -62,6 +73,7 @@ export function Scrubber({
   }, [dragValue]);
 
   const value = dragValue ?? clock;
+  const gradient = segmentGradient(segments);
 
   const handleChange = (next: number) => {
     // Only track locally while dragging. A keyboard change has no drag in flight, so
@@ -86,6 +98,9 @@ export function Scrubber({
       // Without this a screen reader announces the raw number ("12.4"); the lap clock
       // is what the value actually means.
       aria-valuetext={formatLapTime(value)}
+      // The tint paints the element's own background over the `bg-line` base;
+      // with no abnormal stretches `gradient` is null and the class alone wins.
+      style={gradient === null ? undefined : { background: gradient }}
       className={`h-1 w-full min-w-0 cursor-pointer appearance-none rounded-full bg-line accent-accent ${FOCUS_RING}`}
     />
   );

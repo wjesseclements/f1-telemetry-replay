@@ -65,6 +65,7 @@
  * list. Its visible text "vs" is contained in its accessible name "vs {driver}"
  * (WCAG 2.5.3, same rule as the gap digits).
  */
+import { SWATCH_MIN_LUMINANCE, floorLuminance } from "../engine/color";
 import { carHasDrs, isDrsOpen } from "../engine/drs";
 import {
   formatGap,
@@ -147,11 +148,15 @@ export function CarEntry({
               : "border-transparent hover:border-line"
           } ${FOCUS_RING}`}
         >
-          {/* The team colour, as the same mark the canvas uses for this car. */}
+          {/* The team colour, as the same mark the canvas uses for this car —
+              floored to the tower's minimum luminance (Slice 17: Cadillac's
+              #444444 was invisible here; bright liveries pass byte-for-byte). */}
           <span
             aria-hidden="true"
             className="h-3.5 w-1 shrink-0 rounded-full"
-            style={{ backgroundColor: car.color }}
+            style={{
+              backgroundColor: floorLuminance(car.color, SWATCH_MIN_LUMINANCE),
+            }}
           />
           <span className="font-mono text-xs font-bold tracking-wider text-txt">
             {car.driver}

@@ -277,6 +277,21 @@ SESSION_LAP_TABLES = {
     "BBB": ([12], [1030.2], [math.nan], ["HARD"], [math.nan]),
 }
 
+#: A synthetic TRACK-STATUS feed for RACE_WINDOW, as the plain columns
+#: `window_status_intervals` takes: `(times_s, codes)` on the session axis.
+#: Deliberately awkward in four ways (the fixture-asymmetry lesson):
+#:
+#: * the green at T0-10 is CARRIED IN — the window opens under a status declared
+#:   before it, pinning the carried-in path;
+#: * codes 6 then 7 are both VSC phases, so the golden pins the merge;
+#: * code 5 (red) runs to the emitted duration, one grid step past the window,
+#:   pinning the holding-step extension;
+#: * the trailing code 1 sits past the window's end and must not appear.
+SESSION_STATUS = (
+    [SESSION_T0 - 10.0, SESSION_T0 + 1.0, SESSION_T0 + 2.0, SESSION_T0 + 2.5, SESSION_T0 + 3.2, SESSION_T0 + 9.0],
+    ["1", "2", "6", "7", "5", "1"],
+)
+
 #: The single-lap tables for the two v1 goldens, same column order. `lap-drs` is the
 #: plain path (a known compound, a known age); `lap-nodrs` carries a compound the
 #: pipeline cannot recognise plus a missing TyreLife, so the UNKNOWN mapping and the

@@ -491,3 +491,100 @@ describe("parseReplay — span agreement", () => {
     expect(replay.cars[1].samples).toHaveLength(replay.cars[0].samples.length);
   });
 });
+
+describe("parseReplay — trackStatus", () => {
+  // Additive within schemaVersion 1 with `.default([])`, per the laps/stints
+  // doctrine: absence and emptiness both mean "this replay carries no status
+  // data", and the engine branches on `length`, never `undefined`.
+  const INTERVALS = [
+    { status: "green", fromT: 0, toT: 30 },
+    { status: "yellow", fromT: 30, toT: 40 },
+    { status: "red", fromT: 40, toT: 58.5 },
+  ];
+
+  it("defaults a replay without the field to an empty array", () => {
+    expect(sampleLap).not.toHaveProperty("trackStatus");
+    expect(parseReplay(sampleLap).trackStatus).toEqual([]);
+  });
+
+  it("accepts ordered intervals, every enum member included", () => {
+    const ok = clone();
+    ok.trackStatus = [
+      { status: "green", fromT: 0, toT: 10 },
+      { status: "yellow", fromT: 10, toT: 20 },
+      { status: "sc", fromT: 20, toT: 30 },
+      { status: "vsc", fromT: 30, toT: 40 },
+      { status: "red", fromT: 40, toT: 50 },
+      { status: "unknown", fromT: 50, toT: 58.5 },
+    ];
+    expect(parseReplay(ok).trackStatus).toHaveLength(6);
+  });
+
+  it("accepts a gap between intervals — a gap means no answer, not an error", () => {
+    const ok = clone();
+    ok.trackStatus = [
+      { status: "green", fromT: 0, toT: 10 },
+      { status: "red", fromT: 20, toT: 30 },
+    ];
+    expect(parseReplay(ok).trackStatus).toHaveLength(2);
+  });
+
+  it("rejects an arbitrary status string rather than falling back to a default", () => {
+    // The pipeline maps unrecognised codes to "unknown"; an arbitrary string
+    // reaching the loader is a hand-mangled file, and must fail as loudly as a
+    // compound typo does.
+    const bad = clone();
+    bad.trackStatus = [{ status: "CODE60", fromT: 0, toT: 10 }];
+    const err = expectRejection(bad);
+    expect(err.message).toContain("status");
+  });
+
+  it("rejects null, which is not the same as absent", () => {
+    const bad = clone();
+    bad.trackStatus = null;
+    expectRejection(bad);
+  });
+
+  it("rejects an interval that does not run forwards", () => {
+    const bad = clone();
+    bad.trackStatus = [{ status: "green", fromT: 10, toT: 10 }];
+    const err = expectRejection(bad);
+    expect(err.message).toContain("run forwards");
+  });
+
+  it("rejects an interval past the replay's duration — pipeline clips before emitting", () => {
+    const bad = clone();
+    bad.trackStatus = [{ status: "green", fromT: 0, toT: 60 }];
+    const err = expectRejection(bad);
+    expect(err.message).toContain("meta.duration");
+  });
+
+  it("rejects overlapping or unsorted intervals — the tick's scan trusts the order", () => {
+    const bad = clone();
+    bad.trackStatus = [
+      { status: "green", fromT: 0, toT: 30 },
+      { status: "yellow", fromT: 29, toT: 40 },
+    ];
+    const err = expectRejection(bad);
+    expect(err.message).toContain("non-overlapping");
+  });
+
+  it("reports one interval violation, not one per interval", () => {
+    const bad = clone();
+    bad.trackStatus = [
+      { status: "green", fromT: 10, toT: 5 },
+      { status: "red", fromT: 4, toT: 2 },
+    ];
+    const err = expectRejection(bad);
+    const statusIssues = err.issues.filter(
+      (issue) => issue.path[0] === "trackStatus",
+    );
+    expect(statusIssues).toHaveLength(1);
+  });
+
+  it("accepts the full red-flag arc against the fixture's duration", () => {
+    const ok = clone();
+    ok.trackStatus = INTERVALS;
+    expect(parseReplay(ok).trackStatus).toEqual(INTERVALS);
+  });
+});

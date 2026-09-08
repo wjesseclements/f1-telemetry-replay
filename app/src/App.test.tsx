@@ -509,12 +509,16 @@ describe("the featured-replay gallery", () => {
   });
 
   it("applies the scenario's suggested focus, clock and speed", async () => {
-    // Scenario 1 (the finale) is used deliberately: its suggested clock is 20 s,
-    // which is INSIDE the 58.5 s fixture served here, so this exercises the
-    // pass-through. Scenario 0's real clock is 237 s and exercises the clamp — see
-    // the next test. Between them both branches are covered with real manifest data
-    // rather than a synthetic scenario.
-    const scenario = SCENARIOS[1];
+    // Selected by PROPERTY, not position (Slice 17 reordered the manifest): a
+    // scenario whose suggested clock is non-zero and INSIDE the 58.5 s fixture
+    // served here, so this exercises the pass-through. The next test selects one
+    // whose clock exercises the clamp. Between them both branches are covered
+    // with real manifest data rather than a synthetic scenario.
+    const scenario = SCENARIOS.find(
+      (s) => s.suggested.clock > 0 && s.suggested.clock < replay.meta.duration,
+    );
+    if (scenario === undefined)
+      throw new Error("manifest no longer carries an in-fixture clock");
     // A two-car payload, so a resolved non-zero focus is distinguishable from the
     // reset to 0 that `setReplay` performs.
     const twoCar = structuredClone(sampleLap) as typeof sampleLap;
@@ -541,13 +545,17 @@ describe("the featured-replay gallery", () => {
   });
 
   it("clamps a suggested clock the payload is too short for", async () => {
-    // Drift, degrading rather than throwing. Scenario 0 suggests 237 s; the fixture
-    // served here is 58.5 s. Seeking past the end would freeze the visitor on the
-    // final frame — silently — so the resolver lands them at the start instead.
-    // The real asset IS long enough; `galleryAssets.test.ts` asserts that pairing
-    // separately, which is what keeps this from hiding a genuine mismatch.
-    const scenario = SCENARIOS[0];
-    expect(scenario.suggested.clock).toBeGreaterThan(replay.meta.duration);
+    // Drift, degrading rather than throwing. A scenario suggesting a clock past
+    // the 58.5 s fixture served here: seeking past the end would freeze the
+    // visitor on the final frame — silently — so the resolver lands them at the
+    // start instead. The real asset IS long enough; `galleryAssets.test.ts`
+    // asserts that pairing separately, which is what keeps this from hiding a
+    // genuine mismatch.
+    const scenario = SCENARIOS.find(
+      (s) => s.suggested.clock > replay.meta.duration,
+    );
+    if (scenario === undefined)
+      throw new Error("manifest no longer carries a past-fixture clock");
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response(JSON.stringify(sampleLap), JSON_OK)),

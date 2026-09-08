@@ -40,6 +40,25 @@ def stint_report(driver: str, laps: "Sequence[Mapping[str, Any]]", stints: "Sequ
     return f"  {driver}: {lap_span} · {body}"
 
 
+def status_report(intervals: "Sequence[Mapping[str, Any]]", unknown_codes: "Sequence[str]" = ()) -> str:
+    """
+    One line for the window's flags, same family as the stint report: a window with
+    no status data says so rather than printing nothing, and a code that degraded
+    to "unknown" announces itself here — in the report, not in the browser.
+    """
+    if not intervals:
+        body = "no status data"
+    else:
+        body = " · ".join(
+            f"{row['status']} {row['fromT']:g}-{row['toT']:g}s" for row in intervals
+        )
+    line = f"  track status: {body}"
+    if unknown_codes:
+        codes = ", ".join(str(code) for code in unknown_codes)
+        line += f"\n  WARNING: unrecognised track-status code(s) {codes} emitted as 'unknown'"
+    return line
+
+
 def fix_rejection_report(
     driver: str, r: "FixRejection", offset: float = 0.0
 ) -> str:

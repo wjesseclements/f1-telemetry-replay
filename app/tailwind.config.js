@@ -21,6 +21,11 @@ export default {
         "tyre-hard": "var(--c-tyre-hard)",
         "tyre-inter": "var(--c-tyre-inter)",
         "tyre-wet": "var(--c-tyre-wet)",
+        "flag-green": "var(--c-flag-green)",
+        "flag-yellow": "var(--c-flag-yellow)",
+        "flag-sc": "var(--c-flag-sc)",
+        "flag-vsc": "var(--c-flag-vsc)",
+        "flag-red": "var(--c-flag-red)",
       },
       fontFamily: {
         mono: ["ui-monospace", "SF Mono", "Menlo", "Consolas", "monospace"],

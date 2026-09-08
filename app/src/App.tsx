@@ -4,6 +4,7 @@ import { FOCUS_RING } from "./components/focus";
 import { Hud } from "./components/Hud";
 import { ReplayError } from "./components/ReplayError";
 import { ReplayFilePicker } from "./components/ReplayFilePicker";
+import { ScenarioEvents } from "./components/ScenarioEvents";
 import { SpeedLegend } from "./components/SpeedLegend";
 import { TransportBar } from "./components/TransportBar";
 import { useTransportKeys } from "./keyboard/useTransportKeys";
@@ -105,6 +106,10 @@ export default function App({ bootstrapError = null }: AppProps) {
                   scrim without interruption. Pinned in `App.test.tsx`. */}
               <TrackCanvas replay={replay} />
               <SpeedLegend />
+              {/* The narrated-moment overlay (Slice 17). A sibling of the canvas
+                  with its own ≤30 Hz telemetry subscription, exactly like Hud —
+                  App itself still subscribes to nothing per-frame. */}
+              <ScenarioEvents />
               {galleryOpen && (
                 <FeaturedPanel id={GALLERY_PANEL_ID} onClose={closeGallery} />
               )}

@@ -36,6 +36,7 @@
  * canvas either. See `src/render/TrackCanvas.tsx`.
  */
 import { create } from "zustand";
+import type { GalleryScenario } from "../engine/gallery";
 import type { Replay } from "../engine/schema";
 import { prefersReducedMotion } from "./motion";
 
@@ -75,8 +76,21 @@ export interface TransportState {
    * deliberate choice, and moving focus off the compared car brings the overlay back.
    */
   comparisonCarIndex: number | null;
+  /**
+   * The gallery scenario the current replay was loaded FROM, or `null` for a
+   * fixture boot or a file-picker load.
+   *
+   * Same species of argument as `comparisonCarIndex`: it changes on a click, the
+   * render loop never reads it, and what settles store over local state is the
+   * replay-coupled invariant — "the scenario describes the loaded replay" is
+   * enforced atomically inside `setReplay` (a plain load clears it; a scenario
+   * load names it), never by an effect that has to notice the replay changed.
+   * Its narrated events (`scenario.events`) would fire against the wrong file
+   * within one render if this could drift.
+   */
+  scenario: GalleryScenario | null;
 
-  setReplay: (replay: Replay) => void;
+  setReplay: (replay: Replay, scenario?: GalleryScenario | null) => void;
   play: () => void;
   pause: () => void;
   togglePlay: () => void;
@@ -102,12 +116,15 @@ export const useTransport = create<TransportState>((set) => ({
   seekTarget: null,
   focusedCarIndex: 0,
   comparisonCarIndex: null,
+  scenario: null,
 
-  // A new replay is followed from its first car, compared with nothing. Carrying
-  // either index over would point at a driver who is not in this file — or off the
-  // end of a shorter one.
-  setReplay: (replay) =>
-    set({ replay, focusedCarIndex: 0, comparisonCarIndex: null }),
+  // A new replay is followed from its first car, compared with nothing, narrated
+  // by the scenario it came from or by nothing. Carrying either index over would
+  // point at a driver who is not in this file — or off the end of a shorter one —
+  // and carrying the scenario over would fire its events against someone else's
+  // replay.
+  setReplay: (replay, scenario = null) =>
+    set({ replay, focusedCarIndex: 0, comparisonCarIndex: null, scenario }),
   play: () => set({ isPlaying: true }),
   pause: () => set({ isPlaying: false }),
   togglePlay: () => set((s) => ({ isPlaying: !s.isPlaying })),

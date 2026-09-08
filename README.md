@@ -9,11 +9,13 @@ single animation loop.
 
 ### ▶ [Try it live](https://f1-telemetry-replay.vercel.app) — open it and click a **featured replay**
 
-Three curated scenarios load in one click, each landing you inside the moment rather
+Five curated scenarios load in one click, each landing you inside the moment rather
 than at an empty start line:
 
 | | |
 |---|---|
+| **Monza 2026 · the red flag** | Laps 1-3, all 22 cars. Lights out, Leclerc off at the Parabolica on lap 2 — yellow, Safety Car, red flag on the transport bar as it happens, and the field files into the pits. An event card narrates the stoppage and hands you… |
+| **Monza 2026 · the restart** | …laps 6-9: the field bunched behind the Safety Car, the release, and three green laps of restart scramble. |
 | **Silverstone 2024 · the rain arrives** | Laps 24-28. The thermal trail goes cold as the shower lands and lap times fall off a cliff — 1:31 to 2:00 in five laps, then the scramble for intermediates. |
 | **Silverstone 2024 · the last laps** | Laps 48-52. Hamilton on softs holding off Verstappen on hards, half a second a lap quicker, with Norris fading behind. |
 | **Monza 2024 · the pit cycle** | Laps 13-19. Stops and undercuts, and a timing tower that reshuffles as they land. |
@@ -24,7 +26,7 @@ than at an empty start line:
 
 ## Run your own sessions
 
-The featured replays are three committed excerpts. The pipeline will build a replay
+The featured replays are five committed excerpts. The pipeline will build a replay
 from **any** session FastF1 can reach — that part runs on your machine, deliberately,
 because the deployed app never contacts the timing feed.
 

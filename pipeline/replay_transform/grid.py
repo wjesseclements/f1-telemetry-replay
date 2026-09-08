@@ -19,6 +19,7 @@ from .contract import (
     TelemetryShapeError,
     clamp_throttle,
     normalise_brake,
+    normalise_gear,
 )
 
 # --- the uniform grid -------------------------------------------------------------
@@ -158,7 +159,9 @@ def resample_channels(
         "speed": interp_continuous(src, t, telemetry["Speed"]),
         "throttle": clamp_throttle(interp_continuous(src, t, telemetry["Throttle"])),
         "brake": forward_fill(src, t, normalise_brake(telemetry["Brake"])),
-        "gear": forward_fill(src, t, np.asarray(telemetry["nGear"]).astype(int)),
+        # Normalised BEFORE the fill, so a garbage reading is zeroed rather than
+        # forward-filled over real neutral samples. See `normalise_gear`.
+        "gear": forward_fill(src, t, normalise_gear(telemetry["nGear"])),
         "drs": (
             None
             if raw_drs is None

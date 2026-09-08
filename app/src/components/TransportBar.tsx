@@ -23,14 +23,24 @@
  * pre-Slice-14 file renders this bar exactly as before. On a closed single-lap file
  * it reads the same lap on every wrap — correct: the data is one lap, replayed.
  */
+import { useMemo } from "react";
 import { formatLapIndicator, formatLapTime } from "../engine/format";
 import { leaderLap } from "../engine/laps";
 import type { Replay } from "../engine/schema";
+import { statusAt, statusSegments } from "../engine/trackStatus";
 import { useTransport } from "../store/transport";
 import { useTelemetry } from "../telemetry/useTelemetry";
 import { FOCUS_RING } from "./focus";
 import { Scrubber } from "./Scrubber";
 import { SpeedControl } from "./SpeedControl";
+import { StatusFlag } from "./StatusFlag";
+
+/**
+ * The play/pause toggle's DOM id — the event card's focus fallback (see
+ * `EventCard`): the card paused playback, so when it closes with nowhere better
+ * to send focus, it lands on the control that resumes it.
+ */
+export const PLAY_TOGGLE_ID = "transport-play-toggle";
 
 export interface TransportBarProps {
   replay: Replay;
@@ -46,6 +56,15 @@ export function TransportBar({ replay }: TransportBarProps) {
 
   const { duration, sampleRateHz } = replay.meta;
   const lap = leaderLap(replay, clock);
+  // The flag under the playhead: a scan over a handful of intervals at ≤30 Hz,
+  // the same species of transport-derived readout as `leaderLap` beside it.
+  const flag = statusAt(replay.trackStatus, clock);
+  // The scrubber's tint is a function of static data alone — memoised on the
+  // replay, untouched by the tick.
+  const segments = useMemo(
+    () => statusSegments(replay.trackStatus, replay.meta.duration),
+    [replay],
+  );
 
   return (
     <section
@@ -54,6 +73,7 @@ export function TransportBar({ replay }: TransportBarProps) {
     >
       <button
         type="button"
+        id={PLAY_TOGGLE_ID}
         onClick={togglePlay}
         aria-label={isPlaying ? "Pause" : "Play"}
         aria-keyshortcuts="Space"
@@ -86,6 +106,10 @@ export function TransportBar({ replay }: TransportBarProps) {
         </output>
       )}
 
+      {/* The flag the clock is under. Nothing at all for a replay with no status
+          data — the same absence contract as the lap indicator beside it. */}
+      <StatusFlag status={flag} />
+
       {/* The scrubber is the one control that needs length rather than room. It takes
           the leftover width on a wide bar and a full row of its own once the bar
           wraps — `order-last` keeps it below the buttons there rather than splitting
@@ -96,6 +120,7 @@ export function TransportBar({ replay }: TransportBarProps) {
           duration={duration}
           sampleRateHz={sampleRateHz}
           onSeek={seek}
+          segments={segments}
         />
       </div>
 

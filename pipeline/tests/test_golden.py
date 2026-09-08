@@ -36,10 +36,13 @@ import pytest
 
 import synthetic
 from replay_transform import (
+    SAMPLE_RATE_HZ,
     build_replay_dict,
     build_window_replay_dict,
     dump_json,
     lap_context,
+    window_grid,
+    window_status_intervals,
 )
 
 GOLDEN_DIR = Path(__file__).parent / "golden"
@@ -82,8 +85,20 @@ def _race_window() -> "dict":
     CCC also carries an all-zero DRS channel while the others use theirs, so the file
     pins the replay-level DRS decision: every car gets the key, including the one
     that never opened it.
+
+    The window also carries `SESSION_STATUS` through the real
+    `window_status_intervals`, exactly as `build_race_replay` routes it, so the
+    golden pins the carried-in status, the VSC merge and the holding-step
+    extension cross-language rather than a hand-written imitation of them.
     """
     start, end = RACE_WINDOW
+    # The emitted duration, derived from the builder's own grid rather than
+    # re-implemented — this is exactly the value `build_race_replay` hands over.
+    grid, _ = window_grid(start, end)
+    duration = round(len(grid) / SAMPLE_RATE_HZ, 3)
+    status = window_status_intervals(
+        *synthetic.SESSION_STATUS, RACE_WINDOW, duration
+    ).intervals
     return build_window_replay_dict(
         [
             synthetic.window_car(
@@ -101,6 +116,7 @@ def _race_window() -> "dict":
         synthetic.SESSION_META,
         RACE_WINDOW,
         corners=synthetic.CORNERS,
+        status=status,
     )
 
 

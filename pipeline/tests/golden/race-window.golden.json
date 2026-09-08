@@ -1331,5 +1331,27 @@
       "x": 446.3,
       "y": 663.9
     }
-  }
+  },
+  "trackStatus": [
+    {
+      "fromT": 0.0,
+      "status": "green",
+      "toT": 1.0
+    },
+    {
+      "fromT": 1.0,
+      "status": "yellow",
+      "toT": 2.0
+    },
+    {
+      "fromT": 2.0,
+      "status": "vsc",
+      "toT": 3.2
+    },
+    {
+      "fromT": 3.2,
+      "status": "red",
+      "toT": 4.1
+    }
+  ]
 }

@@ -61,13 +61,14 @@ from FastF1 data. PRD.md holds the detail; this file holds the law.
 
 1. **One clock, in a ref, never in React/store state.** A single `requestAnimationFrame`
    loop owns the live clock. Store holds only discrete state a HUMAN changes (isPlaying,
-   speedMult, seekTarget, replay, focusedCarIndex, comparisonCarIndex). HUD reads an
-   interpolated snapshot at **≤30fps**. Never setState per animation frame. Never
-   subscribe the canvas to per-frame updates. The prohibition is on PER-FRAME values,
-   not on non-transport ones: `focusedCarIndex` (v2) is in the store because the loop
-   already reads it there without subscribing, and a prop would re-render the canvas on
-   every focus change; `comparisonCarIndex` (Slice 15) is there for the replay-coupled
-   invariant alone — `setReplay` resets it atomically — the loop never reads it.
+   speedMult, seekTarget, replay, focusedCarIndex, comparisonCarIndex, scenario). HUD
+   reads an interpolated snapshot at **≤30fps**. Never setState per animation frame.
+   Never subscribe the canvas to per-frame updates. The prohibition is on PER-FRAME
+   values, not on non-transport ones: `focusedCarIndex` (v2) is in the store because the
+   loop already reads it there without subscribing, and a prop would re-render the
+   canvas on every focus change; `comparisonCarIndex` (Slice 15) and `scenario`
+   (Slice 17) are there for the replay-coupled invariant alone — `setReplay` resets
+   both atomically — the loop never reads either.
 2. **`cars` is always an array.** Never branch on car count; never special-case one car.
 3. **Uniform-time samples; O(1) lookup** via `index = clock * sampleRateHz`. No scanning.
 4. **`src/engine/` is pure and headless** — no React, DOM, or canvas imports there.
@@ -138,9 +139,15 @@ Rules that come with it:
   content-type, not just `res.ok` — measured, and the regression test says so.
 - **Validation is not re-implemented.** Gallery payloads go through `bootstrapReplay`
   → `parseReplay` like everything else (rule 7).
-- **Budget: 6 MB total** for `app/public/gallery/`, escalate above 15 MB rather than
-  committing silently. Assets are written minified (`build_replay.py --compact`);
-  `galleryAssets.test.ts` fails if the budget is exceeded.
+- **The 6 MB budget is RETIRED (Slice 17, by measurement).** Its reasons — deploy
+  weight and repo bloat — were answered with numbers: gallery JSON packs ~6.5:1 in
+  git (1.57 MB → 237 KB, measured), so plain git carries these assets essentially
+  free at any size this project will reach, and Git LFS was evaluated and declined
+  (the ruling and the maths are in Slice 17's PLAN entry). The lines that remain:
+  **escalate above 50 MB per file** (GitHub's own warning threshold) **or ~100 MB
+  of compressed gallery weight**, at which point the pre-agreed escape hatch is
+  LFS. Assets are still written minified (`build_replay.py --compact`);
+  `galleryAssets.test.ts` enforces the escalation lines.
 
 ## Gotchas
 

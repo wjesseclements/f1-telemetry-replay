@@ -22,15 +22,9 @@
  *    that opened it. A keyboard visitor is never dumped at the top of the document.
  */
 import { useEffect, useRef, useState } from "react";
-import { loadGalleryReplay } from "../data/loadGalleryReplay";
-import {
-  parseGalleryManifest,
-  resolveFocusIndex,
-  resolveStartClock,
-  type GalleryScenario,
-} from "../engine/gallery";
+import { applyScenario } from "../data/applyScenario";
+import { parseGalleryManifest, type GalleryScenario } from "../engine/gallery";
 import manifestJson from "../gallery/manifest.json";
-import { useTransport } from "../store/transport";
 import { FOCUS_RING } from "./focus";
 
 /**
@@ -64,30 +58,17 @@ export function FeaturedPanel({ onClose, id }: FeaturedPanelProps) {
     setBusy(scenario.id);
     setError(null);
 
-    const result = await loadGalleryReplay(scenario);
+    // The load-and-land sequence lives in `applyScenario`, shared with the event
+    // card's "continue" action.
+    const failure = await applyScenario(scenario);
 
-    if (result.replay === null) {
+    if (failure !== null) {
       // Degrade: keep the replay already on screen, say what happened, stay open so
       // the visitor can try another scenario without hunting for the way back in.
       setBusy(null);
-      setError(result.error);
+      setError(failure);
       return;
     }
-
-    const { setReplay, setFocusedCarIndex, seek, setSpeedMult } =
-      useTransport.getState();
-    // Order matters: `setReplay` resets focus to car 0 (it has to — the old index
-    // may not exist in the new file), so the suggested camera is applied after it.
-    setReplay(result.replay);
-    setFocusedCarIndex(
-      resolveFocusIndex(result.replay, scenario.suggested.driver),
-    );
-    // Land INSIDE the moment. Clamped against the loaded replay, because a rebuilt
-    // window can be shorter than the one the manifest was written against.
-    seek(resolveStartClock(result.replay, scenario.suggested.clock));
-    setSpeedMult(scenario.suggested.speedMult);
-    // `isPlaying` is untouched, the same call the picker and the scrubber make:
-    // loading a replay is not a statement about whether you wanted playback running.
 
     setBusy(null);
     onClose();

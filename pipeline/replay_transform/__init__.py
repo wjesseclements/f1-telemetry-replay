@@ -36,6 +36,9 @@ below exists because the Zod schema enforces it at load:
   It carries the RAW FastF1 code — `app/src/engine/drs.ts` owns the undocumented
   10/12/14 mapping, and decoding here as well would duplicate that guess across two
   languages (CLAUDE.md rule 8).
+* `trackStatus` is a top-level, additive interval list in window seconds — sorted,
+  non-overlapping, gaps meaning "no answer". `status.py` owns the FastF1 code map;
+  unrecognised codes degrade to in-band "unknown" and are reported, never raised.
 
 WHY POSITIONS ARE NOT INTERPOLATED IN TIME
 ------------------------------------------
@@ -110,8 +113,11 @@ from .contract import (
     check_columns,
     clamp_throttle,
     color_lookup_warning,
+    count_out_of_range_gears,
+    gear_anomaly_warning,
     normalise_brake,
     normalise_color,
+    normalise_gear,
 )
 from .grid import (
     forward_fill,
@@ -161,6 +167,14 @@ from .reporting import (
     fix_rejection_report,
     frame_repair_report,
     motion_fidelity,
+    status_report,
     stint_report,
     window_car_report,
+)
+from .status import (
+    STATUS_BY_CODE,
+    STATUS_UNKNOWN,
+    StatusIntervals,
+    map_status_code,
+    window_status_intervals,
 )

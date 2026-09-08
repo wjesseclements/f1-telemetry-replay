@@ -3659,20 +3659,140 @@ their current hashes) and the fate of CLAUDE.md's 6 MB gallery budget.
   11 teams (Audi, Cadillac join); DRS all-zeros for every car (rule 8's omission
   path, already implemented in `replay_transform`, gets its first real exercise);
   compounds are plain SOFT/MEDIUM/HARD; dry, 31–33 °C air.
-- **Phase 1 checkpoint (pending ruling):** the stoppage card (cut / two windows /
-  one window — numbers say two windows), lap ranges with sizes (proposed laps 1–3
-  ref RUS = 294.8 s and laps 6–9 ref RUS = 425.2 s, full 22-car field), the flag-UI
-  placement card, the schema shape for status intervals, and LFS vs Blob vs plain
-  git with quota math (GitHub LFS free tier is now 10 GiB storage + 10 GiB/month
-  bandwidth, metered overage; gallery JSON packs 6.5:1 under plain git).
-- **Phase 2 — build per the rulings:** pipeline emission + schema + tests + goldens;
-  flag UI with tests; the LFS/budget decision executed; scenario(s) generated and
-  manifested with provenance and landing clocks; README/gallery copy; both
-  languages' gates; drawcall md5s (canvas expected untouched); /review; no push
-  until the human has seen it.
-- **Acceptance (human, pre-registered):** click the new gallery entry — see the
-  start, watch LEC go off at the Parabolica, see the RED flag appear, and the
-  restart plays — with the existing three scenarios unchanged.
+- **Phase 1 checkpoint — RULED (2026-09-08), with one product revision and one
+  reversal by measurement:**
+  1. Stoppage: **(b) two gallery entries, CHAINED** — entry 1 plays to the red
+     flag, where an EVENT CARD (title + narration, dismissible DOM overlay,
+     playback paused) offers "Continue" into entry 2 at its landing clock. The
+     stoppage is narrated and skipped, never spliced. The manifest gains
+     per-entry `events` (clock/title/body) and `next`.
+  2. Ranges: **laps 1–3 and 6–9 (ref RUS), full 22-car field.**
+  3. Landing: entry 1 focus LEC, clock 0, speedMult 2; entry 2 focus ANT,
+     clock 150, speedMult 1.
+  4. Flag UI: **(B)** transport-bar chip + tinted seek bar.
+  5. `trackStatus`: **top-level**, sibling of `cars`.
+  6. Assets: **plain git; the 6 MB budget retired** on the 6.5:1 pack
+     measurement; escalation at 50 MB/file or ~100 MB pack; LFS the pre-agreed
+     escape hatch. **The human's original LFS direction was refuted by
+     measurement and withdrawn at the checkpoint** — recorded per the standing
+     rule that a measurement contradicting an approved plan is flagged, never
+     smoothed over. (Blob was disqualified on the offline law regardless of
+     bandwidth.)
+  Plus: the luminance floor extended to TOWER dots/rows for Cadillac's `#444444`;
+  track status rendered exactly as the data carries it (the laps 4–6 SC train
+  reads green because the feed said green); the undrawn pit lane in entry 1's
+  final seconds accepted pending Slice 16.
+- **Phase 2 — BUILT (2026-09-08), the record:**
+  - **Schema (additive, no version bump):** top-level
+    `trackStatus: [{status, fromT, toT}].default([])`, enum
+    `green|yellow|sc|vsc|red|unknown` with `unknown` as the in-band degradation
+    member (the COMPOUNDS doctrine applied to flags); superRefine pins forwards,
+    inside-the-replay (± `GRID_TOLERANCE_S`), ordered, non-overlapping. Gaps are
+    legal and mean "no answer" — absence is never green.
+  - **Engine:** `engine/trackStatus.ts` — `statusAt` (closed intervals, first
+    match wins, so the final interval still answers at the parked clock) and
+    `statusSegments` (duration-fractions for the tint), 100% covered.
+  - **Pipeline:** `replay_transform/status.py` owns the FastF1 code map
+    (1/2/4/5/6/7; 6 and 7 both "vsc" — "ending" is a VSC phase, not green),
+    clip + rebase to window time, merge of adjacent equals, final interval
+    extended to the emitted duration (the holding step), unknown codes degraded
+    in-band and reported by `status_report`. Wired through
+    `build_window_replay_dict(status=…)`; the race-window golden now pins the
+    carried-in status, the VSC merge and the holding-step extension
+    cross-language. The v1 lap builder is untouched (`.default([])` covers it).
+  - **AMENDMENT — a second doctrine revised by measurement: out-of-range gear is
+    DIRTY, not impossible.** `contract.py` claimed "Speed and gear are NOT
+    clamped: an out-of-range value there is impossible rather than merely dirty."
+    LEC's wrecked car refuted the gear half: from the crash to data end his
+    nGear channel counts monotonically 0→128 at idle — 97 readings inside window
+    A. `normalise_gear` now sends anything outside 0–8 to **0 (neutral)** — never
+    a clamp to 8, which would invent a parked car in top gear — applied before
+    the forward-fill so garbage cannot propagate over real samples, and
+    announced per car by `gear_anomaly_warning`. Speed keeps the old doctrine.
+  - **UI:** `StatusFlag` chip beside the clock (DRS-pill shape, per-status flag
+    tokens `--c-flag-*`; RED alone inverts to a solid fill; `unknown` and
+    uncovered render NOTHING, which is what keeps every pre-17 file's bar
+    pixel-identical); `flagTint.segmentGradient` paints the scrubber's own
+    background with hard stops (green/unknown → base `--c-line`), computed once
+    per replay. Rule 1: the chip reads the existing ≤30 Hz snapshot, the tint is
+    static, the rAF loop learns nothing.
+  - **Chained entries:** manifest `events` + `next` (superRefine: no dangling or
+    self chains, events strictly increasing — build-time failures, since the
+    manifest is bundled); `ScenarioEvents` watches the ≤30 Hz clock as a canvas
+    SIBLING (App still subscribes to nothing). Firing semantics: an upward
+    crossing fires — playback or seek alike; a dismissed event re-arms only
+    below its mark; the first frame under a new scenario ARMS rather than fires;
+    frames describing another replay's cars are dropped whole (the Hud
+    stale-frame guard, reused); an event past a rebuilt shorter window clamps to
+    the duration. Firing pauses; "Continue" applies the next scenario through
+    the shared `applyScenario` (extracted from `FeaturedPanel` so two buttons
+    cannot drift) and resumes; dismissal stays paused. Focus: into the primary
+    action on mount, back to the prior holder or the play/pause toggle
+    (`PLAY_TOGGLE_ID`) on close — the control that undoes what the card did.
+  - **AMENDMENT — the store gains `scenario`, by the replay-coupled-invariant
+    argument alone** (the `comparisonCarIndex` precedent): it changes on a
+    click, the loop never reads it, and "the scenario describes the loaded
+    replay" is enforced atomically inside `setReplay` (a plain load clears it),
+    never by an effect that has to notice. CLAUDE.md rule 1's enumeration moved
+    with it, again.
+  - **Tower floor:** `CarEntry`'s swatch passes through
+    `floorLuminance(color, SWATCH_MIN_LUMINANCE = 0.25)` — Cadillac's `#444444`
+    lifts, bright liveries pass byte-for-byte. **Flagged, not silently absorbed:
+    the CANVAS still paints raw team colour** (tails and markers via
+    `scene.carColors`), so Cadillac is dim there too; flooring the scene would
+    re-baseline the drawcall md5s and lift Red Bull's navy everywhere, which is
+    a deliberate render decision this slice's ruling did not cover. Filed below.
+  - **Assets:** `monza-2026-red-flag.json` (22 cars, 294.8 s, 5.15 MB) and
+    `monza-2026-restart.json` (21 cars, 425.3 s, 7.10 MB), both `--compact`,
+    both validated through the app's real schema at emit; emitted status arcs
+    green 0–182.186 / yellow –198.651 / sc –252.076 / **red –294.8** and
+    green 0–129.257 / yellow –136.824 / green –425.3. DRS omitted by the
+    existing all-zero path — rule 8's first shipped exercise, zero code change.
+    The three 2024 assets are byte-identical (only the new files are untracked).
+    CLAUDE.md's budget law rewritten; `galleryAssets.test.ts` now enforces
+    50 MB/file and a ~100 MB gzip-proxy ceiling.
+  - **Copy (human-owned, drafted for edit before merge):** two hooks, two
+    titles, and the event card's body ("Leclerc and Hamilton touched at the
+    first chicane…"), all drafted from race control and the survey — edit at
+    will in `src/gallery/manifest.json` and README's scenario table.
+- **Verified (2026-09-08):**
+  - `npm run check` green: typecheck, lint, format, **714 tests** (650 → 714),
+    engine coverage **100% lines/branches/functions/statements**, build. Full-log
+    warning grep (`grep -ciE 'warn|error'`): **0**.
+  - `pytest` green: **260 tests** (241 → 260), **100% lines + branches on every
+    module**, `status.py` included.
+  - **Drawcall md5s IDENTICAL both modes**, captured before the first edit and
+    after the last: closed `04506b72f177b7447ecb7d230998d506`, open
+    `0aea33a376958344b1be15033399e8ec` — the canvas is untouched, as ruled.
+  - **The 22-car question, answered by instrument rather than extrapolation
+    alone:** drawcall `auto` on the red-flag asset measures **762.80 calls/frame**
+    against Slice 12's linear law `148 + 28·22 = 764` — the law holds at 22.
+    hud-tick on the same file: **19.28 µs/tick mean (0.058% of the 33.3 ms
+    budget)**, p99 33.2 µs, focus change 3.9 µs.
+  - Both assets pass `parseReplay` + the full gallery-honesty suite (drivers
+    advertised = drivers present, suggested clocks inside the windows).
+- **Acceptance (human, pre-registered — the merge gate):** click the new gallery
+  entry — see the start, watch LEC go off at the Parabolica, see the RED flag
+  appear on the transport bar, meet the event card, continue, and the restart
+  plays — with the existing three scenarios unchanged. Copy pass on the card and
+  hooks. **No push until then.**
+- **Filed, not built (this slice):** flooring `scene.carColors` on the canvas for
+  dark liveries — a deliberate drawcall re-baseline, paired naturally with
+  Slice 16's already-planned re-baseline if the human wants it.
+
+### [ ] Slice 18 — corner lore (after Slice 17)
+
+**Filed 2026-09-08 by the human's direction, not built.** A curated per-circuit
+data file — corner name and origin story (Maggotts and Becketts, the Hamilton
+straight, the Parabolica that is officially the Curva Alboreto) — surfaced as
+clickable corner badges on the canvas's existing corner labels, each opening a
+small info card. Curated content, so it is a committed data file with its own
+schema and validation (the gallery-manifest doctrine: bundled, build-time
+checked), never fetched and never generated. Scope to argue when it runs: badge
+hit-testing against rule 1 (the labels are painted by the canvas; a DOM overlay
+positioned from the same static scene geometry avoids touching the frame path),
+one file per circuit vs one file keyed by event, and how a circuit with no lore
+degrades (to today's plain labels, obviously — but argued, not assumed).
 
 ### [ ] Slice 9k — adjudicate NOR's declined relocation structurally (after Slice 16)
 

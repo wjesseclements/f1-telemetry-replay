@@ -30,6 +30,17 @@
   --c-tyre-hard: #f0f3f8;
   --c-tyre-inter: #3ad55f;
   --c-tyre-wet: #2e7bff;
+  /* Track-status flags, same doctrine as the tyres: their own tokens, never
+     borrowed from --c-brake or --c-accent — a flag is not a brake, and retuning
+     one must not silently repaint the other. SC and VSC share the yellow FAMILY
+     (they are yellow-flag conditions on a real pit wall) but not the hue, so the
+     tinted scrubber can tell them apart; "unknown" has no token — it renders
+     nothing, the same "we don't know" as an UNKNOWN compound's dim dot. */
+  --c-flag-green: #2fbf71;
+  --c-flag-yellow: #ffd233;
+  --c-flag-sc: #ff9f1a;
+  --c-flag-vsc: #ffb84d;
+  --c-flag-red: #ff2e3d;
 }
 
 body {
