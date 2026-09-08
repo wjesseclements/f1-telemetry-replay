@@ -3418,7 +3418,7 @@ stop is where it breaks.
     `cars[0]`, and VER never pits).
 
 
-### [ ] Slice 9j — attribute HAM's residual pit-entry zigzag, then beat 85%
+### [x] Slice 9j — attribute HAM's residual pit-entry zigzag, then beat 85%
 
 **Filed by Slice 9i's browser pass with its numbers, so it cannot be lost.** At 0.5x
 HAM's rain pit entry still carries one abrupt zigzag; the human's rating is **85%
@@ -3436,6 +3436,66 @@ smooth, with VER's 97% as the target**. Instrument-first, as always:
 - **Acceptance:** held-out sector cells hold or improve from 9i's banked table
   (HAM 11.7/11.1 m); the human re-watches HAM's entry at 0.5x against the 85%
   baseline; VER must stay at his 97%.
+- **Attribution (2026-09-07, read-only) — candidate 3: a defect class neither
+  instrument had named.** The visible zigzag is a 155-degree direction flick at
+  window clock t=381.8–382.0 (6:21.8) at 246 km/h, emitted coords near
+  (x=-16.2, y=-1648.6). NOT the seam residual — the repair's seams land clean (the
+  burst-1 sliver fix sits at the exact midpoint of its neighbours) — and NOT anchor
+  noise (nothing at any crossing or pit edge). The mechanism: source fix t=381.72
+  overshoots 21.8 m in 0.177 s at 250 km/h — 1.77x the channel's limit, ~p99 of
+  CLEAN steps, legally under `IMPOSSIBLE_RATIO` 3.0 — and the next fix comes 5.5 m
+  back. Each leg passes the ratio screen one at a time; the corruption lives in the
+  PAIR: together they reverse direction at 250 km/h in 0.16 s (~35 g). The ratio
+  screen is structurally blind to it.
+- **RULED (human, 2026-09-07) #1 — the reversal screen APPROVED as specified:**
+  consecutive-step dot product negative, both legs > 2x`IMPOSSIBLE_MIN_STEP_M`
+  (4 m), pair-min speed > `REVERSAL_MIN_SPEED` (100 km/h — a reversal there is
+  ~28 g, five times the car's ceiling; below it genuine spins can hook), the
+  declined-displacement guard honoured (NOR ships byte-identical). An orthogonal
+  detector, not a ratio retune — 9i's "do not tune `IMPOSSIBLE_RATIO`" stands.
+  **Calibrated to an absolute corpus-wide empty band: 3 hits in all nine
+  car-windows — HAM's one flick plus the two known-corrupt fixes beside NOR's
+  declined relocation — and ZERO in the six clean cars.**
+- **RULED (human, 2026-09-07) #2 — acceptance criterion AMENDED on the record, per
+  the 9h wrongly-pre-registered precedent:** "hold or improve per cell" was written
+  before the rain window's own floor (24–38 m) was measured, and a criterion finer
+  than its instrument's resolution cannot be honestly applied. Amended: rain cells
+  hold or improve AT FLOOR RESOLUTION (no cell moves outside the floor band, net
+  across cells improves); dry cells byte-identical. Under it, HAM's 11.7/11.1 ->
+  15.3/2.8 m (sector1 +3.6, sector2 -8.3, net -4.7, both deep inside the floor) is
+  a pass; under the unamended criterion it would have been a miss, and it was
+  flagged as such before the ruling rather than after.
+- **Amendment — the screen drops the corrupt fix's dragged neighbour too, and that
+  is chosen, not accidental.** One overshoot flags its own pair and the pair it is
+  a leg of. A restore scheme has to rank the pair's two fixes against each other
+  and a wrong ranking KEEPS the corrupt one (a geometry that does exactly that was
+  constructed during review); dropping both cannot be wrong about which fix lies,
+  and costs one bridged tenth of a second of true path, only ever beside actual
+  corruption. On HAM's real data the neighbour's leg is sub-floor so only the one
+  fix drops.
+- **Verified (2026-09-07):** pytest **241** (231 -> 241), 100% lines+branches every
+  module; goldens byte-identical (the synthetic corpus contains no reversals, as
+  a clean corpus should); **the regenerated rain asset is byte-identical (md5
+  9ac4e3eb…) to the simulation the checkpoint was scored on**; dry assets
+  untouched (`git status` clean but for the rain file); `npm run check` green
+  (650 tests, 0 warnings by full-log grep); drawcall md5s identical both modes.
+  Instrument before -> after on the rain window: HAM reversal metric A **1.42 ->
+  1.16** (0 windows > 2), emitted flick **155 -> 68 degrees**, held-out cells
+  11.7/11.1 -> **15.3/2.8 m** (amended-criterion pass), displacement max 10.9 m
+  mean 1.0 m confined between his anchors; **NOR and VER 0.00 m — byte-identical**,
+  so VER's 97% and "NOR unchanged" hold structurally. Build log now prints one
+  reversal line per car (HAM 1 rejected at t=381.7; NOR WITHHELD; VER 0).
+- **Pre-registered browser expectation (0.5x, HAM ~6:20–6:22):** the violent flick
+  at 6:21.8 GONE; a firm but ordinary direction change may remain at 6:22.0; the
+  low-speed wiggle at 6:26 unchanged; expected rating strictly above the 85%
+  baseline, target VER's 97%; VER exactly 97% and NOR exactly unchanged
+  (byte-identical files).
+- **Browser pass — DONE (2026-09-08, human, 0.5x on the PR #67 preview): PASS, at
+  the target.** HAM's pit entry rates **97% — the violent flick is gone and it
+  reads as good as VER's**; VER and NOR byte-identical as guaranteed. **The
+  re-watch baseline is now 97 (VER) / 97 (HAM) / NOR unchanged-by-ruling** — HAM
+  went 85 -> 97 and the pre-registered expectation held in every particular
+  (the flick gone, the 6:26 low-speed wiggle judged unremarkable).
 - **Out of scope:** NOR (declined by ruling, unchanged); the pipeline's detectors'
   thresholds (9i's rule stands: neither detector is what is wrong here).
 

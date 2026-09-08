@@ -73,6 +73,8 @@ from replay_transform import (
     color_lookup_warning,
     anchor_report,
     fix_rejection_report,
+    reject_reversals,
+    reversal_report,
     frame_repair_report,
     window_anchor_plan,
     lap_context,
@@ -529,6 +531,14 @@ def report_window(replay, window, cars, coverage, compact: bool = False) -> None
         # comparing against a screenshot.
         print(fix_rejection_report(str(car.driver), r, offset=window[0]))
         worst_share = max(worst_share, r.n_rejected / max(len(car.telemetry["Time"]), 1))
+        plan_declined = bool(repair.jump_times) and not repair.repaired
+        print(reversal_report(
+            str(car.driver),
+            None if plan_declined else reject_reversals(
+                car.telemetry["Time"], repair.x, repair.y, car.telemetry["Speed"]
+            ),
+            offset=window[0],
+        ))
         # The anchor plan (Slice 9i), recomputed from the same pure function the
         # builder used on the same inputs, so the file and the log cannot disagree.
         print(anchor_report(

@@ -15,7 +15,7 @@ import numpy as np
 
 from .contract import SAMPLE_RATE_HZ
 from .placement import KMH_S_PER_METRE, covers_ground, cumulative_travel
-from .repair import FixRejection, FrameDisplacement
+from .repair import FixRejection, FrameDisplacement, ReversalRejection
 from .assembly import AnchorPlan, WindowCar
 
 def stint_report(driver: str, laps: "Sequence[Mapping[str, Any]]", stints: "Sequence[Mapping[str, Any]]") -> str:
@@ -246,4 +246,25 @@ def anchor_report(driver: str, plan: "AnchorPlan") -> str:
     return (
         f"  {driver}: {n} extra anchor(s) - {len(plan.loop)} S/F crossing(s), "
         f"{len(plan.pit)} pit-span edge(s)"
+    )
+
+
+def reversal_report(driver: str, r: "ReversalRejection | None", offset: float = 0.0) -> str:
+    """
+    One line per car for the reversal screen (Slice 9j), same family as the others:
+    a clean car prints a zero, and `None` means the screen was WITHHELD — the car
+    carries a declined displacement, and saying so beats silence for the same
+    reason the anchor report does.
+    """
+    if r is None:
+        return (
+            f"  {driver}: reversal screen WITHHELD - declined displacement; "
+            f"fixes ship as the ratio screen left them"
+        )
+    if r.n_rejected == 0:
+        return f"  {driver}: 0 reversals at speed"
+    at = ", ".join(f"{t - offset:.1f}" for t in r.rejected_times)
+    return (
+        f"  {driver}: {r.n_rejected} reversal(s) at speed rejected at t={at} - "
+        f"the pair turns through more than the car could (see REVERSAL_MIN_SPEED)"
     )
