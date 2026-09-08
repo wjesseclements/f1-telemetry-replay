@@ -3634,7 +3634,7 @@ ledger's open defect slice; STATUS.md is updated in this PR accordingly.
     predicted bound of exactly 2x the structural numbers and ~2x the time, at a
     thousandth of the tick budget.
 
-### [ ] Slice 17 — 2026 Monza red flag: track-status flags, the first 2026 session, Git LFS ruled on
+### [x] Slice 17 — 2026 Monza red flag: track-status flags, the first 2026 session, Git LFS ruled on
 
 **STUB — runs in phases; nothing is built until the human rules on the Phase 1 design
 cards. Ordered AHEAD of the open Slice 16 by the human's explicit direction** (the
@@ -3813,11 +3813,17 @@ their current hashes) and the fate of CLAUDE.md's 6 MB gallery budget.
   car semantics in tower + gaps — LEC's parked car broke the gap frame and read
   as leading) and **Slice 20** (Aston Martin and Cadillac read alike after the
   luminance floor — hue-aware floor or per-team override, argued there).
-- **Acceptance (human, pre-registered — the merge gate):** the human re-checks
-  the preview after the fixes: entry 1 start → LEC into the wall → banner + chip
-  walking yellow/SC/RED → event card → continue; entry 2 lands on the grid
-  forming and the standing restart plays — existing three scenarios unchanged.
-  Copy pass on the corrected card, hooks and note. **Auto-merge stays off.**
+- **Browser pass — re-check (2026-09-08, human, on the fixed preview): PASS.**
+  Standing restart lands at 0:00, the banner is prominent, the card is true.
+  **Copy pass applied:** the card body is now the human's own two sentences
+  verbatim ("Leclerc hit the wall at the Parabolica at the end of the second
+  lap… resumed from a standing restart."); the known-artifact `provenance.note`
+  stays by ruling **until Slice 9l retires it**. Auto-merge (squash) enabled on
+  the human's instruction.
+- **Sequencing ruled at acceptance:** the board after this slice runs
+  **9l (dead-feed freeze) → 19 (DNF/retired display + pit-lane/pre-start gap
+  rules) → 21 (tower reshuffle animation, filed at acceptance) → 18 (corner
+  lore) → 20 (Aston/Cadillac colour)**.
 - **Filed, not built (this slice):** flooring `scene.carColors` on the canvas for
   dark liveries — a deliberate drawcall re-baseline, paired naturally with
   Slice 16's already-planned re-baseline if the human wants it.
@@ -3843,11 +3849,27 @@ among the 9-series. When it ships, regenerate the red-flag asset and retire the
 **Filed 2026-09-08 by Slice 17's browser pass.** Two observed wrongnesses in the
 red-flag scenario: LEC parked on track breaks the gap frame when focused (he read
 as leading everyone), and pit-lane starters sort to the top before the start. The
-rule to build, argued in-slice: gaps are meaningful only between MOVING cars on
-the racing line; a retired/parked car sorts last with no gap (the tower says
-"OUT" or similar, not a number); pre-start shows grid order or nothing. Touches
-`engine/gaps.ts` / `runningOrder.ts` / the tower — rule 1 untouched (all ≤30 Hz
-derived state).
+rule to build, argued in-slice (refined by the human at 17's acceptance): gaps
+are meaningful only between MOVING cars on the racing line; a DNF/retired car
+displays at the BOTTOM of the tower, desaturated, with no gap (the tower says
+"OUT" or similar, not a number); pit-lane and pre-start clocks get explicit gap
+rules (grid order or nothing). Touches `engine/gaps.ts` / `runningOrder.ts` /
+the tower — rule 1 untouched (all ≤30 Hz derived state).
+
+### [ ] Slice 21 — tower reshuffle animation
+
+**Filed 2026-09-08 at Slice 17's acceptance.** When the running order changes,
+tower rows animate to their new positions so the eye can follow an overtake
+instead of seeing a teleport. FLIP-style transforms, compositor-only: measure
+row positions on a resort, apply inverted transforms, transition to identity —
+CSS does the frames, React commits only on the resort itself (which
+`orderByGap`'s hysteresis already makes rare), so rule 1's "no per-frame React
+work" holds by construction. To argue in-slice: honouring
+`prefers-reduced-motion` (the store's existing `motion.ts` doctrine), what
+happens when a resort lands mid-animation, and whether the focused row's
+readout (which changes height) animates or snaps. Sequenced after 19 — a
+retired car's row should learn where it BELONGS before it learns to travel
+there.
 
 ### [ ] Slice 20 — colour distinction under the luminance floor
 

@@ -22,24 +22,23 @@ Slice 17 branch: `npm run check` green with 714 tests and 0 warnings; 260 pytest
 (the canvas is untouched); the 2024 assets byte-identical; the 22-car frame cost
 measured on-instrument at 762.8 draw calls/frame against the linear law's 764.
 
-**What is open, and what is blocked.** **Slice 17 is BUILT, on PR #68, awaiting the
-human's re-check of the preview** after the first browser pass returned three
-findings, all fixed in-branch: entry 2 lands at clock 0 (the restart was STANDING —
-a survey misreading corrected by the watched race), the flag treatment is A+B (a
-canvas-overlay banner joins the transport chip under abnormal flags), and LEC's
-post-impact "limp" was diagnosed read-only as the telemetry feed dying at the wall
-— the card now tells the true story and the manifest's new `provenance.note`
-discloses the artifact. The pass also filed **Slice 9l** (freeze a car when its
-telemetry collapses — the diagnosis and why it needs its own measured-threshold
-slice are in 17's entry), **Slice 19** (retired/stopped/pit-lane semantics in
-tower + gaps), and **Slice 20** (colour distinction under the luminance floor).
-Checkpoint rulings stand as recorded, including plain git with the 6 MB budget
-retired. Queue after 17: **16**, **9k**, **18**, with 9l/19/20 sequenced by the
-human. **Nothing is blocked**; the standing constraint remains: `build_replay.py`
-runs only from the human's home network (CLAUDE.md Gotchas).
+**What is open, and what is blocked.** **Slice 17 is DONE and PASSED** (2026-09-08):
+the first browser pass returned three findings — entry 2's landing (the restart was
+STANDING, a survey misreading corrected by the watched race), the A+B flag banner,
+and LEC's post-impact "limp" diagnosed read-only as the telemetry feed dying at the
+wall (true story in the card, artifact disclosed in the new `provenance.note` until
+9l retires it) — all fixed in-branch; the re-check PASSED, the human's copy landed
+verbatim, and PR #68 merges by auto-squash. **The board, sequenced by the human at
+acceptance: 9l (dead-feed freeze) → 19 (DNF/retired display: bottom of tower,
+desaturated, no gap; plus pit-lane/pre-start gap rules) → 21 (tower reshuffle
+animation) → 18 (corner lore) → 20 (Aston/Cadillac colour)** — with **Slice 16**
+(pit-lane drawing) and its dependent **9k** still open and not re-slotted by that
+ruling; where they interleave is the human's next call. **Nothing is blocked**; the
+standing constraint remains: `build_replay.py` runs only from the human's home
+network (CLAUDE.md Gotchas).
 
-**What happens next.** The human's re-check on PR #68's preview (auto-merge off),
-then merge. Then Slice 16 (with its deliberate drawcall re-baseline — and a filed
-candidate rider: flooring the canvas's dark liveries, which shares that re-baseline),
-then 9k, then the filed follow-ups and Slice 18, then the backlog's headline item,
-the **fixture asymmetry overhaul**.
+**What happens next.** Slice 9l — freeze a car at the point its telemetry
+collapses (diagnosis and thresholds-to-measure recorded in 17's entry; when it
+ships, the red-flag asset regenerates and the provenance disclosure retires).
+Then 19 → 21 → 18 → 20 per the board, with 16/9k slotted by the human, and the
+backlog's headline **fixture asymmetry overhaul** behind them.
