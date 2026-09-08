@@ -203,6 +203,17 @@ const CarSchema = z
     laps: z.array(LapSchema).default([]),
     /** Tyre stints over `laps`, in order. Same additive contract as `laps`. */
     stints: z.array(StintSchema).default([]),
+    /**
+     * Replay-relative seconds at which this car's telemetry feed died and the
+     * pipeline froze it in place (the Slice 9l dead-feed screen). From this
+     * instant the car's samples hold one position with zero dynamics — that is
+     * data, not absence. OPTIONAL by the `ageAtStart` precedent, not
+     * `.default()`: absence means "never retired", a scalar has no empty-array
+     * spelling to default to, and 0 would claim a retirement at the window's
+     * first instant. Consumers: the renderer stops the car's trail here;
+     * tower/gap semantics are Slice 19's.
+     */
+    retiredAt: z.number().nonnegative().optional(),
   })
   .superRefine((car, ctx) => {
     // Time must be sorted: interpolation and seek assume it. Unsorted or duplicate
@@ -308,6 +319,20 @@ export const ReplaySchema = z
     trackStatus: z.array(StatusIntervalSchema).default([]),
   })
   .superRefine((replay, ctx) => {
+    // A retirement past the window's end is unreachable data — pipeline drift,
+    // rejected loudly by the same argument as the trackStatus bound below.
+    replay.cars.forEach((car, c) => {
+      if (
+        car.retiredAt !== undefined &&
+        car.retiredAt > replay.meta.duration + GRID_TOLERANCE_S
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["cars", c, "retiredAt"],
+          message: `car ${car.driver} retires at ${car.retiredAt}s but meta.duration is ${replay.meta.duration}s`,
+        });
+      }
+    });
     // Status intervals are looked up by scan at the HUD tick, so ordering and
     // non-overlap are load-bearing: an unsorted or overlapping list would answer
     // with whichever interval happened to come first. Bounds are pinned to the

@@ -3844,6 +3844,134 @@ damaged-but-driving cars must NOT freeze. Same family as 9g/9j; sequence freely
 among the 9-series. When it ships, regenerate the red-flag asset and retire the
 `provenance.note` disclosure it currently needs.
 
+**Phase 1 — measured (2026-09-08, read-only over the whole corpus: the nine 2024
+car-windows plus all 43 2026 car-windows).** The candidate signature is "zero
+pedal at racing pace with speed that zero power cannot hold": a sliding window of
+W seconds qualifying when max(Throttle) ≤ 1% AND min(Speed) ≥ 80 km/h, scored by
+its speed drift (max − min). Results:
+
+| W | LEC (the dead feed) | best negative, corpus-wide | qualifying negatives |
+|---|---|---|---|
+| 5 s | 4 km/h drift | 18 km/h (ALO, lift-coast into the red flag) | 21 cars |
+| 10 s | 7 km/h | 48 km/h (ALO alone) | 1 car |
+| **20 s** | **14 km/h** | **— (no window qualifies at all)** | **0 of 51** |
+
+At W = 20 s the band is not thin — it is EMPTY: no live car in the corpus holds
+zero throttle at ≥80 km/h for 20 s, full stop (2024's three windows produce zero
+qualifying windows at ANY W; the 2026 red-flag laps produce plenty of 5-s
+lift-coast qualifiers, all with ≥18 km/h drift). RPM decay is NOT part of the
+trigger: measured on LEC it is only 51% monotone (it wobbles up to +245), so it
+would weaken the rule, not strengthen it. **The freeze point is the pedals, not
+the trigger:** LEC's last throttle >1% is at window t = 174.65 s (session
+3590.41 ≈ 2.4 s after wall contact, at the Parabolica — the gravel-trap blip),
+last brake at 173.13; the earliest W=20 trigger fires at t = 191.0, and walking
+back from the trigger to the last pedal-alive sample lands the freeze at the
+wall rather than 16–110 s late.
+
+**Pre-registered rule (before any build):**
+- **Trigger:** the earliest instant t where the whole window [t, t+20 s] has
+  max(Throttle) ≤ 1%, NO brake application, min(Speed) ≥ 80 km/h, and speed
+  drift ≤ 25 km/h (LEC 14; no negative qualifies at any drift — the 25 is
+  generous inside an empty band). *Amendment during build, caught by the
+  screen's own test suite: the registered "zero pedal" always meant both
+  pedals, but the first cut tested only throttle, so a trigger window could
+  start ON a braking sample and decline itself against its own evidence.
+  Excluding brake from qualifying windows only REMOVES negative candidates, so
+  the measured empty band is unchanged or wider — no re-measurement needed,
+  and the corpus rebuild check still stands as the proof.*
+- **Freeze point:** the last sample strictly before the trigger with
+  Throttle > 1% or Brake on (the driver's heartbeat); window start if none.
+- **Effect:** the car's source telemetry is truncated at the freeze point and a
+  single rest row is appended one source step later (same position, speed 0,
+  throttle 0, brake off, gear 0); the existing clamp-and-hold semantics then
+  park the car there for the remainder of the window. Emitted: per-car
+  `retiredAt` (window-relative seconds, `.optional()` by the `ageAtStart`
+  precedent — absence means "never retired", and a scalar has no empty-array
+  spelling, so `.default()` has nothing honest to default TO; 0 would mean
+  "retired at window start", a lie).
+- **Guard (decline path):** any pedal-alive sample AFTER the trigger means the
+  feed resumed — that is a dropout, not a death; the screen declines with a
+  report line and ships the data untouched, the 9g surrender doctrine.
+- **Report:** one line per car, silent-never: "no dead feed" or the freeze
+  instant + trigger + drift, or the decline and why.
+- **Pre-registered acceptance:** LEC's dot goes off at the Parabolica and stops
+  at the wall (freeze t = 174.65, replay clock ≈ 2:55) and stays for the
+  remaining ~2 minutes; his tail/comet stops with him; speed reads 0. ZERO other
+  cars affected: the regenerated red-flag asset differs ONLY in LEC's car object
+  (+ his `retiredAt`), the other 21 car objects byte-identical within it; the
+  three 2024 assets and the restart asset untouched on disk, and a scratch
+  rebuild of all three 2024 windows byte-identical to the committed files
+  (the screen provably inert where no feed died). Existing three detectors
+  untouched. *Amendment at verification: the 2024 byte-identical claim was
+  unachievable AS WRITTEN — those assets predate Slice 17's `trackStatus`
+  emitter, so any rebuild now appends that key (all-green for all three 2024
+  windows). The check's intent stands and was met the honest way: parsed
+  rebuilds are IDENTICAL to the committed files with `trackStatus` removed,
+  the restart rebuild is byte-identical outright, and zero dead-feed lines
+  fired anywhere in the corpus. The committed 2024 files remain untouched.*
+
+**Phase 2 — BUILT (2026-09-08), the record:**
+- **Pipeline:** `replay_transform/dead_feed.py` — `detect_dead_feed` (the
+  pre-registered trigger, brake amendment included) and `freeze_telemetry`
+  (truncate at the freeze, one honest rest row: position held, dynamics zero,
+  DRS holding its last real value rather than being invented). Wired FIRST in
+  `build_window_replay_dict`'s per-car loop — repair, the ratio and reversal
+  screens, and placement must never be fed a fabrication that agrees with
+  itself. `dead_feed_report` per car, silent-never; recomputed in
+  `build_replay.py` for the run report like every other screen. The v1 lap
+  builder is deliberately untouched (a fastest qualifying lap is not where
+  feeds die; the window path is where every screen lives).
+- **Schema, both languages:** per-car `retiredAt` — window-relative seconds,
+  `.optional()` per the pre-registration's `ageAtStart` argument; replay-level
+  superRefine rejects a retirement past `meta.duration` (the trackStatus-bound
+  argument). Emitted only when the screen froze the car.
+- **App, minimal by ruling:** `buildScene` precomputes `carRetiredIndex`
+  (`retiredAt × sampleRateHz`, `Infinity` when absent) and `drawFrame` skips
+  the trail/tail for a car past it — a wake is a statement of motion; the
+  MARKER still draws the parked dot. The frame path compares two numbers and
+  never learns what a retirement is (rule 1). Tower/gap semantics deliberately
+  NOT built — they are Slice 19's; the schema field lands now so 19 can
+  consume it.
+- **The regenerated red-flag asset:** LEC `retiredAt` 174.81 s — frozen at his
+  last pedal input (the raw-row measurement said 174.65; the builder's merged
+  telemetry interpolates throttle across the 1% line 0.16 s later, same
+  gravel), parked at (−1353, −4474), one distinct position and all-zero speed
+  to the window's end. Trigger at t = 189.33 with drift exactly 25.0 —
+  threshold-edge, and harmlessly so: the trigger's only job is to exist (the
+  freeze point comes from the pedals), and inside an empty band its timing
+  wobbles by ~2 s, never its verdict. The known-artifact `provenance.note` is
+  RETIRED — the replay now tells the truth, so the disclosure has nothing left
+  to disclose; the note capability and its rendering stay, covered under a
+  mocked manifest (`FeaturedPanel.note.test.tsx`) for the next feed that dies
+  in a way the pipeline cannot yet repair.
+- **Verified (2026-09-08):**
+  - `npm run check` green: **727 tests** (719 → 727), 0 warnings, engine
+    coverage 100% on all four metrics. `pytest` green: **273 tests**
+    (260 → 273), 100% lines + branches on every module, `dead_feed.py`
+    included. Full-log warning grep: **0**.
+  - **No-collateral, as pre-registered:** the regenerated asset differs from
+    the shipped one ONLY in LEC's car object (meta/track/trackStatus and the
+    other 21 car objects structurally identical); restart rebuild
+    byte-identical; 2024 rebuilds per the amendment above; **zero dead-feed
+    firings and zero declines across all 52 corpus car-windows**, every car
+    printing its "no dead feed" line.
+  - **Drawcall md5s IDENTICAL to the ledger baselines** (closed `04506b72…`,
+    open `0aea33a3…`) even though `scene.ts` changed: a retirement-free replay
+    takes the old path byte-for-byte, which is exactly the claim the fixture
+    captures exist to prove — no re-baseline. The `auto` capture on the
+    regenerated asset reads **762.80 calls/frame, identical to Slice 17's**,
+    correctly: its 70 s span ends 105 s before the freeze, so it double-proves
+    the pre-retirement region is untouched.
+- **Pre-registered acceptance (human, the merge gate):** the red-flag scenario,
+  LEC focused, at 0.5×. Through the Parabolica on lap 2 (replay clock ≈ 2:52)
+  the dot goes off, decelerates hard into the gravel and STOPS at ≈ 2:55 — and
+  never moves again: no half-lap limp, no creep to the della Roggia, the dot
+  parked at the corner for the remaining ~2 minutes while the yellow/SC/RED
+  sequence plays over it. His trail vanishes at the stop (a parked car makes no
+  wake); the marker stays. The tower still shows LEC's row with speed 0 and a
+  growing gap — unchanged and ugly exactly as filed for Slice 19. The other 21
+  cars, and the other four scenarios, unchanged.
+
 ### [ ] Slice 19 — retired, stopped and pit-lane car semantics (tower + gaps)
 
 **Filed 2026-09-08 by Slice 17's browser pass.** Two observed wrongnesses in the

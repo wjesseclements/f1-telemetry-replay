@@ -968,3 +968,53 @@ describe("TrackCanvas in an open window", () => {
     expect(badge?.globalAlpha).toBe(1);
   });
 });
+
+describe("TrackCanvas retirement (Slice 9l)", () => {
+  /** The fixture with the (only, focused) car's feed dying at `at` seconds. */
+  function retiredReplay(at: number) {
+    const raw = JSON.parse(JSON.stringify(loadFixtureReplay()));
+    raw.cars[0].retiredAt = at;
+    return parseReplay(raw, "retired.json");
+  }
+
+  /** Trail/tail strokes in a frame — the wake, by its two known widths. */
+  function wakeStrokes(frame: DrawCall[]): DrawCall[] {
+    return frame.filter(
+      (c) =>
+        c.method === "stroke" &&
+        (c.lineWidth === TRAIL_WIDTH || c.lineWidth === TAIL_WIDTH),
+    );
+  }
+
+  it("stops the trail at retirement but keeps drawing the parked marker", () => {
+    const target = retiredReplay(20);
+    useTransport.setState({ replay: target, isPlaying: false, seekTarget: 30 });
+    render(<TrackCanvas replay={target} />);
+    raf.tick();
+    raf.tick(); // paused draw path: seek applied, frame painted
+
+    const frame = lastFrame(recording);
+    expect(wakeStrokes(frame)).toHaveLength(0);
+    expect(markers(frame)).toHaveLength(1); // parked, not vanished
+  });
+
+  it("draws the trail as always before the retirement instant", () => {
+    const target = retiredReplay(20);
+    useTransport.setState({ replay: target, isPlaying: false, seekTarget: 10 });
+    render(<TrackCanvas replay={target} />);
+    raf.tick();
+    raf.tick();
+
+    expect(wakeStrokes(lastFrame(recording)).length).toBeGreaterThan(0);
+  });
+
+  it("a replay without retiredAt renders exactly as before — Infinity never arrives", () => {
+    const target = loadFixtureReplay();
+    useTransport.setState({ replay: target, isPlaying: false, seekTarget: 30 });
+    render(<TrackCanvas replay={target} />);
+    raf.tick();
+    raf.tick();
+
+    expect(wakeStrokes(lastFrame(recording)).length).toBeGreaterThan(0);
+  });
+});

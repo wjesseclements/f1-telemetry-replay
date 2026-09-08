@@ -9,11 +9,14 @@ Phase 0; no behaviour change.
 
 from __future__ import annotations
 
+import dataclasses
 import math
 from dataclasses import dataclass
 from typing import Any, Iterable, Mapping, Sequence
 
 import numpy as np
+
+from .dead_feed import detect_dead_feed, freeze_telemetry
 
 from .contract import (
     LOOP_CLOSED,
@@ -403,8 +406,29 @@ def build_window_replay_dict(
     # every car (rather than raising when one lacks it) degrades in the safe
     # direction — the indicator disappears for everybody instead of the build failing.
     per_car = []
+    retired_at: "dict[str, float]" = {}
     for car in cars:
         check_columns(car.telemetry.keys())
+        # The dead-feed screen runs FIRST, on the source rows, because everything
+        # downstream — repair, the ratio and reversal screens, placement — would
+        # otherwise be fed a fabrication that agrees with itself (Slice 9l).
+        # A frozen car's telemetry is truncated at its last pedal-alive sample
+        # plus one rest row; the clamp-and-hold semantics documented above then
+        # park it there, which is what actually happened.
+        feed = detect_dead_feed(
+            car.telemetry["Time"],
+            car.telemetry["Speed"],
+            car.telemetry["Throttle"],
+            car.telemetry["Brake"],
+            window,
+        )
+        if feed.frozen and feed.freeze_t is not None:
+            car = dataclasses.replace(
+                car, telemetry=freeze_telemetry(car.telemetry, feed.freeze_t)
+            )
+            retired_at[str(car.driver)] = round(
+                max(feed.freeze_t - float(window[0]), 0.0), 3
+            )
         t = _window_time_axis(car)
         per_car.append((car, t, resample_channels(src, t, car.telemetry)))
 
@@ -497,6 +521,15 @@ def build_window_replay_dict(
                 # then show the shape explicitly rather than by omission.
                 "laps": [dict(lap) for lap in car.laps],
                 "stints": [dict(stint) for stint in car.stints],
+                # `retiredAt` is OPTIONAL and appears only when the dead-feed
+                # screen froze this car (the `ageAtStart` doctrine: absence
+                # means "never retired", and a scalar has no empty spelling —
+                # 0 would claim a retirement at the window's first instant).
+                **(
+                    {"retiredAt": retired_at[str(car.driver)]}
+                    if str(car.driver) in retired_at
+                    else {}
+                ),
             }
             for car, _, _, samples in built
         ],

@@ -28,17 +28,20 @@ STANDING, a survey misreading corrected by the watched race), the A+B flag banne
 and LEC's post-impact "limp" diagnosed read-only as the telemetry feed dying at the
 wall (true story in the card, artifact disclosed in the new `provenance.note` until
 9l retires it) — all fixed in-branch; the re-check PASSED, the human's copy landed
-verbatim, and PR #68 merges by auto-squash. **The board, sequenced by the human at
-acceptance: 9l (dead-feed freeze) → 19 (DNF/retired display: bottom of tower,
-desaturated, no gap; plus pit-lane/pre-start gap rules) → 21 (tower reshuffle
-animation) → 18 (corner lore) → 20 (Aston/Cadillac colour)** — with **Slice 16**
-(pit-lane drawing) and its dependent **9k** still open and not re-slotted by that
-ruling; where they interleave is the human's next call. **Nothing is blocked**; the
+verbatim, and PR #68 merges by auto-squash. **The board, fully sequenced by the
+human (16/9k slotted 2026-09-08, at Slice 9l's start): 9l (dead-feed freeze) →
+19 (DNF/retired display: bottom of tower, desaturated, no gap; plus
+pit-lane/pre-start gap rules) → 21 (tower reshuffle animation) → 16 (pit-lane
+drawing) → 9k (NOR's relocation, adjudicated against 16's pit-lane geometry) →
+18 (corner lore) → 20 (Aston/Cadillac colour).** **Nothing is blocked**; the
 standing constraint remains: `build_replay.py` runs only from the human's home
 network (CLAUDE.md Gotchas).
 
-**What happens next.** Slice 9l — freeze a car at the point its telemetry
-collapses (diagnosis and thresholds-to-measure recorded in 17's entry; when it
-ships, the red-flag asset regenerates and the provenance disclosure retires).
-Then 19 → 21 → 18 → 20 per the board, with 16/9k slotted by the human, and the
-backlog's headline **fixture asymmetry overhaul** behind them.
+**What happens next.** **Slice 9l is BUILT and awaiting the human's browser
+acceptance** (pre-registered in its PLAN entry: LEC's dot stops in the Parabolica
+gravel at replay clock ≈ 2:55 and never moves again; trail gone, marker parked;
+everything else pixel-identical). The screen measured an EMPTY false-positive
+band (no live car in the 52-window corpus holds zero pedal at pace for 20 s),
+froze LEC at his last pedal input, emitted per-car `retiredAt`, and retired the
+red-flag entry's known-artifact disclosure. Then 19 → 21 → 16 → 9k → 18 → 20 per
+the board, and the backlog's headline **fixture asymmetry overhaul** behind them.

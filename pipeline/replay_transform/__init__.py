@@ -160,8 +160,19 @@ from .repair import (
     reject_impossible_fixes,
     repair_frame_displacements,
 )
+from .dead_feed import (
+    ALIVE,
+    DEAD_FEED_MAX_DRIFT,
+    DEAD_FEED_MIN_SPEED,
+    DEAD_FEED_THROTTLE,
+    DEAD_FEED_WINDOW_S,
+    DeadFeedResult,
+    detect_dead_feed,
+    freeze_telemetry,
+)
 from .reporting import (
     anchor_report,
+    dead_feed_report,
     dump_json,
     reversal_report,
     fix_rejection_report,
