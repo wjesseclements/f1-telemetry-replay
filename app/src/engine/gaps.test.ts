@@ -17,6 +17,9 @@ import {
   SEED_MARGIN_MIN,
   buildProgressIndex,
   gapTo,
+  orderKeyAt,
+  residualAt,
+  travelSoFarM,
 } from "./gaps";
 import type { Replay, Sample } from "./schema";
 
@@ -452,5 +455,68 @@ describe("gaps carry no assumption about the position unit", () => {
     const index = buildProgressIndex(replayOf(ring(3), ring(3, 20)));
     expect(gapTo(index, 0, 1, 0)!.seconds).toBeCloseTo(-2, 4);
     expect(gapTo(index, 0, 1, 59.9)!.seconds).toBeCloseTo(-2, 4);
+  });
+});
+
+describe("the tower's ungated readings (Slice 19)", () => {
+  it("orderKeyAt IS gapTo's seconds wherever both answer", () => {
+    const index = buildProgressIndex(replayOf(ring(3), ring(3, 20)));
+    for (const now of [0, 22, 30, 41.5, 59.9]) {
+      expect(orderKeyAt(index, 0, 1, now)).toBe(
+        gapTo(index, 0, 1, now)!.seconds,
+      );
+    }
+  });
+
+  it("still keys a car the residual gate has disowned — a pit lane keeps its row", () => {
+    // 30 m off the line: past MAX_RESIDUAL_M, so gapTo declines — but the car still
+    // has a place in the running order, and the key still says roughly where.
+    const off = buildProgressIndex(replayOf(ring(3), ring(3, 20, 1, 30)));
+    expect(gapTo(off, 0, 1, 30)).toBeNull();
+    expect(orderKeyAt(off, 0, 1, 30)).toBeCloseTo(-2, 1);
+  });
+
+  it("returns null only where there is genuinely no key", () => {
+    const parked = ring(3).map((s) => ({ ...s, x: 500, y: 0, speed: 0 }));
+    const index = buildProgressIndex(replayOf(ring(3), parked));
+    expect(orderKeyAt(index, 0, 1, 30)).toBeNull();
+    expect(orderKeyAt(index, 1, 0, 30)).toBeNull();
+
+    // Beyond the whole-lap extension: a car crawling at a sixth of the pace is five
+    // laps down by the end of a six-lap window. FOCUSED, it has never been where the
+    // reference now is — even walking back the full four-lap extension.
+    const crawl: Sample[] = [];
+    for (let k = 0; k < PER_LAP * 6; k++) {
+      const a = (2 * Math.PI * k) / (PER_LAP * 6);
+      const radius = 1000 / (2 * Math.PI);
+      crawl.push({
+        t: k / RATE,
+        x: radius * Math.cos(a),
+        y: radius * Math.sin(a),
+        speed: 30,
+        throttle: 100,
+        brake: 0,
+        gear: 8,
+      });
+    }
+    const lapped = buildProgressIndex(replayOf(ring(6), crawl));
+    expect(orderKeyAt(lapped, 1, 0, 119)).toBeNull();
+  });
+
+  it("residualAt reads the displacement in metres, and Infinity off a dead reference", () => {
+    const beside = buildProgressIndex(replayOf(ring(3), ring(3, 20, 1, 15)));
+    expect(residualAt(beside, 1, 30)).toBeCloseTo(15, 0);
+    expect(residualAt(beside, 0, 30)).toBeLessThan(1);
+
+    const parked = ring(3).map((s) => ({ ...s, x: 500, y: 0, speed: 0 }));
+    const dead = buildProgressIndex(replayOf(parked, ring(3)));
+    expect(residualAt(dead, 1, 30)).toBe(Infinity);
+  });
+
+  it("travelSoFarM integrates the car's own speed from the window start", () => {
+    const index = buildProgressIndex(replayOf(ring(3), ring(3, 20)));
+    // 50 m/s: 0 at the start, 500 m at 10 s in.
+    expect(travelSoFarM(index, 0, 0)).toBe(0);
+    expect(travelSoFarM(index, 0, 10)).toBeCloseTo(500, 4);
   });
 });

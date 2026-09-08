@@ -55,6 +55,13 @@ export function pedalFraction(percent: number): number {
 export const NO_VALUE = "—";
 
 /**
+ * What the gap column says for a retired car (Slice 19). The broadcast spelling: a
+ * word, not a number — a car out of the race has no interval to anyone, and `NO_VALUE`
+ * would understate it (an em dash means "no answer right now"; OUT is an answer).
+ */
+export const GAP_OUT = "OUT";
+
+/**
  * A gap in seconds, signed, as a timing tower writes it.
  *
  * `+` is behind and `-` is ahead, which is the broadcast convention and the one the

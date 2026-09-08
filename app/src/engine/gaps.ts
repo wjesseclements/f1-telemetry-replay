@@ -688,6 +688,74 @@ function travelAt(index: ProgressIndex, car: number, t: number): number {
 }
 
 /**
+ * How far off the reference line `carIndex` sits at `now`, in metres.
+ *
+ * The residual as a first-class reading (Slice 19): `carState.ts` classifies a car as
+ * OFF-LINE from it, which needs the value even where `gapTo` has already declined to
+ * answer. `Infinity` on a degenerate index (`unitsPerMetre` 0) — a reference that never
+ * moved has no line to be off.
+ */
+export function residualAt(
+  index: ProgressIndex,
+  carIndex: number,
+  now: number,
+): number {
+  if (index.unitsPerMetre === 0) return Infinity;
+  return (
+    at(index.residual[carIndex], now * index.sampleRateHz) / index.unitsPerMetre
+  );
+}
+
+/**
+ * Metres this car has covered since the window opened, at `now`.
+ *
+ * From the car's own travel integral — the same series `gapTo`'s metres come from. Slice
+ * 19 reads it to tell a car that has not yet joined the race (a pit-lane starter sitting
+ * in its box) from one that stopped after racing (a pit stop), because only the former
+ * has no position in the running order.
+ */
+export function travelSoFarM(
+  index: ProgressIndex,
+  carIndex: number,
+  now: number,
+): number {
+  return at(index.travelM[carIndex], now * index.sampleRateHz);
+}
+
+/**
+ * The signed seconds between `carIndex` and `focusIndex` at `now`, WITHOUT the residual
+ * gate — the timing tower's sort key (Slice 19).
+ *
+ * Same computation as `gapTo.seconds`, same one definition of a gap; the difference is
+ * what each answer is FOR. A displayed number claims "this is the interval", and a car
+ * off the reference line (the pit lane, a spin) is not entitled to one — that is the
+ * residual gate. A SORT KEY claims only "this car is ahead of that one", and a car in
+ * the pit lane still has a place in the running order: its projection onto the
+ * reference is distorted by the pit lane's geometry but still monotone in progress, so
+ * ordering by it is sound where quoting it would not be. Before Slice 19 the tower
+ * sorted on the gated value, so a car whose residual crossed the bound SANK to the
+ * bottom mid-pit-stop and jumped back — measured on the rain window, and exactly the
+ * "row stays in running order" defect that slice exists to fix.
+ *
+ * `null` where there is genuinely no key: either car never moved, or the lookup falls
+ * outside the window plus `MAX_LAP_EXTENSION` laps.
+ */
+export function orderKeyAt(
+  index: ProgressIndex,
+  focusIndex: number,
+  carIndex: number,
+  now: number,
+): number | null {
+  if (index.degenerate[focusIndex] || index.degenerate[carIndex]) return null;
+  const carAt = at(index.progress[carIndex], now * index.sampleRateHz);
+  // ONE definition throughout: when was the focused car at this car's current point?
+  // Slice 9's, unchanged. `t*` may fall before the window starts or after it ends, and
+  // `timeAtProgress` walks whole laps of `F` to reach it — see there.
+  const past = timeAtProgress(index, focusIndex, carAt);
+  return past === null ? null : now - past;
+}
+
+/**
  * The gap between `carIndex` and `focusIndex` at `now`.
  *
  * `null` when the data has no answer: the car is further off the reference than
@@ -703,25 +771,23 @@ export function gapTo(
   carIndex: number,
   now: number,
 ): Gap | null {
-  const { progress, residual, sampleRateHz, unitsPerMetre } = index;
-  if (index.degenerate[focusIndex] || index.degenerate[carIndex]) return null;
+  const { progress, sampleRateHz } = index;
 
-  const cursor = now * sampleRateHz;
-  const residualM = at(residual[carIndex], cursor) / unitsPerMetre;
+  const residualM = residualAt(index, carIndex, now);
   if (!(residualM <= MAX_RESIDUAL_M)) return null;
 
-  const carAt = at(progress[carIndex], cursor);
-  const focusAt = at(progress[focusIndex], cursor);
-  const deltaP = focusAt - carAt;
+  // The seconds and the sort key are the SAME number by construction — see
+  // `orderKeyAt`. The degenerate-car gate lives there.
+  const seconds = orderKeyAt(index, focusIndex, carIndex, now);
+  if (seconds === null) return null;
+  const past = now - seconds;
 
-  // ONE definition throughout: when was the focused car at this car's current point?
-  // Slice 9's, unchanged. `t*` may fall before the window starts or after it ends, and
-  // `timeAtProgress` walks whole laps of `F` to reach it — see there.
-  const past = timeAtProgress(index, focusIndex, carAt);
-  if (past === null) return null;
+  const cursor = now * sampleRateHz;
+  const deltaP =
+    at(progress[focusIndex], cursor) - at(progress[carIndex], cursor);
 
   return {
-    seconds: now - past,
+    seconds,
     metres:
       travelAt(index, focusIndex, now) - travelAt(index, focusIndex, past),
     residualM,

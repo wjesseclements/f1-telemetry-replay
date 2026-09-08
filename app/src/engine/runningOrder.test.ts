@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { ORDER_HYSTERESIS_S, orderByGap, sameOrder } from "./runningOrder";
+import {
+  ORDER_HYSTERESIS_S,
+  orderByGap,
+  sameOrder,
+  towerOrder,
+} from "./runningOrder";
 
 describe("orderByGap", () => {
   it("sorts ahead-to-behind when there is no previous order to prefer", () => {
@@ -163,5 +168,56 @@ describe("sameOrder", () => {
   it("is false when the field changes size", () => {
     expect(sameOrder([0, 1], [0, 1, 2])).toBe(false);
     expect(sameOrder([0, 1, 2], [0, 1])).toBe(false);
+  });
+});
+
+describe("towerOrder — the retired block (Slice 19)", () => {
+  const RACING = [null, null, null, null] as (number | null)[];
+
+  it("sorts a retired car to the very bottom, below even the untimed", () => {
+    // Car 1 retired, car 3 untimed: running order, then unknown, then OUT.
+    expect(
+      towerOrder([], [0, 9.9, -3.4, null], [null, 100, null, null]),
+    ).toEqual([2, 0, 3, 1]);
+  });
+
+  it("stacks multiple retirements latest-first — the broadcast order", () => {
+    expect(
+      towerOrder([], [0, null, -3.4, null], [null, 50, null, 200]),
+    ).toEqual([2, 0, 3, 1]);
+  });
+
+  it("breaks a retirement-time tie by car index, so the order is total", () => {
+    expect(towerOrder([], [0, null, null], [null, 80, 80])).toEqual([0, 1, 2]);
+  });
+
+  it("is orderByGap while nobody is retired — the wrapper adds nothing else", () => {
+    const keys = [0, 1.2, -3.4, 0.3];
+    expect(towerOrder([], keys, RACING)).toEqual(orderByGap([], keys));
+  });
+
+  it("keeps the hysteresis: a sub-dead-band crossing does not reorder the running", () => {
+    const previous = [0, 1, 2];
+    const closer = ORDER_HYSTERESIS_S / 2;
+    expect(towerOrder(previous, [0, -closer, null], [null, null, 300])).toEqual(
+      [0, 1, 2],
+    );
+  });
+
+  it("ignores a stale previous order that still lists the retired car up top", () => {
+    // The tower's own previous order is fed back whole; retirement must win anyway.
+    expect(towerOrder([1, 0, 2], [0, 9.9, -3.4], [null, 100, null])).toEqual([
+      2, 0, 1,
+    ]);
+  });
+
+  it("lets a car race again when its retirement clock is null — a rewind un-retires", () => {
+    // Seeking backwards across retiredAt: the caller passes null again, and the car
+    // rejoins the running order at its key.
+    const out = towerOrder([], [0, 9.9, -3.4], [null, 100, null]);
+    expect(out).toEqual([2, 0, 1]);
+    expect(towerOrder(out, [0, -5, -3.4], [null, null, null])).toEqual([
+      1, 2, 0,
+    ]);
   });
 });

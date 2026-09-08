@@ -105,6 +105,42 @@ export function orderByGap(
 }
 
 /**
+ * The tower's full row order: the running order, then the retired (Slice 19).
+ *
+ * A WRAPPER around `orderByGap`, not a change to it — the hysteresis and the row-swap
+ * comparison are untouched and keep their own tests. What this adds is the broadcast
+ * treatment of retirement: a retired car has left the running order, so it cannot hold
+ * a place in it, and the retired block sits BELOW even the untimed cars (an unknown
+ * gap is still a car in the race; OUT is not). Within the block, the latest retirement
+ * sits highest — the broadcast convention, which reads as "the order they dropped
+ * out", and doubles as the order they last held on the road.
+ *
+ * @param retiredAt per car: the retirement clock once reached, `null` while racing.
+ *                  Passing the clock-gated value (not the raw field) keeps this a pure
+ *                  ordering rule: before a car's `retiredAt` the caller passes `null`
+ *                  and the car sorts by its key like anyone else.
+ */
+export function towerOrder(
+  previous: readonly number[],
+  keys: readonly (number | null)[],
+  retiredAt: readonly (number | null)[],
+): number[] {
+  // Retired cars enter `orderByGap` as untimed so `previous` handling, dedup and
+  // bounds-checking stay in one place; they are then pulled out of its answer.
+  const ordered = orderByGap(
+    previous,
+    keys.map((key, i) => (retiredAt[i] === null ? key : null)),
+  );
+  const running = ordered.filter((i) => retiredAt[i] === null);
+  const retired = ordered
+    .filter((i) => retiredAt[i] !== null)
+    .sort(
+      (a, b) => (retiredAt[b] as number) - (retiredAt[a] as number) || a - b,
+    );
+  return [...running, ...retired];
+}
+
+/**
  * Are these the same order?
  *
  * The caller keeps the previous order as React state and feeds it back in, so it needs

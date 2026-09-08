@@ -12,7 +12,7 @@ import sampleLap from "../engine/__fixtures__/sample-lap.json";
 import { parseReplay } from "../engine/load";
 import type { CarSnapshot } from "../engine/interpolate";
 import type { Replay } from "../engine/schema";
-import { NO_VALUE } from "../engine/format";
+import { GAP_OUT, NO_VALUE } from "../engine/format";
 import { SWATCH_MIN_LUMINANCE, floorLuminance } from "../engine/color";
 import {
   COMPARISON_MIN_LUMINANCE,
@@ -915,5 +915,237 @@ describe("Hud swatch luminance floor (Slice 17)", () => {
     };
     expect(colors).toContain(toRgb(floored));
     expect(colors).not.toContain(toRgb("#444444"));
+  });
+});
+
+/**
+ * Slice 19 — retired, stopped and pit-lane semantics, at the exhibit level.
+ *
+ * Each recorded exhibit is rebuilt here as the smallest replay that reproduces it, in
+ * the analytic-ring style of `carState.test.ts`: a 1000 m circle at 180 km/h, so
+ * states and gaps are exact by construction. The BEFORE numbers (a parked focused car
+ * "leading" everyone; pit-lane starters on P1/P2; RUS −52.8 s from a stationary ANT)
+ * are recorded in the slice's PLAN entry, measured on the shipped assets through the
+ * unmodified engine; these tests pin the AFTER.
+ */
+describe("Hud tower states (Slice 19)", () => {
+  const RATE = 10;
+  const PER_LAP = 200;
+
+  function ringSamples(shift = 0, radiusBoost = 0) {
+    const radius = 1000 / (2 * Math.PI) + radiusBoost;
+    return Array.from({ length: PER_LAP * 2 }, (_, k) => {
+      const a = (2 * Math.PI * (k + shift)) / PER_LAP;
+      return {
+        t: k / RATE,
+        x: radius * Math.cos(a),
+        y: radius * Math.sin(a),
+        speed: 180,
+        throttle: 100,
+        brake: 0,
+        gear: 8,
+      };
+    });
+  }
+
+  type RawCar = {
+    driver: string;
+    samples: ReturnType<typeof ringSamples>;
+    retiredAt?: number;
+  };
+
+  function stateReplay(...cars: RawCar[]): Replay {
+    return parseReplay(
+      {
+        meta: {
+          schemaVersion: 1,
+          sampleRateHz: RATE,
+          duration: (PER_LAP * 2) / RATE,
+          rotation: 0,
+          loop: "open",
+          units: { speed: "km/h" },
+          year: 2026,
+          event: "Test",
+          track: "Test",
+          session: "R",
+        },
+        track: { corners: [], startFinish: { x: 0, y: 0, angle: 0 } },
+        cars: cars.map((car) => ({
+          team: "Test",
+          color: "#888888",
+          laps: [],
+          stints: [],
+          ...car,
+        })),
+        trackStatus: [],
+      },
+      "slice19.json",
+    );
+  }
+
+  function renderStates(target: Replay, clock: number) {
+    telemetry.publish(
+      1000,
+      clock,
+      target.cars.map((_, index) => ({ ...snapshot(), index })),
+    );
+    return render(<Hud replay={target} />);
+  }
+
+  const rows = () =>
+    screen
+      .getAllByRole("button")
+      .filter((b) => b.hasAttribute("aria-keyshortcuts"));
+
+  beforeEach(() =>
+    useTransport.setState({ focusedCarIndex: 0, comparisonCarIndex: null }),
+  );
+
+  it("sends a retired car to the bottom, greyed, saying OUT — while the others keep numbers", () => {
+    // GON retires at t=10 while running 2 s AHEAD: without the state he would sit on
+    // P1 with a confident number for the rest of the window.
+    const replay = stateReplay(
+      { driver: "FOC", samples: ringSamples() },
+      { driver: "GON", samples: ringSamples(20), retiredAt: 10 },
+      { driver: "RUN", samples: ringSamples(-10) },
+    );
+    renderStates(replay, 30);
+
+    const order = rows().map((b) => b.textContent ?? "");
+    expect(order[0]).toMatch(/FOC/);
+    expect(order[1]).toMatch(/RUN/);
+    expect(order[2]).toMatch(/GON/);
+    expect(order[2]).toContain(GAP_OUT);
+    // RUN, 1 s behind the focus, keeps its number: one car's retirement is not
+    // everyone's blackout.
+    expect(screen.getByText("+1.000")).toBeInTheDocument();
+    // The broadcast grey, on the row button so the swatch desaturates with the text.
+    const gone = screen.getByRole("button", { name: /^GON/ });
+    expect(gone.className).toContain("grayscale");
+    expect(
+      screen.getByRole("button", { name: /^FOC/ }).className,
+    ).not.toContain("grayscale");
+  });
+
+  it("keeps a retired car focusable, and blanks every number while it IS the focus — exhibit 1", () => {
+    const replay = stateReplay(
+      { driver: "FOC", samples: ringSamples() },
+      { driver: "GON", samples: ringSamples(20), retiredAt: 10 },
+      { driver: "RUN", samples: ringSamples(-10) },
+    );
+    useTransport.setState({ focusedCarIndex: 1 });
+    renderStates(replay, 30);
+
+    // The parked exhibit: LEC focused read as leading everyone by up to a lap. Now:
+    // no number anywhere, OUT on the focused row, and the running order intact.
+    expect(screen.queryByText(/^[+-]\d/)).toBeNull();
+    expect(screen.getAllByText(GAP_OUT)).toHaveLength(1);
+    expect(screen.getByRole("button", { name: /^GON/ })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    const order = rows().map((b) => b.textContent ?? "");
+    expect(order[0]).toMatch(/FOC/);
+    expect(order[1]).toMatch(/RUN/);
+    expect(order[2]).toMatch(/GON/);
+  });
+
+  it("un-retires on a rewind: before retiredAt the same car races with a number", () => {
+    const replay = stateReplay(
+      { driver: "FOC", samples: ringSamples() },
+      { driver: "GON", samples: ringSamples(20), retiredAt: 10 },
+    );
+    renderStates(replay, 5);
+    expect(screen.queryByText(GAP_OUT)).toBeNull();
+    expect(screen.getByText("-2.000")).toBeInTheDocument();
+  });
+
+  it("sinks a pit-lane starter still in its box to the bottom with no number — exhibit 2", () => {
+    // BOX sits 15 m off the line at speed 0 for 3 s and then drives its off-line lane
+    // from where it parked — LAW and ALO's shape, deliberately NOT a never-moves car
+    // (that was already handled as degenerate). Its box is 60 samples AHEAD of the
+    // reference in the Monza pit-box band, so the old key put it on P1 with a
+    // confident number.
+    const exit = ringSamples(60, 15);
+    const parkedBox = exit.map((s, k) => ({
+      ...(k < 30 ? { ...exit[0], speed: 0 } : exit[k - 30]),
+      t: s.t,
+    }));
+    const replay = stateReplay(
+      { driver: "FOC", samples: ringSamples() },
+      { driver: "BOX", samples: parkedBox },
+      { driver: "RUN", samples: ringSamples(-10) },
+    );
+    renderStates(replay, 2);
+
+    const order = rows().map((b) => b.textContent ?? "");
+    expect(order[2]).toMatch(/BOX/);
+    expect(order[2]).toContain(NO_VALUE);
+    expect(order[2]).not.toMatch(/[+-]\d/);
+
+    // Once it is rolling it has JOINED: the row sorts by progress again — its lane
+    // runs ahead of the reference, so it holds P1 — but an off-line car still shows
+    // no number: a row is a position, a number is a claim.
+    cleanup();
+    telemetry.reset();
+    renderStates(replay, 5);
+    const later = rows().map((b) => b.textContent ?? "");
+    expect(later[0]).toMatch(/BOX/);
+    expect(later[0]).toContain(NO_VALUE);
+    expect(later[0]).not.toMatch(/[+-]\d/);
+  });
+
+  it("shows a standing field as order without numbers until launch, then numbers — exhibit 3", () => {
+    // All three cars below the floor for the first 15 s (a grid hold with quorum),
+    // then racing. The BEFORE behaviour quoted RUS −52.8 s from a stationary ANT.
+    const held = (shift: number) =>
+      ringSamples(shift).map((s, k) => (k < 150 ? { ...s, speed: 0 } : s));
+    const replay = stateReplay(
+      { driver: "FOC", samples: held(0) },
+      { driver: "AHD", samples: held(20) },
+      { driver: "BHD", samples: held(-20) },
+    );
+    renderStates(replay, 5);
+
+    // Grid order, no numbers anywhere.
+    expect(screen.queryByText(/^[+-]\d/)).toBeNull();
+    const order = rows().map((b) => b.textContent ?? "");
+    expect(order[0]).toMatch(/AHD/);
+    expect(order[1]).toMatch(/FOC/);
+    expect(order[2]).toMatch(/BHD/);
+
+    // After the launch, with the measurement no longer spanning the hold, the
+    // numbers return at the true spacings.
+    cleanup();
+    telemetry.reset();
+    renderStates(replay, 20);
+    expect(screen.getByText("-2.000")).toBeInTheDocument();
+    expect(screen.getByText("+2.000")).toBeInTheDocument();
+  });
+
+  it("blanks even two MOVING cars while the field forms up — the launch rule, not the states", () => {
+    // A fourth pair drives normally while three others hold the grid: with a moving
+    // focus and a moving car, neither per-car state nor the focus rule blanks
+    // anything — only the pre-launch rule can. This is the forming-up phase, where
+    // the BEFORE tower showed plausible-looking numbers between cars driving to
+    // their slots.
+    const held = (shift: number) =>
+      ringSamples(shift).map((s, k) => (k < 150 ? { ...s, speed: 0 } : s));
+    const replay = stateReplay(
+      { driver: "GRD", samples: held(0) },
+      { driver: "GR2", samples: held(20) },
+      { driver: "GR3", samples: held(-20) },
+      { driver: "FOC", samples: ringSamples(-40) },
+      { driver: "MOV", samples: ringSamples(-60) },
+    );
+    useTransport.setState({ focusedCarIndex: 3 });
+    renderStates(replay, 5);
+    expect(screen.queryByText(/^[+-]\d/)).toBeNull();
+
+    // The same pair after the launch: the number is real again.
+    cleanup();
+    telemetry.reset();
+    renderStates(replay, 20);
+    expect(screen.getByText("+2.000")).toBeInTheDocument();
   });
 });
