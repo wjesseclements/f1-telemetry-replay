@@ -101,11 +101,7 @@
       "provenance": {
         "session": "2024 British Grand Prix · Race",
         "laps": "24-28",
-        "drivers": [
-          "HAM",
-          "NOR",
-          "VER"
-        ],
+        "drivers": ["HAM", "NOR", "VER"],
         "generated": "2026-09-07"
       }
     },
@@ -122,11 +118,7 @@
       "provenance": {
         "session": "2024 British Grand Prix · Race",
         "laps": "48-52",
-        "drivers": [
-          "HAM",
-          "VER",
-          "NOR"
-        ],
+        "drivers": ["HAM", "VER", "NOR"],
         "generated": "2026-09-07"
       }
     },
@@ -143,11 +135,7 @@
       "provenance": {
         "session": "2024 Italian Grand Prix · Race",
         "laps": "13-19",
-        "drivers": [
-          "VER",
-          "LEC",
-          "NOR"
-        ],
+        "drivers": ["VER", "LEC", "NOR"],
         "generated": "2026-09-07"
       }
     }

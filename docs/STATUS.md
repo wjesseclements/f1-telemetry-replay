@@ -37,11 +37,13 @@ drawing) → 9k (NOR's relocation, adjudicated against 16's pit-lane geometry) �
 standing constraint remains: `build_replay.py` runs only from the human's home
 network (CLAUDE.md Gotchas).
 
-**What happens next.** **Slice 9l is BUILT and awaiting the human's browser
-acceptance** (pre-registered in its PLAN entry: LEC's dot stops in the Parabolica
-gravel at replay clock ≈ 2:55 and never moves again; trail gone, marker parked;
-everything else pixel-identical). The screen measured an EMPTY false-positive
-band (no live car in the 52-window corpus holds zero pedal at pace for 20 s),
-froze LEC at his last pedal input, emitted per-car `retiredAt`, and retired the
-red-flag entry's known-artifact disclosure. Then 19 → 21 → 16 → 9k → 18 → 20 per
-the board, and the backlog's headline **fixture asymmetry overhaul** behind them.
+**What happens next.** **Slice 9l is DONE and PASSED** (2026-09-08): the screen
+measured an EMPTY false-positive band (no live car in the 52-window corpus holds
+zero pedal at pace for 20 s), froze LEC at his last pedal input in the Parabolica
+gravel, emitted per-car `retiredAt`, retired the red-flag entry's known-artifact
+disclosure, and the human's watch confirmed the dot parks at the wall with
+everything else unchanged (PR #69, auto-squash). Next is **Slice 19** — DNF/
+retired display and pit-lane/pre-start gap rules, now carrying three recorded
+evidence instances including the watch's screenshot of nonsense pre-start grid
+gaps (RUS −37 s from a stationary ANT) — then 21 → 16 → 9k → 18 → 20 per the
+board, and the backlog's headline **fixture asymmetry overhaul** behind them.

@@ -3828,7 +3828,7 @@ their current hashes) and the fate of CLAUDE.md's 6 MB gallery budget.
   dark liveries — a deliberate drawcall re-baseline, paired naturally with
   Slice 16's already-planned re-baseline if the human wants it.
 
-### [ ] Slice 9l — freeze a car at the point its telemetry collapses
+### [x] Slice 9l — freeze a car at the point its telemetry collapses
 
 **Filed 2026-09-08 by Slice 17's browser pass; diagnosis already done and recorded
 in that entry.** When a car's feed dies (LEC's Parabolica impact: dead-bus
@@ -3971,12 +3971,21 @@ wall rather than 16–110 s late.
   wake); the marker stays. The tower still shows LEC's row with speed 0 and a
   growing gap — unchanged and ugly exactly as filed for Slice 19. The other 21
   cars, and the other four scenarios, unchanged.
+- **Watch — DONE (2026-09-08, human, on the Vercel preview): PASS.** LEC's dot
+  stops at the Parabolica and stays parked, no tail; the restart plays as
+  before; the other scenarios unchanged. The watch also contributed a
+  screenshot observation to Slice 19's evidence (recorded there): pre-start
+  grid gaps are nonsense.
 
 ### [ ] Slice 19 — retired, stopped and pit-lane car semantics (tower + gaps)
 
-**Filed 2026-09-08 by Slice 17's browser pass.** Two observed wrongnesses in the
-red-flag scenario: LEC parked on track breaks the gap frame when focused (he read
-as leading everyone), and pit-lane starters sort to the top before the start. The
+**Filed 2026-09-08 by Slice 17's browser pass; evidence extended at 9l's watch.**
+Three observed wrongnesses in the red-flag scenarios: LEC parked on track breaks
+the gap frame when focused (he read as leading everyone); pit-lane starters sort
+to the top before the start; and — the human's screenshot from 9l's watch, on
+the grid before the standing restart — the tower shows nonsense TIME gaps
+between stationary cars (RUS −37 s from a stationary ANT). Pre-start the tower
+should show grid order with no gap until the field moves. The
 rule to build, argued in-slice (refined by the human at 17's acceptance): gaps
 are meaningful only between MOVING cars on the racing line; a DNF/retired car
 displays at the BOTTOM of the tower, desaturated, with no gap (the tower says
