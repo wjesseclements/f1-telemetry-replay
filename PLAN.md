@@ -3418,7 +3418,7 @@ stop is where it breaks.
     `cars[0]`, and VER never pits).
 
 
-### [ ] Slice 9j — attribute HAM's residual pit-entry zigzag, then beat 85%
+### [x] Slice 9j — attribute HAM's residual pit-entry zigzag, then beat 85%
 
 **Filed by Slice 9i's browser pass with its numbers, so it cannot be lost.** At 0.5x
 HAM's rain pit entry still carries one abrupt zigzag; the human's rating is **85%
@@ -3490,6 +3490,12 @@ smooth, with VER's 97% as the target**. Instrument-first, as always:
   low-speed wiggle at 6:26 unchanged; expected rating strictly above the 85%
   baseline, target VER's 97%; VER exactly 97% and NOR exactly unchanged
   (byte-identical files).
+- **Browser pass — DONE (2026-09-08, human, 0.5x on the PR #67 preview): PASS, at
+  the target.** HAM's pit entry rates **97% — the violent flick is gone and it
+  reads as good as VER's**; VER and NOR byte-identical as guaranteed. **The
+  re-watch baseline is now 97 (VER) / 97 (HAM) / NOR unchanged-by-ruling** — HAM
+  went 85 -> 97 and the pre-registered expectation held in every particular
+  (the flick gone, the 6:26 low-speed wiggle judged unremarkable).
 - **Out of scope:** NOR (declined by ruling, unchanged); the pipeline's detectors'
   thresholds (9i's rule stands: neither detector is what is wrong here).
 
