@@ -3771,14 +3771,93 @@ their current hashes) and the fate of CLAUDE.md's 6 MB gallery budget.
     budget)**, p99 33.2 µs, focus change 3.9 µs.
   - Both assets pass `parseReplay` + the full gallery-honesty suite (drivers
     advertised = drivers present, suggested clocks inside the windows).
-- **Acceptance (human, pre-registered — the merge gate):** click the new gallery
-  entry — see the start, watch LEC go off at the Parabolica, see the RED flag
-  appear on the transport bar, meet the event card, continue, and the restart
-  plays — with the existing three scenarios unchanged. Copy pass on the card and
-  hooks. **No push until then.**
+- **Browser pass — first look (2026-09-08, human, on the Vercel preview): three
+  findings fixed in-branch, two follow-up slices filed, and TWO OF THIS SLICE'S
+  OWN CLAIMS CORRECTED by the human watching the actual race:**
+  1. **Entry 2's landing clock 150 → 0, and the restart was STANDING, not behind
+     the SC.** The human's screenshot shows the field stationary on the grid;
+     measured from the emitted asset, cars roll to the grid over t = 16–60 s and
+     the whole field launches at **t ≈ 79.6 s**. The checkpoint's "SC train, land
+     just before the release" reading came from the quirky status codes (the feed
+     showed green through the resume) — a survey error the watched race
+     corrected. Landing at 0 shows grid-forming, the hold, and lights-out; card
+     copy and both hooks rewritten accordingly.
+  2. **The flag treatment is now A+B, ruled on the look.** The transport chip
+     stays (the accessible carrier); a `StatusBanner` strip now appears over the
+     canvas ONLY under an abnormal flag (yellow/SC/VSC/red — green is racing's
+     ordinary state and gets no signage). A DOM overlay, `aria-hidden` (the chip
+     already says it in text), `pointer-events-none`, its own ≤30 Hz
+     subscription as a canvas sibling; **drawcall md5s re-verified identical.**
+  3. **LEC's "limp" was the telemetry dying, not the car — diagnosed read-only
+     before touching anything, and the survey's account stands corrected.** The
+     human watched him hit the wall at the Parabolica and go to the medical
+     centre. The channels' own record: braking from 320 km/h at 00:59:42, impact
+     at **00:59:48** (234→117→20→0 in ~1.3 s, RPM collapsing to ~3500); from
+     ~00:59:50 the feed fabricates — speed near-constant 162 km/h (σ = 6 over
+     45 s) with **throttle exactly 0.0 and brake never**, RPM decaying smoothly
+     (8444 σ 303, no combustion signature), and the position stream "agreeing"
+     because F1's tracker dead-reckons a dead transponder along the racing line.
+     The physics screens are structurally blind to it: they test channels against
+     EACH OTHER, and every channel is downstream of the same dead bus. The one
+     value-level impossibility (gear > 8) first appears at **01:01:40** — 110 s
+     after the collapse — so it cannot anchor a freeze at the wall. Verdict per
+     the human's pre-authorised branch: a collapse detector needs a windowed
+     multi-signal plausibility screen with measured thresholds and adversarial
+     negative controls (every 9-series screen earned exactly that), so **the
+     freeze rule is filed as Slice 9l**, and TODAY the truth ships in copy: the
+     card tells the real story, and the manifest gains an optional
+     `provenance.note` — a known-data-artifact disclosure rendered with the
+     scenario (the red-flag entry carries the LEC note; scenarios with nothing
+     to disclose carry nothing).
+  Follow-ups filed from the same pass: **Slice 19** (retired/stopped/pit-lane
+  car semantics in tower + gaps — LEC's parked car broke the gap frame and read
+  as leading) and **Slice 20** (Aston Martin and Cadillac read alike after the
+  luminance floor — hue-aware floor or per-team override, argued there).
+- **Acceptance (human, pre-registered — the merge gate):** the human re-checks
+  the preview after the fixes: entry 1 start → LEC into the wall → banner + chip
+  walking yellow/SC/RED → event card → continue; entry 2 lands on the grid
+  forming and the standing restart plays — existing three scenarios unchanged.
+  Copy pass on the corrected card, hooks and note. **Auto-merge stays off.**
 - **Filed, not built (this slice):** flooring `scene.carColors` on the canvas for
   dark liveries — a deliberate drawcall re-baseline, paired naturally with
   Slice 16's already-planned re-baseline if the human wants it.
+
+### [ ] Slice 9l — freeze a car at the point its telemetry collapses
+
+**Filed 2026-09-08 by Slice 17's browser pass; diagnosis already done and recorded
+in that entry.** When a car's feed dies (LEC's Parabolica impact: dead-bus
+fabrication — near-constant speed with zero throttle forever, smoothly decaying
+RPM, dead-reckoned positions, a gear counter that goes value-impossible only 110 s
+late), the replay currently animates the fabrication. The rule to build: a
+windowed multi-signal plausibility screen (constant-speed + zero-pedal + RPM-decay
+over N seconds, thresholds MEASURED, not guessed) that finds the collapse onset,
+then freezes the car at its last trusted fix — `hold_positions` from that instant,
+speed to zero — and reports it like every other screen. Adversarial negative
+controls are the hard half and the point: real lift-and-coast, formation laps, and
+damaged-but-driving cars must NOT freeze. Same family as 9g/9j; sequence freely
+among the 9-series. When it ships, regenerate the red-flag asset and retire the
+`provenance.note` disclosure it currently needs.
+
+### [ ] Slice 19 — retired, stopped and pit-lane car semantics (tower + gaps)
+
+**Filed 2026-09-08 by Slice 17's browser pass.** Two observed wrongnesses in the
+red-flag scenario: LEC parked on track breaks the gap frame when focused (he read
+as leading everyone), and pit-lane starters sort to the top before the start. The
+rule to build, argued in-slice: gaps are meaningful only between MOVING cars on
+the racing line; a retired/parked car sorts last with no gap (the tower says
+"OUT" or similar, not a number); pre-start shows grid order or nothing. Touches
+`engine/gaps.ts` / `runningOrder.ts` / the tower — rule 1 untouched (all ≤30 Hz
+derived state).
+
+### [ ] Slice 20 — colour distinction under the luminance floor
+
+**Filed 2026-09-08 by Slice 17's browser pass.** The floor fixes visibility, not
+identity: Aston Martin's green and Cadillac's floored grey read alike in the
+tower. Options to argue with measurements: a hue-aware floor (preserve chroma
+while lifting luminance — the current mix-toward-white desaturates), a minimum
+pairwise colour-difference check over the loaded field with per-team overrides,
+or a secondary mark (pattern/initial) when two swatches collide. Interacts with
+the filed canvas-flooring rider and Slice 16's re-baseline.
 
 ### [ ] Slice 18 — corner lore (after Slice 17)
 

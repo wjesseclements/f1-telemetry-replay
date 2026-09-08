@@ -22,22 +22,24 @@ Slice 17 branch: `npm run check` green with 714 tests and 0 warnings; 260 pytest
 (the canvas is untouched); the 2024 assets byte-identical; the 22-car frame cost
 measured on-instrument at 762.8 draw calls/frame against the linear law's 764.
 
-**What is open, and what is blocked.** **Slice 17 is BUILT and awaiting the human's
-browser acceptance** (pre-registered: click the red-flag entry, watch the start,
-LEC's Parabolica off, the RED flag, the event card, and the restart; copy pass on
-the card and hooks; the branch is unpushed until then). Its checkpoint rulings are
-recorded in PLAN, including the asset-policy reversal: **plain git, the 6 MB gallery
-budget retired by measurement, LFS declined** (escalation now 50 MB/file or ~100 MB
-pack). After 17: **Slice 16 — draw the pit lane any car in the file uses** (the
-undrawn lane is now also visible in the red-flag entry's final seconds, accepted
-pending 16), then **Slice 9k** (adjudicate NOR's declined relocation against 16's
-pit-lane geometry), then **Slice 18 — corner lore** (filed, not built). **Nothing is
-blocked.** One standing constraint applies to all pipeline work: F1 blocks
-datacentre IPs from live timing, so `build_replay.py` runs only from the human's
-home network (see CLAUDE.md Gotchas).
+**What is open, and what is blocked.** **Slice 17 is BUILT, on PR #68, awaiting the
+human's re-check of the preview** after the first browser pass returned three
+findings, all fixed in-branch: entry 2 lands at clock 0 (the restart was STANDING —
+a survey misreading corrected by the watched race), the flag treatment is A+B (a
+canvas-overlay banner joins the transport chip under abnormal flags), and LEC's
+post-impact "limp" was diagnosed read-only as the telemetry feed dying at the wall
+— the card now tells the true story and the manifest's new `provenance.note`
+discloses the artifact. The pass also filed **Slice 9l** (freeze a car when its
+telemetry collapses — the diagnosis and why it needs its own measured-threshold
+slice are in 17's entry), **Slice 19** (retired/stopped/pit-lane semantics in
+tower + gaps), and **Slice 20** (colour distinction under the luminance floor).
+Checkpoint rulings stand as recorded, including plain git with the 6 MB budget
+retired. Queue after 17: **16**, **9k**, **18**, with 9l/19/20 sequenced by the
+human. **Nothing is blocked**; the standing constraint remains: `build_replay.py`
+runs only from the human's home network (CLAUDE.md Gotchas).
 
-**What happens next.** The human's acceptance pass on Slice 17's Vercel preview,
+**What happens next.** The human's re-check on PR #68's preview (auto-merge off),
 then merge. Then Slice 16 (with its deliberate drawcall re-baseline — and a filed
 candidate rider: flooring the canvas's dark liveries, which shares that re-baseline),
-then 9k, then Slice 18, then the backlog's headline item, the **fixture asymmetry
-overhaul** (four recorded instances of the symmetric fixture hiding defect classes).
+then 9k, then the filed follow-ups and Slice 18, then the backlog's headline item,
+the **fixture asymmetry overhaul**.

@@ -632,3 +632,24 @@ describe("the featured-replay gallery", () => {
 function escapeRe(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+
+describe("the featured panel's data-artifact note (Slice 17 browser pass)", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("renders a scenario's provenance note verbatim, and only where one exists", () => {
+    useTransport.setState({ replay });
+    render(<App />);
+    const noted = SCENARIOS.filter((s) => s.provenance.note !== undefined);
+    expect(noted.length, "the red-flag entry carries the LEC disclosure").toBe(
+      1,
+    );
+    expect(
+      screen.getByText(new RegExp(escapeRe(noted[0].provenance.note ?? ""))),
+    ).toBeInTheDocument();
+    // One note in the manifest, one note in the DOM.
+    expect(screen.getAllByText(/Known data artifact/)).toHaveLength(1);
+  });
+});

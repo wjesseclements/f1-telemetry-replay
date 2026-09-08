@@ -129,6 +129,15 @@ export function FeaturedPanel({ onClose, id }: FeaturedPanelProps) {
                   {scenario.provenance.laps} ·{" "}
                   {scenario.provenance.drivers.join(" ")}
                 </span>
+                {/* A known-data-artifact disclosure travels WITH the scenario it
+                    describes (Slice 17): the feed's failure is part of what the
+                    visitor is about to watch. Absent on scenarios with nothing
+                    to disclose — no branch beyond the optional field itself. */}
+                {scenario.provenance.note !== undefined && (
+                  <span className="mt-1 block font-mono text-[10px] italic leading-relaxed text-dim/70">
+                    {scenario.provenance.note}
+                  </span>
+                )}
               </button>
             </li>
           ))}

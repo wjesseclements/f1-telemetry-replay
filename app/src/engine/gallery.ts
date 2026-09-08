@@ -76,6 +76,14 @@ const ProvenanceSchema = z.object({
   generated: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, {
     error: "generated must be an ISO date, e.g. 2026-08-08",
   }),
+  /**
+   * A known-data-artifact disclosure, rendered verbatim with the provenance
+   * (Slice 17 browser pass): when a source feed is wrong in a way the replay
+   * faithfully reproduces — LEC's dead telemetry "driving on" after his
+   * Parabolica impact — honesty belongs NEXT TO the data, not in a commit
+   * message. Optional: most scenarios have nothing to disclose.
+   */
+  note: z.string().min(1).optional(),
 });
 
 const ScenarioSchema = z.object({
