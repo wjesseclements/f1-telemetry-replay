@@ -50,13 +50,19 @@ stands (see CLAUDE.md Gotchas). One standing constraint applies to all pipeline 
 datacentre IPs from live timing, so `build_replay.py` runs only from the human's home
 network (see CLAUDE.md Gotchas).
 
-**What happens next.** The next session implements **Slice 9j** in the
-instrument-first order: read-only attribution of HAM's remaining zigzag (the 9h-b
-cancellation seams, 9i's own anchor noise, or something new), and the attribution
-decides the remedy — nothing is designed before it. After 9j: **Slice 16** (the
-pit lane drawn for any car that uses it — an app render slice that deliberately
-re-baselines the drawcall captures), then the backlog's fixture asymmetry
-overhaul. After 9i comes
+**What happens next.** **Slice 9j is implemented on `feat/slice-9j-ham-residual`,
+pending the human's 0.5x pass.** The attribution found candidate 3 — a sub-bar
+single-fix excursion whose two legs each pass the ratio screen while the PAIR
+reverses direction at 250 km/h (~35 g) — and the ruled remedy is the **reversal
+screen**: an orthogonal detector (dot-product of consecutive steps, legs > 4 m,
+pair over 100 km/h, declined-displacement guard honoured), calibrated to an
+absolute corpus-wide empty band (3 hits in nine car-windows, all known-corrupt;
+zero in clean cars). Only the rain asset's HAM samples changed — byte-identical
+to the scored simulation — with VER and NOR byte-untouched, so the 97% control
+and "NOR unchanged" hold structurally. The acceptance criterion was amended on
+the record (rain cells judged at floor resolution) per the 9h precedent. After
+9j: **Slice 16** (the pit lane drawn for any car that uses it), then the
+fixture asymmetry overhaul. After 9i comes
 the backlog's headline item, the **fixture asymmetry overhaul** (four recorded
 instances of the symmetric fixture hiding defect classes — Slice 14 worked around the
 same limitation again by putting its asymmetry in test tables rather than the fixture).

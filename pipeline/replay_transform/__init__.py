@@ -142,6 +142,9 @@ from .placement import (
 )
 from .repair import (
     DISPLACEMENT_TOLERANCE,
+    REVERSAL_MIN_SPEED,
+    ReversalRejection,
+    reject_reversals,
     IMPOSSIBLE_MAX_RUN,
     IMPOSSIBLE_MIN_SPEED,
     IMPOSSIBLE_MIN_STEP_M,
@@ -154,6 +157,7 @@ from .repair import (
 from .reporting import (
     anchor_report,
     dump_json,
+    reversal_report,
     fix_rejection_report,
     frame_repair_report,
     motion_fidelity,

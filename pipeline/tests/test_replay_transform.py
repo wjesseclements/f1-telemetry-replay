@@ -22,6 +22,9 @@ import pytest
 import synthetic
 from replay_transform import (
     AnchorPlan,
+    ReversalRejection,
+    reject_reversals,
+    reversal_report,
     DEFAULT_COLOR,
     FrameDisplacement,
     anchor_report,
@@ -2784,3 +2787,154 @@ def test_anchor_report_names_all_three_states():
     assert "0 extra anchors" in none
     both = anchor_report("LEC", AnchorPlan((3, 9), (5,), False))
     assert "3 extra anchor(s)" in both and "2 S/F" in both and "1 pit-span" in both
+
+
+# --- the reversal screen (Slice 9j) -------------------------------------------------
+
+
+def _reversal_telemetry():
+    """A straight run at 240 km/h with one fix overshooting ~20 m and returning —
+    HAM's t=381.72 shape, in miniature. Steps are ~6.7 m at 10 Hz; the bad fix is
+    13 m past its successor, so both legs clear the 4 m floor and the pair
+    reverses."""
+    t = np.arange(0.0, 3.0, 0.1)
+    x = 66.7 * t  # 0.1 m units at 240 km/h: 66.7 units per 0.1 s
+    x = x * 10.0
+    y = np.zeros_like(t)
+    x[15] = x[16] + 130.0  # overshoot: past the NEXT fix by 13 m
+    speed = np.full_like(t, 240.0)
+    return t, x, y, speed
+
+
+def test_reject_reversals_drops_the_overshooting_fix_and_its_dragged_pair():
+    # The overshoot flags its own pair AND the pair it is a leg of, so its genuine
+    # neighbour goes with it — the documented cost that cannot keep the wrong fix.
+    t, x, y, v = _reversal_telemetry()
+    r = reject_reversals(t, x, y, v)
+    assert r.n_rejected == 2
+    assert not r.keep[15] and not r.keep[16]
+    assert r.rejected_times == (pytest.approx(1.5), pytest.approx(1.6))
+
+
+def test_reject_reversals_keeps_clean_data_untouched():
+    t, x, y, v = _reversal_telemetry()
+    x[15] = 66.7 * 10.0 * 1.5  # put the fix back on the line
+    r = reject_reversals(t, x, y, v)
+    assert r.n_rejected == 0 and r.keep.all()
+
+
+def test_reject_reversals_is_blind_below_its_speed_floor():
+    # The same geometry at 60 km/h is a plausible spin recovery, not corruption.
+    t, x, y, v = _reversal_telemetry()
+    v[:] = 60.0
+    assert reject_reversals(t, x, y, v).n_rejected == 0
+
+
+def test_reject_reversals_ignores_sub_floor_legs():
+    # A reversal whose return leg is under the 4 m floor is jitter, not evidence.
+    t = np.arange(0.0, 3.0, 0.1)
+    x = 667.0 * t
+    y = np.zeros_like(t)
+    x[15] = x[16] + 30.0  # overshoot past the next fix by only 3 m
+    v = np.full_like(t, 240.0)
+    assert reject_reversals(t, x, y, v).n_rejected == 0
+
+
+def test_reject_reversals_is_unit_agnostic():
+    # 6b's standing rule, same pin as the ratio screen: scaling x/y by any factor
+    # leaves every decision identical.
+    t, x, y, v = _reversal_telemetry()
+    a = reject_reversals(t, x, y, v)
+    b = reject_reversals(t, x * 37.0, y * 37.0, v)
+    assert np.array_equal(a.keep, b.keep)
+
+
+def test_reject_reversals_surrenders_on_uncalibratable_data():
+    t = np.array([0.0, 0.1, 0.2])
+    r = reject_reversals(t, [0.0, 100.0, 0.0], [0.0, 0.0, 0.0], [5.0, 5.0, 5.0])
+    assert r.keep.all()  # nothing above IMPOSSIBLE_MIN_SPEED to calibrate against
+
+
+def test_reject_reversals_keeps_two_point_input():
+    r = reject_reversals([0.0, 0.1], [0.0, 10.0], [0.0, 0.0], [200.0, 200.0])
+    assert r.keep.all() and r.rejected_times == ()
+
+
+def _sub_bar_overshoot(tel, at_s):
+    """An overshoot the RATIO screen must keep and only the reversal screen can
+    catch: the fix lands 0.9 of a step PAST its successor, so the out leg is ~1.9x
+    a normal step (well under IMPOSSIBLE_RATIO's 3.0) and the return leg is ~0.9x
+    a step (over the 4 m floor at session speed)."""
+    t = np.asarray(tel["Time"], float)
+    x = np.asarray(tel["X"], float).copy()
+    y = np.asarray(tel["Y"], float).copy()
+    k = int(np.searchsorted(t, at_s))
+    x[k] = x[k + 1] + 0.9 * (x[k + 1] - x[k])
+    y[k] = y[k + 1] + 0.9 * (y[k + 1] - y[k])
+    out = dict(tel)
+    out["X"], out["Y"] = x, y
+    return out, k
+
+
+def test_window_builder_screens_reversals_but_not_for_declined_cars():
+    # Behaviour at the builder: a sub-ratio-bar reversal fix changes the emitted
+    # path unless the reversal screen drops it — the ratio screen alone CANNOT
+    # (pinned below by the raw-screen assertion).
+    start, end = WINDOW
+    tel = synthetic.session_telemetry(start, end)
+    spike, k = _sub_bar_overshoot(tel, start + 4.0)
+    # the premise, asserted rather than assumed: the ratio screen keeps the spike
+    keeps = reject_impossible_fixes(
+        spike["Time"], spike["X"], spike["Y"], spike["Speed"]
+    ).keep
+    assert keeps[k], "premise broken: the ratio screen caught the spike itself"
+    clean_build = build_window_replay_dict(
+        [synthetic.window_car("AAA", tel)], synthetic.SESSION_META, WINDOW
+    )["cars"][0]["samples"]
+    spiked_build = build_window_replay_dict(
+        [synthetic.window_car("AAA", spike)], synthetic.SESSION_META, WINDOW
+    )["cars"][0]["samples"]
+    # with the reversal screen the spike is dropped and bridged; without it the
+    # kept spike drags emitted samples by metres
+    worst = max(
+        math.hypot(a["x"] - b["x"], a["y"] - b["y"]) * 0.1
+        for a, b in zip(clean_build, spiked_build)
+    )
+    assert worst < 2.0, f"spike survived the screen: worst {worst:.1f} m"
+
+
+def test_reversal_report_names_all_three_states():
+    assert "WITHHELD" in reversal_report("NOR", None)
+    clean = ReversalRejection(np.ones(5, dtype=bool), ())
+    assert "0 reversals" in reversal_report("VER", clean)
+    keep = np.ones(5, dtype=bool)
+    keep[2] = False
+    hit = ReversalRejection(keep, (383.7,))
+    line = reversal_report("HAM", hit, offset=2.0)
+    assert "1 reversal(s)" in line and "t=381.7" in line
+
+
+def test_window_builder_withholds_the_reversal_screen_for_a_declined_car():
+    # The guard, behaviourally: give a car a single unmatched relocation (declined)
+    # AND a reversal spike after it — the spike must SURVIVE, because a declined
+    # region gets no surgical edits (Slice 9i's guard, extended by ruling to 9j).
+    start, end = WINDOW
+    tel = dict(synthetic.session_telemetry(start, end))
+    t = np.asarray(tel["Time"], float)
+    x = np.asarray(tel["X"], float).copy()
+    mid = int(np.searchsorted(t, start + 5.0))
+    x[mid:] += 5000.0  # one unmatched jump: relocates and stays -> DECLINED
+    declined_tel = dict(tel)
+    declined_tel["X"] = x
+    spiked_tel, _ = _sub_bar_overshoot(declined_tel, start + 8.0)
+
+    def build(cartel):
+        return build_window_replay_dict(
+            [synthetic.window_car("AAA", cartel)], synthetic.SESSION_META, WINDOW
+        )["cars"][0]["samples"]
+
+    worst = max(
+        math.hypot(a["x"] - b["x"], a["y"] - b["y"]) * 0.1
+        for a, b in zip(build(declined_tel), build(spiked_tel))
+    )
+    assert worst > 2.0, "the spike was screened despite the declined guard"

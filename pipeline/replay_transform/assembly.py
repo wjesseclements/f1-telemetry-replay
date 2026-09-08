@@ -39,7 +39,9 @@ from .repair import (
     IMPOSSIBLE_MIN_SPEED,
     FixRejection,
     FrameDisplacement,
+    ReversalRejection,
     reject_impossible_fixes,
+    reject_reversals,
     repair_frame_displacements,
 )
 
@@ -420,11 +422,17 @@ def build_window_replay_dict(
         rejection = reject_impossible_fixes(t, x, y, speed)
         rejections.append((str(car.driver), rejection))
         plan = window_anchor_plan(t, speed, repair, car, window[0])
+        # The reversal screen (Slice 9j), under the same guard as the anchors: a car
+        # with a DECLINED displacement is a known-corrupt region and gets no
+        # surgical edits — its fixes ship exactly as the ratio screen left them.
+        keep = rejection.keep
+        if not plan.declined:
+            keep = keep & reject_reversals(t, x, y, speed).keep
         # Parked or moving — the one place a window differs from a lap in how
         # positions are placed. See `covers_ground`.
         if covers_ground(t, x, y, speed):
             gx, gy = resample_positions_by_travel(
-                src, t, x, y, speed, rejection.keep,
+                src, t, x, y, speed, keep,
                 sorted(set(list(repair.anchors) + plan.extra())),
             )
         else:

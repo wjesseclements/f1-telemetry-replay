@@ -470,3 +470,106 @@ def repair_frame_displacements(
         allowed * to_m,
         (float(ts[first]), float(ts[last])),
     )
+
+
+#: The reversal screen's speed floor, km/h, on the SLOWER endpoint of the pair.
+#: A direction reversal between fixes ~0.1-0.2 s apart implies |delta-v| of twice the
+#: car's speed over that interval: at 100 km/h that is ~28 g, five times an F1 car's
+#: braking ceiling, so above this floor a reversal is impossible regardless of how
+#: legal each leg looks to the ratio screen. BELOW it the floor is doing real work:
+#: a spinning or recovering car's CG can genuinely hook sharply at low speed, and the
+#: pit box is full of small direction changes that mean nothing.
+#:
+#: Calibrated as an ABSOLUTE empty band, corpus-wide (Slice 9j): with both legs over
+#: `2 * IMPOSSIBLE_MIN_STEP_M`, all nine gallery car-windows contain exactly THREE
+#: reversal pairs above this floor — HAM's one visible pit-entry flick (rain,
+#: t=381.7, legs 21.8/5.5 m at 250 km/h) and the two known-corrupt fixes beside
+#: NOR's declined relocation — and ZERO in the six clean cars. There is no
+#: distribution to fit; the band is empty.
+REVERSAL_MIN_SPEED = 100.0
+
+
+@dataclass(frozen=True)
+class ReversalRejection:
+    """What `reject_reversals` decided, and enough to report it honestly."""
+
+    #: Boolean mask over the input fixes: True = keep.
+    keep: np.ndarray
+    #: Source times of the rejected middle fixes, for the per-run report.
+    rejected_times: "tuple[float, ...]"
+
+    @property
+    def n_rejected(self) -> int:
+        return int((~self.keep).sum())
+
+
+def reject_reversals(
+    t: Any,
+    x: Any,
+    y: Any,
+    speed: Any,
+    *,
+    min_speed: float = REVERSAL_MIN_SPEED,
+    min_leg: float = 2.0 * IMPOSSIBLE_MIN_STEP_M,
+) -> ReversalRejection:
+    """
+    Drop the middle fix of any consecutive step pair that REVERSES DIRECTION at
+    speed — the defect class the ratio screen is structurally blind to (Slice 9j).
+
+    THE BLINDNESS, measured before this existed: HAM's rain pit-entry fix at
+    t=381.72 overshoots 21.8 m in 0.177 s at 250 km/h — 1.77x the channel's limit,
+    ~p99 of CLEAN steps, legally under `IMPOSSIBLE_RATIO`'s 3.0 — and the next fix
+    comes 5.5 m back. Each leg passes the ratio test one at a time; the corruption
+    lives in the PAIR: together they turn the path through 155 degrees in 0.16 s,
+    which is ~35 g and not driving. The signature is the sign of the dot product of
+    consecutive steps — dimensionless, so no position unit is assumed (6b's
+    standing rule), and orthogonal to the ratio screen rather than a retune of it
+    (9i's "do not tune `IMPOSSIBLE_RATIO`" rule stands untouched).
+
+    Both legs must clear `min_leg` (through the car's own scale bridge): a reversal
+    between sub-noise steps is jitter, not evidence — the same reasoning as
+    `IMPOSSIBLE_MIN_STEP_M`, at twice the floor because BOTH legs must be real for
+    the pair to mean anything. `min_speed` gates on the slower endpoint of the
+    pair; see `REVERSAL_MIN_SPEED` for the physics and the corpus band.
+
+    The caller bridges the dropped fix by interpolation exactly as it already does
+    for the ratio screen's rejects. The WINDOW builder additionally withholds this
+    screen from a car carrying a DECLINED displacement (the 9i guard: no surgical
+    edits inside a known-corrupt region) — that policy lives at the call site,
+    where the repair verdict is in hand, not here.
+    """
+    ts = np.asarray(t, dtype=float)
+    px = np.asarray(x, dtype=float)
+    py = np.asarray(y, dtype=float)
+    vs = np.asarray(speed, dtype=float)
+    n = len(ts)
+    keep = np.ones(n, dtype=bool)
+    if n < 3:
+        return ReversalRejection(keep, ())
+
+    dxs = np.diff(px)
+    dys = np.diff(py)
+    step = np.hypot(dxs, dys)
+    dt = np.diff(ts)
+    usable = (dt > 0.0) & (vs[1:] >= IMPOSSIBLE_MIN_SPEED) & (step > 0.0)
+    if usable.sum() < 3:
+        # Too little moving data to calibrate the scale bridge; keep it all — the
+        # same surrender the ratio screen makes on the same evidence.
+        return ReversalRejection(keep, ())
+    scale = float(np.median((step[usable] / dt[usable]) / vs[1:][usable]))
+    floor = min_leg * KMH_S_PER_METRE * scale
+
+    dot = dxs[:-1] * dxs[1:] + dys[:-1] * dys[1:]
+    fast = np.minimum(vs[1:-1], vs[2:]) > min_speed
+    big = (step[:-1] > floor) & (step[1:] > floor)
+    middles = np.flatnonzero((dot < 0.0) & fast & big) + 1
+    # One overshooting fix flags its own pair AND the pair it is a leg of, so a
+    # genuine neighbour can be taken with it. Accepted, and plainly: the cost is one
+    # bridged tenth of a second of true path, paid only ever directly beside actual
+    # corruption — while any scheme that tries to restore the neighbour has to rank
+    # the pair's two fixes against each other, and a wrong ranking KEEPS the corrupt
+    # one. Dropping both is the version that cannot be wrong about which fix lies.
+    keep[middles] = False
+    return ReversalRejection(
+        keep, tuple(float(ts[m]) for m in middles)
+    )
