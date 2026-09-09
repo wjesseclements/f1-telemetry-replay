@@ -70,6 +70,7 @@ function replayOf(...cars: Sample[][]): Replay {
       samples,
       laps: [],
       stints: [],
+      dropouts: [],
     })),
     trackStatus: [],
   } as Replay;

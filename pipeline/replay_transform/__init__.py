@@ -170,9 +170,25 @@ from .dead_feed import (
     detect_dead_feed,
     freeze_telemetry,
 )
+from .stuck_channel import (
+    NO_STUCK,
+    STUCK_EXIT_DECEL_G,
+    STUCK_MIN_DUR_S,
+    STUCK_MIN_ROWS,
+    STUCK_MIN_SPEED,
+    STUCK_POS_FREEZE_S,
+    STUCK_POS_STEP,
+    STUCK_SAT_S,
+    StuckResult,
+    StuckSpan,
+    bridge_stuck_channels,
+    detect_stuck_channels,
+    dropout_intervals,
+)
 from .reporting import (
     anchor_report,
     dead_feed_report,
+    stuck_channel_report,
     dump_json,
     reversal_report,
     fix_rejection_report,

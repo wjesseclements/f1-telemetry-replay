@@ -78,6 +78,7 @@ function replayOf(
       samples: Array.isArray(car) ? car : car.samples,
       laps: [],
       stints: [],
+      dropouts: [],
       ...(Array.isArray(car) || car.retiredAt === undefined
         ? {}
         : { retiredAt: car.retiredAt }),

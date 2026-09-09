@@ -978,6 +978,7 @@ describe("Hud tower states (Slice 19)", () => {
           color: "#888888",
           laps: [],
           stints: [],
+          dropouts: [],
           ...car,
         })),
         trackStatus: [],

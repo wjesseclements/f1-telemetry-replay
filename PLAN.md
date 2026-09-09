@@ -4291,31 +4291,118 @@ the sort and indicted the POSITIONS. Diagnosed read-only; the mechanism:**
    the 1:52 P1 is the data defect now filed as 9m. **Auto-merge enabled on the
    human's instruction.**
 
-### [ ] Slice 9m — stuck-channel dropout screen (next, before Slice 21)
+### [x] Slice 9m — stuck-channel dropout screen (done 2026-09-09)
 
-**Filed 2026-09-09 by Slice 19's second re-watch; diagnosis complete and
-recorded above.** F1's feed drops per car for 2–10 s — once a lap at a fixed
-track position in the 2026 Monza windows — freezing the speed channel at its
-last value (constant to the km/h at pace) while F1 dead-reckons the position
-stream forward; travel-driven placement then integrates the stuck speed into
-hundreds of phantom metres and holds them until the next anchor. The rule to
-build, in the 9-series method (measure, pre-register, adversarial negative
-controls, silent-never reporting):
-- **Detector:** a run of speed constant to the km/h at pace for ≥ N samples
-  (N corpus-calibrated; the emitted-side scan found 78 candidate runs ≥ 2 s in
-  the 2026 windows and zero in 2024 — measure the true-run and negative-run
-  populations on the RAW source, not the emitted grid). The human's HUD
-  observation is a second usable signature: frozen throttle AND brake
-  simultaneously non-zero. Negative controls that must NOT fire: the pit-lane
-  limiter (legitimately constant ~80), flat-out top-speed running (constant to
-  the km/h for a second or two), and the 2024 corpus wholesale.
-- **Repair:** during a detected dropout, travel must NOT be integrated from
-  the stuck value — bridge placement across the span from the position stream
-  or the neighbouring good travel (both edges are trusted: the feed resumes),
-  argued in-slice against the 9h/9i anchor machinery rather than bolted on.
-- **Regenerate the two 2026 assets**; the three 2024 assets must rebuild
-  byte-identical (the 9l no-collateral shape). Retire the restart entry's
-  `provenance.note`.
+**Filed 2026-09-09 by Slice 19's second re-watch; built the same day in the
+9-series method (measure → pre-register → build → verify against the
+pre-registration).** F1's feed drops per car for a couple of seconds — once a lap
+at a fixed track position in the 2026 Monza windows — freezing the speed channel
+at its last value while F1 dead-reckons the position stream forward; travel-driven
+placement then integrates the stuck speed into hundreds of phantom metres and
+holds them until the next anchor. COL's phantom P1 into della Roggia at 1:52 was
+the visible symptom.
+
+**Phase 1 — measured on the RAW source (pre-resampling), all five gallery windows.**
+
+- **The candidate population is NOT all dropouts** — a finding that refined the
+  filing's framing. The emitted-side ≥2 s scan found ~70 constant-speed runs, but
+  measured on the source many are genuine racing: flat-out running plateauing at
+  Vmax on the straight (near-constant by physics), and — the decisive negative
+  control — **the pit-lane limiter holds a genuinely constant ~80 km/h for 9.08 s**
+  (2024 Silverstone), LONGER than every real dropout, the shortest of which is
+  1.20 s. **Duration cannot separate the populations; the signature can.** So a
+  run-length threshold was rejected outright, and "every one of the 78 must fire"
+  was corrected to "fire on the runs carrying an impossible signature, decline the
+  rest."
+- **Detector (pre-registered, then built): a candidate is a maximal run of
+  exactly-constant speed, ≥ 4 samples, ≥ 0.8 s, ≥ 50 km/h; it FIRES on ANY of three
+  physically-impossible signatures**, each of which no live car at pace produces:
+  - **SATURATION** — throttle > 100 % AND brake on, held ≥ 1.0 s (the human's HUD
+    observation). Margin: longest such stretch on an engine still varying its RPM
+    is 0.92 s; shortest on a frozen feed 1.04 s.
+  - **POSITION FREEZE** — x/y stationary (< 1 position-unit/step) ≥ 0.5 s while
+    speed claims ≥ 50 km/h (moving-but-not-moving).
+  - **IMPOSSIBLE EXIT** — the speed step leaving the run implies ≥ 8 g deceleration
+    (a resume snap; five× an F1 braking ceiling). Margin: the largest run-exit
+    deceleration on clean 2024 data is 2.4 g.
+  The three overlap (of the 37 corpus dropouts: 35 saturate, 33 snap, 23 freeze
+  position), so the union is robust to which a given dropout shows. **Result: 37
+  runs fire, ALL in the two 2026 windows (14 red-flag + 23 restart), ZERO across
+  the whole 2024 corpus** — pit limiter, flat-out running and every clean lap stay
+  silent.
+- **Bridge (pre-registered, scored against the timing loops, then built).** Across
+  a detected span, between the last trusted fix before it (`i`) and the resume fix
+  after it (`k`): **speed is linearly bridged** (kills the phantom TRAVEL), **the
+  fabricated polyline is replaced by the straight chord `i→k`** (kills the phantom
+  ARCLENGTH), **the pedals are neutralised to a coast** over `[i, k)` (no
+  throttle-and-brake readout), and **both edges are handed to the placement as
+  anchors** (Slice 9i machinery) so the repair is confined and the car **re-syncs
+  at resume, not at the next timing loop** — the second half of the defect. The
+  stuck anchors join loop/pit in a new `AnchorPlan.stuck` field that is NOT withheld
+  by a declined displacement (a bridged chord is ground this pipeline reconstructed,
+  the opposite of a declined relocation's known-unreal path). Four alternatives were
+  scored on the restart window and lost: hold-speed (parks then teleports, wrecks
+  reversal), keep-the-dead-reckoned-polyline (frozen-tail pile-up), drop-rows
+  (catastrophic reversals), and anchor-at-resume-only (leaves the intra-span surge).
+- **Additive schema:** an optional per-car `dropouts: [{fromT,toT}]` (window
+  seconds), `.default([])` on the `retiredAt`/`trackStatus` doctrine, ordered /
+  non-overlapping / in-window (mirrored TS + Zod refinements). Provenance the app can
+  later render as "no signal"; the placement is already repaired, so a consumer may
+  ignore it. **The HUD wiring is a filed follow-up (see backlog).**
+
+**Phase 2 — built, and the pre-registered before/after HELD (measured against the
+timing loops, the arbiter, on the shipped restart asset).**
+
+| car | phantom lead over RUS (full window) | placement scatter (worst) | reversal A |
+|-----|-------------------------------------|---------------------------|------------|
+| COL | **+76 m → −4 m** (phantom P1 gone)  | 42.0 → **20.0 m**         | 39.1 → **3.0** |
+| GAS | **+39 m → +2 m**                    | 61.1 → **38.4 m**         | 11.9 → 12.0 |
+| PIA | −11 → −18 m                         | 86.3 → **22.7 m**         | 33.4 → **6.2** |
+| ALO | −67 → −119 m                        | 113.9 → (window-noisy)    | 33.9 → **7.6** |
+
+COL's gap-to-RUS through the dropout goes from **+76 m ahead (the phantom P1, then a
+snap-back) to a monotone −4 m** — it never crosses the leader. **No affected car is
+left falsely at the front.** Every emitted sample inside a dropout is a clean coast:
+zero throttle-and-brake contradictions (the only pedal input is the resume ramp at
+the interval's last ~2 %).
+
+- **GAS, the honest hard case, resolved better than the isolated experiment
+  predicted.** GAS's resume position is F1's dead-reckon frozen a little forward, and
+  GAS genuinely runs at the front (grid P2), so pinning to it risked a residual
+  nose-ahead; a standalone bridge left GAS at +47 m. The INTEGRATED pipeline — the
+  `stuck` anchors applied to all of GAS's spans, independent of the
+  declined-displacement guard — brought GAS to +2 m. GAS still briefly noses ahead
+  of RUS at the launch, but that is **real and confirmed in the source pos_data**
+  (raw arc gap +0.2 m at t=83.8, +1.7 m at t=84.2, GAS launching from P2 into the
+  T1 scrum); the corrected placement renders it faithfully (+2.3 m) where the old
+  asset compressed it under the tower's hysteresis band (+0.9 m). `Hud.launch.test`
+  was updated to that corrected story (leader ∈ {RUS, GAS}, COL best P2, never P1),
+  with the raw source as the arbiter — a pin fixed to more-faithful data, not
+  relaxed to hide a regression.
+- **No collateral, proven two ways.** The screen fires 0 times in 2024, and a
+  stash-based before/after regeneration of all three 2024 windows is BYTE-IDENTICAL
+  old-code vs new-code. (The committed 2024 files differ from a fresh rebuild only by
+  a `trackStatus:[]` that predates this slice — Slice 17 emitted trackStatus but
+  never re-recorded the 2024 assets — so those files are left untouched here; that
+  staleness is noted for a future housekeeping pass, not this slice's to fix.)
+- **Assets:** both 2026 gallery assets regenerated (`--compact`); the restart entry's
+  `provenance.note` retired from the manifest.
+- **Gates, both languages, green.** 293 pytest at 100 % lines + branches on every
+  module (`stuck_channel.py` new, fully covered); `npm run check` green with 783
+  tests and 0 warnings, 100 % engine coverage; **drawcall md5s IDENTICAL on both
+  render modes** (`04506b72…` closed, `0aea33a3…` open — the canvas is untouched);
+  schema `dropouts` acceptance + rejection pinned in `load.test.ts`.
+
+**Pre-registered acceptance (restart scenario at 0.5×), for the human to watch.** At
+1:52 into della Roggia: **Colapinto stays in the pack — no surge to the front, no
+snap back** (he is genuinely ~P15, and the tower/dot now hold him behind the leaders
+the whole way). **Gasly likewise stays with the front group** (he is genuinely P3 and
+launched from P2, so he runs near the front — but no phantom surge, and no
+throttle-and-brake HUD readout anywhere in the dropout). The launch and everything
+else are unchanged except that Gasly's real P2 getaway now shows a touch more
+faithfully off the line. If instead COL still flashes to the front, or the HUD shows
+full throttle and full brake together, the fix regressed.
+
 ### [ ] Slice 21 — tower reshuffle animation
 
 **Filed 2026-09-08 at Slice 17's acceptance.** When the running order changes,
@@ -4386,11 +4473,32 @@ gaining the one input it lacked.
   than rejected. Scanned reversal on the emitted rain window: VER 8.40 → **1.48**,
   HAM 10.39 → **1.35**, zero windows over 2.0 for both. NOR's is declined and reported,
   and carries into Slice 9i.
-- ~~**GAS's restart-launch speed dropout**~~ — **superseded by Slice 9m** (the
-  second re-watch found the same stuck-channel class behind COL's phantom P1
-  at 1:52.7 and mapped the blast radius: 78 runs across the two 2026 windows,
-  once per lap at a fixed track position per car; GAS's launch instance was
-  the first sighting).
+- ~~**GAS's restart-launch speed dropout**~~ — **CLOSED by Slice 9m**, which
+  detected and bridged it along with the whole stuck-channel class (37 dropouts
+  across the two 2026 windows; GAS's launch instance was the first sighting).
+- **HUD "no signal" for `dropouts` intervals** — filed by Slice 9m, not built. 9m
+  emits per-car `dropouts: [{fromT,toT}]` and bridges the placement, but during a
+  bridged span the HUD still shows the coasted speed/pedals. A follow-up would read
+  the interval at the ≤30 Hz tick and render "no signal" (or a distinct treatment)
+  across it, so the viewer knows the feed dropped rather than seeing a plausible
+  coast. Data-only for now, deliberately: the transform is done, the UI is separable.
+- **Curvature-aware stuck-channel bridge** — filed by Slice 9m's `/review`, not
+  built (no corpus case yet). 9m's bridge replaces a dropout's fabricated polyline
+  with the straight chord between its trusted edges (`i→k`), which is near-perfect on
+  a straight and on a braking approach (where it was scored — della Roggia) but would
+  CUT a corner if a dropout ever spanned an apex. Every dropout in the current corpus
+  sits on a straight or a braking zone, so the chord is safe as shipped. When the
+  corpus first produces a dropout across a corner (measurable: chord length vs the
+  dead-reckoned arclength diverging, or placement scatter spiking on an affected car),
+  replace the chord with a curvature-following bridge — reuse the recorded polyline's
+  SHAPE where it is real and only chord the frozen tail, or fit a short arc through the
+  edges. Data-shape-driven, so it waits for the data that needs it.
+- **Re-record the three 2024 gallery assets** — housekeeping surfaced by Slice 9m.
+  The committed 2024 assets predate Slice 17's `trackStatus` emission, so a fresh
+  rebuild adds a `trackStatus:[]` and differs by ~59 bytes each; 9m proved this is
+  NOT its own doing (byte-identical old-code vs new-code) and left them untouched.
+  A trivial regenerate-and-commit closes the drift; low priority, no behaviour
+  change (the schema defaults the missing field).
 - WebGL/3D escalation **only** if measured 20-car perf demands it (documented path).
 - Track-surface niceties: kerbs, sector coloring, mini-map.
 - Ghost/delta vs a reference lap; multi-lap stints.

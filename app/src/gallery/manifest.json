@@ -46,7 +46,7 @@
           "ALO",
           "LEC"
         ],
-        "generated": "2026-09-08"
+        "generated": "2026-09-09"
       }
     },
     {
@@ -85,8 +85,7 @@
           "BOT",
           "ALO"
         ],
-        "generated": "2026-09-08",
-        "note": "F1's telemetry feed drops for a few seconds per car, once a lap at a fixed spot on the circuit, throughout this session. During a dropout a car's speed freezes and its position coasts ahead of reality \u2014 Colapinto's brief P1 into della Roggia at 1:52 never happened. A detection screen is planned; until it ships, the replay shows the feed as recorded."
+        "generated": "2026-09-09"
       }
     },
     {

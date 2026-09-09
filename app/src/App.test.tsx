@@ -639,18 +639,18 @@ describe("the featured panel's data-artifact note (Slice 19: the restart disclos
     vi.unstubAllGlobals();
   });
 
-  it("renders exactly ONE artifact note — the restart's stuck-channel disclosure", () => {
-    // Slice 17 disclosed LEC's fabricated half-lap; 9l froze the car and retired
-    // that note. Slice 19's second re-watch found the next feed failure the
-    // pipeline cannot yet repair — per-car stuck-channel dropouts in the 2026
-    // windows, COL's phantom P1 at 1:52 — so the RESTART entry discloses until
-    // Slice 9m ships the screen. One note, on that entry alone: honesty next to
-    // the data, and nothing else has anything to disclose. The rendering branch
-    // itself stays covered in FeaturedPanel.note.test.tsx.
+  it("renders NO artifact note — Slice 9m repaired the last disclosed defect", () => {
+    // The disclosure history, closed: Slice 17 disclosed LEC's fabricated half-lap;
+    // 9l froze the car and retired that note. Slice 19's second re-watch found the
+    // next feed failure — per-car stuck-channel dropouts in the 2026 windows, COL's
+    // phantom P1 at 1:52 — and the RESTART entry disclosed it until a screen could
+    // ship. Slice 9m IS that screen: the dropouts are detected and their placement
+    // bridged, so the note is retired and no scenario carries one. The rendering
+    // branch stays covered in FeaturedPanel.note.test.tsx.
     const noted = SCENARIOS.filter((s) => s.provenance.note !== undefined);
-    expect(noted.map((s) => s.id)).toEqual(["monza-2026-restart"]);
+    expect(noted.map((s) => s.id)).toEqual([]);
     useTransport.setState({ replay });
     render(<App />);
-    expect(screen.getByText(/telemetry feed drops/)).toBeInTheDocument();
+    expect(screen.queryByText(/telemetry feed drops/)).not.toBeInTheDocument();
   });
 });
