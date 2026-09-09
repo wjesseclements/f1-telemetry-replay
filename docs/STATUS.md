@@ -12,38 +12,37 @@ red-flag pair (Slice 17 — the first 2026 session, a full 22-car field, track-s
 flags on the transport bar, and a chained event card narrating the stoppage) plus the
 Silverstone 2024 finale and rain and the Monza 2024 pit cycle — with per-car laps and
 stints, a leader-lap counter, a speed-trace comparison overlay, and placement
-anchored to the timing loops (9i/9j). The pipeline's pure half is the
-`replay_transform` package, one module per concern, screened by three detectors plus
-per-car anchor plans; Slice 17 added `status.py` (track-status intervals) and revised
-a doctrine by measurement (out-of-range gear is dirty, not impossible — a wrecked
-car's gearbox counter is emitted as neutral and reported). Quality state on the
-Slice 17 branch: `npm run check` green with 714 tests and 0 warnings; 260 pytest with
-100% lines + branches on every module; drawcall md5s IDENTICAL on both render modes
-(the canvas is untouched); the 2024 assets byte-identical; the 22-car frame cost
-measured on-instrument at 762.8 draw calls/frame against the linear law's 764.
+anchored to the timing loops (9i/9j). The timing tower now carries broadcast
+semantics (Slice 19): per-car RETIRED/OFF-LINE/STATIONARY states derived at the
+≤30 Hz tick from data the file already carries, a retired car at the bottom in grey
+saying OUT, no gap quoted unless both cars are moving on the racing line, a standing
+field showing grid order with no numbers until it launches, and a pit-lane car
+keeping its row with an em dash instead of a phantom number. The pipeline's pure
+half is the `replay_transform` package, one module per concern, screened by three
+detectors plus per-car anchor plans. Quality state on the Slice 19 branch:
+`npm run check` green with 776 tests and 0 warnings; 273 pytest with 100% lines +
+branches on every module; drawcall md5s IDENTICAL on both render modes (the canvas
+is untouched); assets, schema and pipeline untouched on disk; the whole tower
+derivation measured at 6.0 µs per tick on the 22-car asset.
 
-**What is open, and what is blocked.** **Slice 17 is DONE and PASSED** (2026-09-08):
-the first browser pass returned three findings — entry 2's landing (the restart was
-STANDING, a survey misreading corrected by the watched race), the A+B flag banner,
-and LEC's post-impact "limp" diagnosed read-only as the telemetry feed dying at the
-wall (true story in the card, artifact disclosed in the new `provenance.note` until
-9l retires it) — all fixed in-branch; the re-check PASSED, the human's copy landed
-verbatim, and PR #68 merges by auto-squash. **The board, fully sequenced by the
-human (16/9k slotted 2026-09-08, at Slice 9l's start): 9l (dead-feed freeze) →
-19 (DNF/retired display: bottom of tower, desaturated, no gap; plus
-pit-lane/pre-start gap rules) → 21 (tower reshuffle animation) → 16 (pit-lane
-drawing) → 9k (NOR's relocation, adjudicated against 16's pit-lane geometry) →
-18 (corner lore) → 20 (Aston/Cadillac colour).** **Nothing is blocked**; the
-standing constraint remains: `build_replay.py` runs only from the human's home
-network (CLAUDE.md Gotchas).
+**What is open, and what is blocked.** **Slice 19 is DONE and ACCEPTED**
+(2026-09-09, PR #70, auto-merge enabled): the tower renders the data truthfully —
+the second re-watch's 1:52.7 "COL P1" was diagnosed read-only down to its
+mechanism, and it is the DATA: F1's feed drops per car once a lap at a fixed spot
+in both 2026 Monza windows (78 stuck-speed runs; zero in 2024), freezing speed at
+pace while the position dead-reckons forward, and travel-driven placement
+amplifies each dropout into a phantom surge until the next anchor. Copy ruled at
+acceptance: retired = DNF, off-line = PIT; the restart entry carries a
+known-artifact provenance note until the fix ships. **The board, resequenced at
+acceptance: 9m (stuck-channel dropout screen — detector corpus-calibrated in the
+9-series method, placement bridged across dropouts, 2026 assets regenerated) →
+21 (tower reshuffle animation) → 16 (pit-lane drawing) → 9k → 18 → 20.**
+**Nothing is blocked**; the standing constraint remains: `build_replay.py` runs
+only from the human's home network (CLAUDE.md Gotchas).
 
-**What happens next.** **Slice 9l is DONE and PASSED** (2026-09-08): the screen
-measured an EMPTY false-positive band (no live car in the 52-window corpus holds
-zero pedal at pace for 20 s), froze LEC at his last pedal input in the Parabolica
-gravel, emitted per-car `retiredAt`, retired the red-flag entry's known-artifact
-disclosure, and the human's watch confirmed the dot parks at the wall with
-everything else unchanged (PR #69, auto-squash). Next is **Slice 19** — DNF/
-retired display and pit-lane/pre-start gap rules, now carrying three recorded
-evidence instances including the watch's screenshot of nonsense pre-start grid
-gaps (RUS −37 s from a stationary ANT) — then 21 → 16 → 9k → 18 → 20 per the
+**What happens next.** **Slice 9m** — the stuck-channel dropout screen, filed
+with its diagnosis already complete in Slice 19's PLAN entry (source-verified
+mechanism, blast radius mapped, the HUD's frozen throttle-AND-brake signature
+recorded as a second detector input, negative controls named: pit limiter,
+flat-out running, the whole 2024 corpus). Then 21 → 16 → 9k → 18 → 20 per the
 board, and the backlog's headline **fixture asymmetry overhaul** behind them.

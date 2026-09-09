@@ -3977,7 +3977,7 @@ wall rather than 16–110 s late.
   screenshot observation to Slice 19's evidence (recorded there): pre-start
   grid gaps are nonsense.
 
-### [ ] Slice 19 — retired, stopped and pit-lane car semantics (tower + gaps)
+### [x] Slice 19 — retired, stopped and pit-lane car semantics (tower + gaps)
 
 **Filed 2026-09-08 by Slice 17's browser pass; evidence extended at 9l's watch.**
 Three observed wrongnesses in the red-flag scenarios: LEC parked on track breaks
@@ -3993,6 +3993,329 @@ displays at the BOTTOM of the tower, desaturated, with no gap (the tower says
 rules (grid order or nothing). Touches `engine/gaps.ts` / `runningOrder.ts` /
 the tower — rule 1 untouched (all ≤30 Hz derived state).
 
+**Phase 1 — measured (2026-09-08, read-only over the five committed gallery
+assets through the shipped engine; scripts in the session scratchpad).** The
+exhibits reproduced numerically first: red-flag t=260 focus LEC reads P1 with
+the whole field +8.9 → +36.0 s "behind" him; red-flag t=0.3 focus RUS reads
+P1 LAW −2.41, P2 ALO −1.98 (the pit-lane starters, on top, with numbers);
+restart t=30 focus ANT reads RUS **−52.757** from a stationary ANT (the
+human's −37 screenshot is the same defect at another instant). Then the
+thresholds, each argued from a measured population:
+
+| question | measurement | ruling |
+|---|---|---|
+| speed floor | parked cars mass at 0–1 km/h (7760 samples in the restart window); formation crawl spreads thinly ≥1 km/h (≤37 samples per bucket, passing through) | **`STATIONARY_MAX_KMH` = 5** |
+| sustain | shortest true stop 2.3 s (VER, rain pit); mid-window sub-floor runs under 1 s: **zero in the corpus**; the only sub-1 s runs anywhere are the red-flag window's own opening grid (0.4–0.8 s, touching t=0) | **`STATIONARY_MIN_S` = 1.0**, with window-edge runs qualifying at any length |
+| off-line bound | Monza's pit lane runs **15.8–19.4 m** off the reference — entirely INSIDE the old 25 m gate (the exhibits' cause); widest on-line deviation on today's assets **9.2 m** (PIA, at pace); every excursion >10 m in ~15,000 car-seconds is a pit traversal, a window-edge pit entry, or a real off-track (ALO ×3, restart, up to 310 km/h) — zero on-line excursions. The 19.4 m on-line figure in `gaps.ts`'s header was 9d-era, pre-9i placement | **`OFFLINE_RESIDUAL_M` = 10**, a NEW bound; `MAX_RESIDUAL_M` = 25 untouched (different question: projection trust, not line membership) |
+| hold | stationary spells split into pit stops (2.3–3.1 s) and standing periods (17.2–63.1 s grid holds; LEC's 119.8 s park) — **nothing between 3.1 and 17.2** | **`HOLD_MIN_S` = 10**, a bound inside an empty band (the 9l argument) |
+| grid quorum | ≥3 cars simultaneously stationary ≥10 s: restart **23.4→79.1 s** (55.7 s, the grid) and nowhere else — red-flag's own opening grid lasts 0.8 s, the 2024 windows peak at 2 simultaneous | **`GRID_QUORUM` = 3** |
+
+**The rule, built exactly as pre-registered (all ≤30 Hz, all pure engine):**
+- **Three per-car states** in the new `engine/carState.ts`, each from data the
+  file already carries: RETIRED (`clock ≥ retiredAt`, 9l's emission — never
+  inferred, because the red-flag window ends with the whole LIVE field parked
+  and an inference would retire all 22); OFF-LINE (residual > 10 m); STATIONARY
+  (sub-floor sustained, edge runs exempt). Plus JOINED (travelled ≥ 5 m —
+  `PARKED_TRAVEL_M`'s kin), which gates the sort only.
+- **Schema unchanged, argued:** the brief's `coverageEnd`/`parkedAt` candidates
+  were declined — zero corpus instances to build against, PARKED is already
+  derivable (`ProgressIndex.degenerate`), and a feed that simply STOPS should be
+  emitted as `retiredAt` itself when the pipeline first meets one (same
+  semantic: frozen from an instant). No pipeline change, no asset regeneration.
+- **Display (`towerGap`), layered:** a gap is quoted only when BOTH cars are
+  racing; nothing is quoted before `launchT` (end of the first grid hold — the
+  forming-up phase blanks too, which is what the human's "no gaps until the
+  field moves" means); nothing is quoted whose measurement interval
+  [t*, now] overlaps a HOLD of the focused car (kills the post-launch "+41 s
+  behind" convergence lies; pit stops are below the hold bar, so mid-race gaps
+  across a rival's stop are untouched). **Focused-not-racing blanks every
+  number** — the argued reference decision: re-referencing to the leader
+  silently changes what the column means, freezing the last moving reference
+  quotes intervals against a car covering no ground; the em dash is the only
+  option that cannot lie. **No "PIT" label**: the data carries no pit-lane
+  fact and ALO's three at-speed off-track excursions would be mislabelled by
+  one — an em dash until Slice 16's geometry can say "pit" honestly.
+- **Order:** the sort key is the UNGATED seconds (`orderKeyAt` — same number,
+  minus the residual gate), so a blanked car keeps its row: ordering by
+  projection is sound where quoting it is not (monotone in progress), and the
+  gated key was what sank a pitting car to the tower's bottom mid-stop. The one
+  null: off-line ∧ stationary ∧ not-joined — a pit-lane starter still in its
+  box has no position, and its box PROJECTS ahead of pole (exhibit 2's
+  mechanism). Retired cars leave the running order entirely: `towerOrder`
+  wraps `orderByGap` (hysteresis untouched, its tests untouched), retired
+  block at the very bottom, latest retirement first (broadcast).
+- **Tower:** retired row greys (`grayscale opacity-60` on the whole button, so
+  the swatch desaturates with the text) and its gap column says `GAP_OUT`
+  ("OUT" — a word, not a number; also shown on the focused row, which stays
+  focusable and comparable). Blanked gaps render the existing `NO_VALUE` em
+  dash in both columns.
+
+**Phase 2 — BUILT (2026-09-08), the record:**
+- `engine/carState.ts` (+ tests): states, spells, holds, launch, `towerGap`,
+  `orderKeyFor` — thresholds pinned by test with the measurement recorded.
+- `engine/gaps.ts`: `residualAt`, `travelSoFarM`, `orderKeyAt` exported;
+  `gapTo` refactored to compose them (bit-identical answers, its tests
+  untouched and green).
+- `engine/runningOrder.ts`: `towerOrder` wrapper; `orderByGap` byte-identical.
+- `engine/format.ts`: `GAP_OUT`. `Hud.tsx`: states/holds/launch `useMemo`'d
+  per replay beside the progress index; per tick everything derives from the
+  snapshot map, so the replay-swap empty-frame guard keeps its meaning.
+  `CarEntry.tsx`: `retired` prop, grey + OUT.
+- **Rule 1:** no new subscriptions, no per-frame work, no store change.
+  `displaySignature` gains NOTHING, by the tyre precedent: every state is a
+  function of the replay and the clock, and the clock term already forces the
+  emit (the mechanical perturbation suite agrees). Measured on the shipped
+  engine, 22-car asset: the ENTIRE tower derivation (states + gaps + keys +
+  order) costs **6.7 µs/tick mean, p99 13.7 µs = 0.02 % of a 33 ms tick**;
+  `buildCarStateIndex` costs **1.5 ms once per load** (the progress index
+  beside it: 73 ms).
+- **Verified (2026-09-08):** `npm run check` green — **768 tests** (727 → 768),
+  0 warnings in the full log, engine coverage 100 % on all four metrics,
+  `carState.ts` included. `pytest` green: 273, 100 % lines + branches (no
+  pipeline change — run because the gate says both languages). **Drawcall md5s
+  captured BEFORE the first edit and re-captured after: IDENTICAL to the
+  ledger baselines** (closed `04506b72…`, open `0aea33a3…`) — the canvas is
+  untouched, no marker treatment attempted, no re-baseline. **No asset, no
+  pipeline, no schema file changed** (git status is the placement evidence:
+  the instrument reads the same bytes it read yesterday).
+- **Exhibits, BEFORE → AFTER (numeric, through the shipped engine; screenshots
+  of both states in the session record):**
+  1. red-flag t=260 focus LEC: P1 LEC with field +8.9…+36.0 → **LEC P22,
+     greyed, OUT; every other row keeps its running order with an em dash.**
+  2. red-flag t=0.3/2/5 focus RUS: LAW/ALO P1–P3 with numbers → **P21/P22 with
+     em dashes** (opening grid t<0.8 fully blank via per-car edge runs; from
+     launch the field carries true spacings, +0.2…+3.5, while LAW/ALO stay
+     held); LEC races normally until 174.81 (un-retires on rewind, pinned).
+  3. restart t=30 focus ANT: RUS −52.757 etc. → **grid order, every gap
+     blank, from t=0 through launch (launchT 79.1 s)**; at t=85 true
+     spacings −1.3…+2.2; the t=100 control table matches BEFORE
+     **value-for-value** (P1 RUS −2.036 … P21 ALB +6.578) — mid-race racing
+     is untouched.
+- **FLAGGED, not smoothed over (the measurement-vs-brief rule):** the brief's
+  "2024 scenarios unchanged — they must look exactly as today" cannot hold
+  verbatim alongside the slice's own goal sentence ("a car in the pit lane
+  never mistaken for a car on track"), because two 2024 scenarios contain pit
+  lanes. What changes, precisely, and only inside pit windows: **pit-cycle** —
+  LEC/NOR's ~28 s Monza traversals showed confident phantom numbers (residual
+  16–19 m, under the old gate) and now show em dashes in-place; **rain** —
+  the ~37 s Silverstone traversals were a mix of phantom numbers and a row
+  SINKING to the tower's bottom mid-stop (the old null-key path), and are now
+  an em dash on a row that keeps its place. The **finale is bit-identical
+  everywhere** (zero stationary spells, zero >10 m excursions, no holds, no
+  launch), and rain at its suggested clock 237 matches BEFORE exactly. If the
+  human rules the 2024 pit windows must keep their old behaviour, the change
+  is one guard — but it would re-ship the goal defect on 2024 data, so it
+  ships as argued pending the watch.
+- **Pre-registered acceptance (human, the merge gate) — what each scenario
+  should show:**
+  - **Red flag, LEC focused, 0.5×:** from the first frame the tower is briefly
+    all em dashes (the 0.8 s opening grid), then fills with launch spacings —
+    LAW and ALO at the BOTTOM with dashes, not on top — and they rejoin the
+    order as they leave the pit. At ≈2:55 LEC stops: his row turns grey, says
+    OUT, drops to the bottom, keeps the Focus tag and the readout (speed 0);
+    every other row's gap becomes an em dash at that instant (gaps are to the
+    focused car, and there is no honest gap to a wreck) while the ORDER keeps
+    updating. Near the window's end RUS/GAS enter the pit and blank too.
+  - **Restart:** grid order with every gap blank from 0:00 through the hold —
+    RUS −37 is gone — numbers appearing around 1:19 as the field launches
+    (back rows may hold their dash a few seconds longer: their gap would be
+    measured across the hold, and returns as each car crosses the focus's
+    launch point). From then on, identical to today.
+  - **Rain:** at the suggested clock and everywhere on the racing line,
+    identical to today. During the three pit stops only (VER ≈4:48–5:24,
+    HAM/NOR ≈6:19–7:00): the pitting car's gap is an em dash and its row
+    stays in place instead of jumping to the bottom.
+
+**Watch (2026-09-08, human): three findings; the 2024 pit-window change, the
+blank-all reference and the declined schema fields RATIFIED. The findings'
+record:**
+
+1. **"LEC vanishes from the restart tower" — diagnosed as the DATA, not a
+   filter.** The restart asset has carried **21 cars and no LEC car object
+   since Slice 17 built it** (checked on disk; this branch touches no asset),
+   so no tower on any branch has ever listed him there — nothing app-side
+   drops him, and there is no `retiredAt`-at-0 or frozen-feed path involved.
+   The RULING still stands and is now pinned app-side: a car retired BEFORE
+   the window opens (`retiredAt` 0) renders grey, OUT, at the bottom,
+   focusable, at every clock — never absent (`Hud.test.tsx`). Red-flag LEC
+   after his crash: present as OUT at the bottom, pinned by test and
+   screenshot. **Listing LEC in the restart itself is a PIPELINE decision
+   filed for the human:** he has no telemetry in that window (car recovered,
+   feed gone), and the schema's car is samples-first — emitting him means
+   choosing what a telemetry-less DNF entry looks like (fabricated parked
+   samples fail honesty; a samples-free car fails the contract). Options to
+   argue in a future slice, not invented here.
+2. **"COL reaches P1 at the launch" — the ruling implemented; the engine's
+   reproduction shows the class, not that exact frame.** A 30 Hz sequential
+   sweep (hysteresis fed back, focus ANT/RUS/COL) never has COL above P3 —
+   but it DID show the tower lagging true progress order for seconds at a
+   time (t 81.2–86.4), because the first key (gapTo's ungated seconds) rides
+   `P_focus⁻¹`, which is FLAT through a hold and jumps by the hold's length as
+   a car crosses the focus's parked progress. The 9d theorem ("ordering by
+   seconds ≡ ordering by ΔP") needs strict monotonicity, and a standing start
+   is where it fails. **The ruling, built:** the sort key is now
+   `gaps.progressKeyAt` — ΔP read directly from the progress series, converted
+   to seconds at the reference's average pace (lap pace, or the window's own
+   span when no lap closed). That answers 9d's unit objection (the dead band
+   stays seconds-denominated), is focus-independent in the strong sense, and
+   is structurally blind to gap availability — pinned by a full-transition
+   sweep test (every tick, every focus, order === progress truth) and an
+   invariance test; the 9d supersession is recorded in `runningOrder.ts`'s
+   header. Re-swept on the real restart: the 81–86 s lags are gone; the one
+   remaining divergence class is the dead band holding a genuine side-by-side
+   (NOR ahead of COL by 5.5 ms at 88.07, swap lands at 88.5 when it exceeds
+   50 ms) — the anti-strobe behaviour working as sized. A deeply-lapped car
+   (beyond the 4-lap seconds walk) now keys too, where before it pinned to
+   the untimed bottom. Tick cost re-measured: **6.0 µs mean** (was 6.7 — the
+   inverse left the key path).
+3. **Trace into the focused readout block (scope addition, ruled).** The
+   `SpeedTrace` now renders inside the focused row, directly under the
+   DRS/tyre chips — built by the tower where the transport state lives and
+   handed down as a node (same ≤30 Hz derivation, no new subscriptions), as
+   the readout `<dl>`'s SIBLING because a `<figure>` inside a `<dl>` is the
+   Slice 7 Lighthouse class. Pinned by test (the figure is a descendant of
+   the focused row's `<li>`). 375 px verified by headless-Chrome capture
+   (a live Chrome window refuses widths under ~500, so `--headless
+   --window-size=375,900` is the instrument): readout, chips, then the
+   full-width trace, no horizontal overflow.
+
+**Re-verified after the findings:** `npm run check` green — **776 tests**
+(768 → 776), 0 warnings in the full log, engine coverage 100 % on all four
+metrics; both languages' gates standing (pytest 273 untouched). Drawcall md5s
+re-captured: **identical to the ledger baselines** — the canvas remains
+untouched. Assets, schema, pipeline, store: still untouched. Browser evidence:
+restart at 1:22 shows RUS/GAS/COL/VER/PIA — **COL P3, his true race
+position** — with real launch spacings.
+
+**Re-watch (2026-09-08, human): FAIL filed on the launch — "COL yo-yos
+4 → 2 → 8 → 1". Diagnosed with the browser as the instrument; no code defect
+found beyond the previous commit's; the browser path is now pinned by test.**
+
+1. **Stale-deploy check:** the re-watch URL (`…-14twaea4n…`) maps to deployment
+   sha `5b821f1` = the fixed branch head — not stale. BUT the FIRST watch's URL
+   (`…-hxxpiawo0…` = `cfe491f`, the old inverse key) remained live in an open
+   tab's reach; which artifact the eyes were on cannot be established from here,
+   so BOTH were instrumented.
+2. **The browser instrument:** headless Chrome over CDP (a live window's rAF was
+   suspended — `visibilityState: hidden` — so the DOM sampler runs where rAF is
+   real), driving each production build's actual bundle: restart scenario,
+   seek to 74 s, DOM tower order sampled at ~30 Hz for 28 s, COL's row per
+   tick. **Both builds, 800+ ticks each: clean single-row steps, no yo-yo** —
+   COL walks P5 → P4 → P3 → P2 (86.3 s) → P3 → … → P7 and back to P4, the two
+   artifacts near-identical through this window.
+3. **The order is the DATA's, verified projection-free:** residuals ≤ 1.2 m
+   through the whole launch, and raw X/Y distances to RUS agree with the
+   projected progress to the metre at every probed second — the tower renders
+   exactly what the asset's positions say. What they say: COL genuinely closes
+   to −17 m (second-furthest) through the T1 braking scrum; and **GAS carries a
+   real data anomaly** — speed stuck at exactly 218 km/h for five straight
+   seconds (84→88 s) while his position falls 0 → −59 m relative to RUS: a
+   speed-channel dropout that RESUMES, the class 9l's guard deliberately
+   declines to freeze. Filed in the backlog, not patched here.
+4. **The reframe that dissolves the "never higher than P3" contradiction:** the
+   race classification samples positions AT TIMING LINES; a nose-ahead in a
+   braking zone never appears in it. A continuous tower briefly showing COL P2
+   mid-scrum does not contradict a classification that never had him above P3.
+   The 4→2→8→1-in-seconds reading is consistent with watching the measured
+   P5→P2→P7 arc at 2–4× with rows that TELEPORT — Slice 21's reshuffle
+   animation is the filed remedy for that legibility, already sequenced next.
+5. **The pin (`Hud.launch.test.tsx`), on the BROWSER path as ordered:** the real
+   `Hud` mounted over the real committed restart asset, the real telemetry
+   channel driven tick by tick through 74–96 s. Two invariants: (a) the
+   rendered order equals true progress order at every tick, except adjacent
+   pairs inside `ORDER_HYSTERESIS_S` — the mechanism's own local invariant
+   (non-adjacent inversions can persist through a chain of sub-band
+   neighbours, measured at 54 ms via one intermediate; Slice 9 machinery,
+   untouched by ruling) — so any flap without positions behind it fails; and
+   (b) the measured story itself: RUS holds P1 throughout, COL's best row is
+   exactly P2 — a resurrected phantom P1 fails loudly.
+
+**Re-verified:** `npm run check` green — **778 tests** (776 → 778), 0 warnings,
+100 % engine coverage; nothing outside the new test changed, so md5s and both
+languages' gates stand as recorded above.
+
+**Second re-watch (2026-09-09, human): FAIL at 1:52.7, NOT the launch — COL
+focused at 298 km/h braking into della Roggia, physically at the front of the
+train ON THE CANVAS, every gap positive. Tower and dot agreed, which exonerated
+the sort and indicted the POSITIONS. Diagnosed read-only; the mechanism:**
+
+1. **Reproduced in the browser** (headless CDP DOM sampler, 100–130 s, ~30 Hz,
+   904 ticks): COL P5 → P3 (111.5) → P2 (111.9) → **P1 at 112.3–117.0**, then
+   GAS takes P1 for twelve seconds — both excursions plainly in the rendered
+   tower. The first sampler's 74–102 s window had simply stopped short.
+2. **The emitted data carries the cause on its face:** COL's speed channel
+   reads **exactly 298 km/h for 6.3 s (t = 107.5 → 113.8)** while the whole
+   field brakes from ~300 to ~90 for della Roggia; GAS is simultaneously stuck
+   at exactly 290. The human's HUD corroboration, recorded for the detector:
+   during the dropout the readout shows **full throttle AND full brake at
+   once** — a frozen-feed signature no live car can produce.
+3. **Source vs emitted (read-only against the FastF1 cache):** the stuck 298
+   IS in the raw `car_data` (constant from st 5976.7 to 5983.0, then snapping
+   to 73 km/h), and the raw `pos_data` ALSO surges — F1's tracker dead-reckons
+   the dropped transponder forward, raw COL closing to **3.2 m of RUS at
+   t=111** — the 9l mechanism again, but RESUMING. So the phantom P1 exists in
+   the source; the pipeline then AMPLIFIES it: travel-driven placement
+   integrates the stuck 298 into ~370 phantom metres, and after the feed
+   resumes (raw COL already 50–120 m behind RUS) the emitted position stays
+   pinned near the front for ~10 further seconds until the next anchor reels
+   it in (emitted dist-to-RUS 0.8–13 m through t = 117–121 against raw
+   104–123 m). The snap-backs are what the placement instrument's component A
+   sees corpus-wide (COL 39.1, ALO 33.9, LIN 27.0, STR 16.1 arc-over-net; its
+   component B mis-anchors its marks on this restart window — kilometres of
+   scatter on visually clean cars — and was set aside per its own header's
+   caution).
+4. **Blast radius (corpus scan, emitted side, ≥2 s exactly-constant speed at
+   >100 km/h): the two 2026 Monza windows ONLY** — 34 runs in the red-flag
+   window, 44 in the restart, ZERO in all three 2024 windows. Per car the
+   restart events repeat **once per lap at a fixed track position** (COL
+   107.5 / 202.9 / 291.0 / 379.8; ALB 112.4 / 205.3 / 293.1 / 381.9 — ~88 s
+   spacing): a fixed coverage dead zone on the circuit that day, each car
+   hitting it at its own spot. Consistent with the same broken feed
+   infrastructure that died outright for LEC at the wall.
+5. **Classification (the human's third option): a source-data glitch of GAS's
+   stuck-speed class, pipeline-amplified — Slice 19 is CORRECT and the tower
+   renders the data truthfully.** Disposition ruled: **Slice 9m** filed (below)
+   and sequenced NEXT, ahead of 21; this PR ships with a known-artifact
+   `provenance.note` on the restart entry (the Slice 17 mechanism, retired
+   when 9m ships) — drafted copy, the human's to reword.
+6. **Copy rulings applied:** retired = **DNF** (was OUT), off-line = **PIT**
+   (was an em dash; the recorded off-track-excursion caveat stands at
+   `GAP_PIT`, with Slice 16's geometry as the honest upgrade). Applying PIT
+   surfaced and fixed a latent engine bug: `residualAt` interpolating between
+   two unprojectable (Infinity) residual samples returned **NaN**, which fails
+   every comparison and read a car a megametre off the circuit as ON the
+   racing line — `gapTo`'s `!(x <= bound)` gate had been silently swallowing
+   it. Normalised to Infinity, pinned in `gaps.test.ts`.
+7. **Re-watch outcomes recorded:** LEC DNF at the bottom in the red-flag
+   scenario confirmed; the launch order confirmed real (the data's own story);
+   the 1:52 P1 is the data defect now filed as 9m. **Auto-merge enabled on the
+   human's instruction.**
+
+### [ ] Slice 9m — stuck-channel dropout screen (next, before Slice 21)
+
+**Filed 2026-09-09 by Slice 19's second re-watch; diagnosis complete and
+recorded above.** F1's feed drops per car for 2–10 s — once a lap at a fixed
+track position in the 2026 Monza windows — freezing the speed channel at its
+last value (constant to the km/h at pace) while F1 dead-reckons the position
+stream forward; travel-driven placement then integrates the stuck speed into
+hundreds of phantom metres and holds them until the next anchor. The rule to
+build, in the 9-series method (measure, pre-register, adversarial negative
+controls, silent-never reporting):
+- **Detector:** a run of speed constant to the km/h at pace for ≥ N samples
+  (N corpus-calibrated; the emitted-side scan found 78 candidate runs ≥ 2 s in
+  the 2026 windows and zero in 2024 — measure the true-run and negative-run
+  populations on the RAW source, not the emitted grid). The human's HUD
+  observation is a second usable signature: frozen throttle AND brake
+  simultaneously non-zero. Negative controls that must NOT fire: the pit-lane
+  limiter (legitimately constant ~80), flat-out top-speed running (constant to
+  the km/h for a second or two), and the 2024 corpus wholesale.
+- **Repair:** during a detected dropout, travel must NOT be integrated from
+  the stuck value — bridge placement across the span from the position stream
+  or the neighbouring good travel (both edges are trusted: the feed resumes),
+  argued in-slice against the 9h/9i anchor machinery rather than bolted on.
+- **Regenerate the two 2026 assets**; the three 2024 assets must rebuild
+  byte-identical (the 9l no-collateral shape). Retire the restart entry's
+  `provenance.note`.
 ### [ ] Slice 21 — tower reshuffle animation
 
 **Filed 2026-09-08 at Slice 17's acceptance.** When the running order changes,
@@ -4063,6 +4386,11 @@ gaining the one input it lacked.
   than rejected. Scanned reversal on the emitted rain window: VER 8.40 → **1.48**,
   HAM 10.39 → **1.35**, zero windows over 2.0 for both. NOR's is declined and reported,
   and carries into Slice 9i.
+- ~~**GAS's restart-launch speed dropout**~~ — **superseded by Slice 9m** (the
+  second re-watch found the same stuck-channel class behind COL's phantom P1
+  at 1:52.7 and mapped the blast radius: 78 runs across the two 2026 windows,
+  once per lap at a fixed track position per car; GAS's launch instance was
+  the first sighting).
 - WebGL/3D escalation **only** if measured 20-car perf demands it (documented path).
 - Track-surface niceties: kerbs, sector coloring, mini-map.
 - Ghost/delta vs a reference lap; multi-lap stints.

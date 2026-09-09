@@ -688,6 +688,125 @@ function travelAt(index: ProgressIndex, car: number, t: number): number {
 }
 
 /**
+ * How far off the reference line `carIndex` sits at `now`, in metres.
+ *
+ * The residual as a first-class reading (Slice 19): `carState.ts` classifies a car as
+ * OFF-LINE from it, which needs the value even where `gapTo` has already declined to
+ * answer. `Infinity` on a degenerate index (`unitsPerMetre` 0) — a reference that never
+ * moved has no line to be off — and `Infinity` where the projection found nothing at
+ * all: an unprojectable point records an infinite residual, and interpolating between
+ * two of those is NaN, which would fail every comparison and read a car a megametre
+ * away as ON the line (found by the PIT label's test; `gapTo`'s `!(x <= bound)` gate
+ * happened to swallow the NaN, so it never showed as a dash).
+ */
+export function residualAt(
+  index: ProgressIndex,
+  carIndex: number,
+  now: number,
+): number {
+  if (index.unitsPerMetre === 0) return Infinity;
+  const residualM =
+    at(index.residual[carIndex], now * index.sampleRateHz) /
+    index.unitsPerMetre;
+  return Number.isFinite(residualM) ? residualM : Infinity;
+}
+
+/**
+ * Metres this car has covered since the window opened, at `now`.
+ *
+ * From the car's own travel integral — the same series `gapTo`'s metres come from. Slice
+ * 19 reads it to tell a car that has not yet joined the race (a pit-lane starter sitting
+ * in its box) from one that stopped after racing (a pit stop), because only the former
+ * has no position in the running order.
+ */
+export function travelSoFarM(
+  index: ProgressIndex,
+  carIndex: number,
+  now: number,
+): number {
+  return at(index.travelM[carIndex], now * index.sampleRateHz);
+}
+
+/**
+ * The timing tower's sort key: the progress deficit `ΔP`, expressed in seconds at the
+ * reference's own average lap pace (Slice 19, revised at its watch).
+ *
+ * THE RULING THIS ENCODES: the running order is ALWAYS by track progress — 9d's `ΔP` —
+ * and the gap is a display column that can never reorder a row. The first cut of this
+ * key reused `gapTo`'s seconds without the residual gate, on the theorem that ordering
+ * by seconds and ordering by `ΔP` are identical. That theorem holds while `P_F` is
+ * strictly increasing, and a STANDING START is where it is not: `P_F` is flat through
+ * the hold, so `P_F⁻¹` jumps by the hold's whole length as a car's progress crosses the
+ * focus's parked value, and the measured launch transition showed the tower lagging
+ * true progress order for seconds at a time off the back of it. So the key now reads
+ * the progress series DIRECTLY — no inverse, no flat-stretch pathology, cheaper — and
+ * gap availability cannot touch it by construction.
+ *
+ * WHY IT IS STILL DENOMINATED IN SECONDS. 9d rejected a raw-`ΔP` key because
+ * `ORDER_HYSTERESIS_S` is seconds and a progress-denominated key would read the dead
+ * band as either ~0.9 mm of track (vacuous) or a fraction of a lap (frozen). The pace
+ * conversion answers that objection instead of re-litigating it: `ΔP` times
+ * `lapSeconds / lapUnits` (the window's own span-over-progress when no lap closed) is
+ * seconds again — approximate seconds, which is exactly what a dead band wants, and
+ * strictly monotone in progress, which is what the ruling demands.
+ *
+ * Focus-independent in the strong sense: two cars' keys differ by `P_j − P_i` at pace,
+ * with the focus contributing the same constant to both — so the ORDER cannot move on
+ * a focus change, and the hysteresis sees identical differences.
+ *
+ * `null` only where a car has no progress to order by: either car degenerate.
+ */
+export function progressKeyAt(
+  index: ProgressIndex,
+  focusIndex: number,
+  carIndex: number,
+  now: number,
+): number | null {
+  if (index.degenerate[focusIndex] || index.degenerate[carIndex]) return null;
+  const cursor = now * index.sampleRateHz;
+  const deltaP =
+    at(index.progress[focusIndex], cursor) -
+    at(index.progress[carIndex], cursor);
+  return deltaP * paceSecondsPerUnit(index);
+}
+
+/**
+ * Seconds per progress unit at the reference's average pace.
+ *
+ * From the lap when one closed; from the whole window's span over the reference's own
+ * progress when none did (an open sub-lap window still has a pace). Callers reach this
+ * only past the degenerate gate, so the reference is known to have covered ground.
+ */
+function paceSecondsPerUnit(index: ProgressIndex): number {
+  if (index.lapUnits > 0) return index.lapSeconds / index.lapUnits;
+  const reference = index.progress[0];
+  const span = reference[reference.length - 1] - reference[0];
+  return (reference.length - 1) / index.sampleRateHz / span;
+}
+
+/**
+ * The signed seconds between `carIndex` and `focusIndex` at `now`, without the residual
+ * gate — `gapTo`'s seconds, factored so both share one definition.
+ *
+ * `null` where there is genuinely no answer: either car never moved, or the lookup
+ * falls outside the window plus `MAX_LAP_EXTENSION` laps.
+ */
+function secondsAt(
+  index: ProgressIndex,
+  focusIndex: number,
+  carIndex: number,
+  now: number,
+): number | null {
+  if (index.degenerate[focusIndex] || index.degenerate[carIndex]) return null;
+  const carAt = at(index.progress[carIndex], now * index.sampleRateHz);
+  // ONE definition throughout: when was the focused car at this car's current point?
+  // Slice 9's, unchanged. `t*` may fall before the window starts or after it ends, and
+  // `timeAtProgress` walks whole laps of `F` to reach it — see there.
+  const past = timeAtProgress(index, focusIndex, carAt);
+  return past === null ? null : now - past;
+}
+
+/**
  * The gap between `carIndex` and `focusIndex` at `now`.
  *
  * `null` when the data has no answer: the car is further off the reference than
@@ -703,25 +822,21 @@ export function gapTo(
   carIndex: number,
   now: number,
 ): Gap | null {
-  const { progress, residual, sampleRateHz, unitsPerMetre } = index;
-  if (index.degenerate[focusIndex] || index.degenerate[carIndex]) return null;
+  const { progress, sampleRateHz } = index;
 
-  const cursor = now * sampleRateHz;
-  const residualM = at(residual[carIndex], cursor) / unitsPerMetre;
+  const residualM = residualAt(index, carIndex, now);
   if (!(residualM <= MAX_RESIDUAL_M)) return null;
 
-  const carAt = at(progress[carIndex], cursor);
-  const focusAt = at(progress[focusIndex], cursor);
-  const deltaP = focusAt - carAt;
+  const seconds = secondsAt(index, focusIndex, carIndex, now);
+  if (seconds === null) return null;
+  const past = now - seconds;
 
-  // ONE definition throughout: when was the focused car at this car's current point?
-  // Slice 9's, unchanged. `t*` may fall before the window starts or after it ends, and
-  // `timeAtProgress` walks whole laps of `F` to reach it — see there.
-  const past = timeAtProgress(index, focusIndex, carAt);
-  if (past === null) return null;
+  const cursor = now * sampleRateHz;
+  const deltaP =
+    at(progress[focusIndex], cursor) - at(progress[carIndex], cursor);
 
   return {
-    seconds: now - past,
+    seconds,
     metres:
       travelAt(index, focusIndex, now) - travelAt(index, focusIndex, past),
     residualM,

@@ -65,9 +65,12 @@
  * list. Its visible text "vs" is contained in its accessible name "vs {driver}"
  * (WCAG 2.5.3, same rule as the gap digits).
  */
+import type { ReactNode } from "react";
 import { SWATCH_MIN_LUMINANCE, floorLuminance } from "../engine/color";
 import { carHasDrs, isDrsOpen } from "../engine/drs";
 import {
+  GAP_DNF,
+  GAP_PIT,
   formatGap,
   formatGapMetres,
   formatGear,
@@ -113,7 +116,27 @@ export interface CarEntryProps {
   gap: Gap | null;
   /** The tyre the car is on, or `null` when the data has no answer (rule 8). */
   tyre: TyreState | null;
+  /**
+   * Out of the race (Slice 19): the row greys, the gap column says DNF, and the tower
+   * has already sorted it to the bottom. Still a working row — a retired car can be
+   * focused and compared; retirement is a fact about the car, not about the controls.
+   */
+  retired: boolean;
+  /**
+   * Off the racing line (Slice 19, second re-watch's copy ruling): the gap column
+   * says PIT instead of a dash — the pit lane is what off-line almost always means,
+   * and the caveat for the rare off-track excursion is recorded at `GAP_PIT`.
+   */
+  offline: boolean;
   focused: boolean;
+  /**
+   * The focused car's speed trace, rendered under the readout block (Slice 19 watch,
+   * ruled: the trace describes the focused car and sits with it). A node built by the
+   * tower, not a subscription of this row's — only the focused row receives one, and
+   * it cannot live inside the readout's `<dl>` (a `<figure>` is invalid there — the
+   * Slice 7 Lighthouse class), so it renders as the dl's sibling.
+   */
+  trace?: ReactNode;
   /** Whether this car is the one overlaid on the speed trace. */
   compared: boolean;
   onFocus: () => void;
@@ -126,10 +149,13 @@ export function CarEntry({
   snapshot,
   gap,
   tyre,
+  retired,
+  offline,
   focused,
   compared,
   onFocus,
   onCompare,
+  trace,
 }: CarEntryProps) {
   return (
     <li className="m-0 w-full list-none">
@@ -146,7 +172,10 @@ export function CarEntry({
             focused
               ? "border-line bg-panel2"
               : "border-transparent hover:border-line"
-          } ${FOCUS_RING}`}
+            /* The broadcast retirement treatment: desaturated and dimmed, applied to
+               the whole button so the swatch greys WITH the text — the row reads as
+               "no longer in this fight" without hiding a single fact on it. */
+          } ${retired ? "grayscale opacity-60" : ""} ${FOCUS_RING}`}
         >
           {/* The team colour, as the same mark the canvas uses for this car —
               floored to the tower's minimum luminance (Slice 17: Cadillac's
@@ -188,10 +217,31 @@ export function CarEntry({
               <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-dim">
                 {car.team}
               </span>
+              {/* DNF/PIT on the focused row too: the state must survive focusing
+                  the car, or the one row a viewer is reading loses the one fact the
+                  tower is stating about it. */}
+              {retired ? (
+                <span className="font-mono text-sm font-bold tracking-wider text-dim">
+                  {GAP_DNF}
+                </span>
+              ) : (
+                offline && (
+                  <span className="font-mono text-sm font-bold tracking-wider text-dim">
+                    {GAP_PIT}
+                  </span>
+                )
+              )}
               <span className="font-mono text-[10px] uppercase tracking-widest text-accent">
                 Focus
               </span>
             </>
+          ) : retired || offline ? (
+            /* The broadcast spelling, in the gap column's place: a word, not a
+               number — DNF for a car out of the race, PIT for one off the racing
+               line (Slice 19; copy ruled at the second re-watch). */
+            <span className="ml-auto font-mono text-sm font-bold tracking-wider text-dim">
+              {retired ? GAP_DNF : GAP_PIT}
+            </span>
           ) : (
             /*
               The surrender order, enforced rather than promised, twice over:
@@ -241,6 +291,11 @@ export function CarEntry({
       </div>
 
       {focused && <CarReadout car={car} snapshot={snapshot} tyre={tyre} />}
+      {/* `w-full` so the trace takes its own row in the sub-`md` strip, where the
+          readout wraps horizontally; in the sidebar it fills the column. */}
+      {focused && trace !== undefined && (
+        <div className="mt-3 w-full">{trace}</div>
+      )}
     </li>
   );
 }

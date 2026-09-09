@@ -35,8 +35,19 @@
  * could change.
  */
 import { useMemo, useState } from "react";
-import { buildProgressIndex, gapTo, type Gap } from "../engine/gaps";
-import { orderByGap, sameOrder } from "../engine/runningOrder";
+import {
+  buildCarStateIndex,
+  carStateAt,
+  orderKeyFor,
+  towerGap,
+} from "../engine/carState";
+import {
+  buildProgressIndex,
+  gapTo,
+  progressKeyAt,
+  type Gap,
+} from "../engine/gaps";
+import { sameOrder, towerOrder } from "../engine/runningOrder";
 import type { Replay } from "../engine/schema";
 import { tyreStateAt } from "../engine/tyres";
 import { useTransport } from "../store/transport";
@@ -52,8 +63,9 @@ export interface HudProps {
 /**
  * The focused car's gap to itself: exactly zero, in both units.
  *
- * A real value rather than a special case, so it sorts into the running order at the
- * right place with nothing branching on "is this the focused one".
+ * A real value rather than a special case, with nothing branching on "is this the
+ * focused one" — its sort key is the same literal zero, which places the row at the
+ * right spot in the running order.
  */
 const SELF: Gap = { seconds: 0, metres: 0, residualM: 0, lapsDown: 0 };
 
@@ -83,6 +95,13 @@ export function Hud({ replay }: HudProps) {
   const progress = useMemo(() => buildProgressIndex(replay), [replay]);
 
   /**
+   * Slice 19's per-replay half, keyed like `progress` and for the same reason: spells,
+   * holds and the launch instant are facts about the data, not about the focus or the
+   * clock. A tick then classifies a car from interval membership — no per-frame work.
+   */
+  const states = useMemo(() => buildCarStateIndex(replay), [replay]);
+
+  /**
    * The published frame, unless it describes a different replay.
    *
    * Loading a replay swaps `replay` immediately while the last frame the render loop
@@ -99,8 +118,29 @@ export function Hud({ replay }: HudProps) {
   const snapshots =
     cars.length === replay.cars.length ? cars : EMPTY_FRAME.cars;
 
+  /**
+   * States, then gaps THROUGH the states (Slice 19). `towerGap` blanks every number
+   * the both-moving-on-the-racing-line rule disowns: retired and focused-not-racing
+   * rows, off-line and stationary cars, the pre-launch standing field, and any gap
+   * measured across a hold of the focused car. Derived per tick over `snapshots` so
+   * the replay-swap guard above keeps its meaning — an empty frame classifies
+   * nothing and renders nothing.
+   */
+  const carStates = snapshots.map((_, i) =>
+    carStateAt(replay, progress, states, i, clock),
+  );
+  const focusState = carStates[focusedCarIndex];
   const gaps = snapshots.map((_, i) =>
-    i === focusedCarIndex ? SELF : gapTo(progress, focusedCarIndex, i, clock),
+    i === focusedCarIndex
+      ? SELF
+      : towerGap(
+          gapTo(progress, focusedCarIndex, i, clock),
+          focusState,
+          carStates[i],
+          states.holds[focusedCarIndex],
+          states.launchT,
+          clock,
+        ),
   );
 
   // O(cars × log laps) per tick — measured in µs by hud-tick.mjs, like the gaps.
@@ -121,9 +161,27 @@ export function Hud({ replay }: HudProps) {
    * the same order and settles immediately.
    */
   const [order, setOrder] = useState<number[]>([]);
-  const next = orderByGap(
+  /**
+   * The sort key is `progressKeyAt` — 9d's ΔP at reference pace, NEVER the displayed
+   * gap (the Slice 19 watch's ruling: the order is always by track progress; a gap is
+   * a display column and can never reorder a row). A blanked number is still a car
+   * with a place in the running order. The one car with no place — off-line,
+   * stationary, never yet moved: a pit-lane starter in its box — is nulled by
+   * `orderKeyFor` and takes the existing untimed-bottom path. Retired cars leave the
+   * running order entirely (`towerOrder`). No focus branch: the focused car's key is
+   * an exact zero by construction.
+   */
+  const next = towerOrder(
     order,
-    gaps.map((gap) => (gap === null ? null : gap.seconds)),
+    snapshots.map((_, i) =>
+      orderKeyFor(
+        progressKeyAt(progress, focusedCarIndex, i, clock),
+        carStates[i],
+      ),
+    ),
+    snapshots.map((_, i) =>
+      carStates[i].retired ? (replay.cars[i].retiredAt ?? 0) : null,
+    ),
   );
   if (!sameOrder(next, order)) setOrder(next);
 
@@ -148,29 +206,33 @@ export function Hud({ replay }: HudProps) {
             snapshot={snapshots[i]}
             gap={gaps[i]}
             tyre={tyres[i]}
+            retired={carStates[i].retired}
+            offline={carStates[i].offline}
             focused={i === focusedCarIndex}
             compared={i === comparisonCarIndex}
             onFocus={() => setFocusedCarIndex(i)}
             onCompare={() =>
               setComparisonCarIndex(i === comparisonCarIndex ? null : i)
             }
+            /* The trace rides INSIDE the focused row's readout block (Slice 19
+               watch, ruled): it describes the focused car and sits with it. Built
+               here, where the transport state lives, and handed down as a node —
+               same <= 30 Hz derivation, no new subscriptions. Only the focused row
+               renders it. */
+            trace={
+              i === focusedCarIndex ? (
+                <SpeedTrace
+                  car={replay.cars[focusedCarIndex]}
+                  comparisonCar={comparisonCar}
+                  clock={clock}
+                  duration={replay.meta.duration}
+                  sampleRateHz={replay.meta.sampleRateHz}
+                />
+              ) : undefined
+            }
           />
         ))}
       </ul>
-
-      {/* The trace is the FOCUSED car's — the Slice 5 placeholder that read `cars[0]`
-          because there was only ever one car to mean. */}
-      {/* `w-full` so the trace takes its own row once the readout has wrapped: it is
-          the one element here that reads by its width rather than its digits. */}
-      <div className="w-full">
-        <SpeedTrace
-          car={replay.cars[focusedCarIndex]}
-          comparisonCar={comparisonCar}
-          clock={clock}
-          duration={replay.meta.duration}
-          sampleRateHz={replay.meta.sampleRateHz}
-        />
-      </div>
     </aside>
   );
 }

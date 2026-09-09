@@ -17,6 +17,9 @@ import {
   SEED_MARGIN_MIN,
   buildProgressIndex,
   gapTo,
+  progressKeyAt,
+  residualAt,
+  travelSoFarM,
 } from "./gaps";
 import type { Replay, Sample } from "./schema";
 
@@ -452,5 +455,120 @@ describe("gaps carry no assumption about the position unit", () => {
     const index = buildProgressIndex(replayOf(ring(3), ring(3, 20)));
     expect(gapTo(index, 0, 1, 0)!.seconds).toBeCloseTo(-2, 4);
     expect(gapTo(index, 0, 1, 59.9)!.seconds).toBeCloseTo(-2, 4);
+  });
+});
+
+describe("the tower's sort key (Slice 19, revised at its watch)", () => {
+  it("is the pace-converted \u0394P: exact seconds on a constant-speed ring", () => {
+    // 20 samples of shift at 50 m/s: \u0394P = -100 units, pace = 20 s / 1000 units.
+    const index = buildProgressIndex(replayOf(ring(3), ring(3, 20)));
+    for (const now of [0, 22, 30, 41.5, 59.9]) {
+      expect(progressKeyAt(index, 0, 1, now)).toBeCloseTo(-2, 6);
+    }
+  });
+
+  it("orders a racing field exactly as gapTo's seconds do — the 9d theorem, pinned", () => {
+    const field = buildProgressIndex(
+      replayOf(...[0, -25, -50, -75, -100, -123].map((sh) => ring(3, sh))),
+    );
+    for (const now of [10, 30, 50]) {
+      const byKey = [1, 2, 3, 4, 5]
+        .map((c) => [c, progressKeyAt(field, 0, c, now) as number] as const)
+        .sort((a, b) => a[1] - b[1])
+        .map(([c]) => c);
+      const bySeconds = [1, 2, 3, 4, 5]
+        .map((c) => [c, gapTo(field, 0, c, now)!.seconds] as const)
+        .sort((a, b) => a[1] - b[1])
+        .map(([c]) => c);
+      expect(byKey).toEqual(bySeconds);
+    }
+  });
+
+  it("is focus-independent: changing the reference shifts every key by one constant", () => {
+    const field = buildProgressIndex(
+      replayOf(...[0, -25, -50, -75].map((sh) => ring(3, sh))),
+    );
+    const from0 = [1, 2, 3].map(
+      (c) => progressKeyAt(field, 0, c, 30) as number,
+    );
+    const from2 = [1, 2, 3].map(
+      (c) => progressKeyAt(field, 2, c, 30) as number,
+    );
+    const shift = from2[0] - from0[0];
+    for (let i = 0; i < from0.length; i++) {
+      expect(from2[i]).toBeCloseTo(from0[i] + shift, 8);
+    }
+  });
+
+  it("still keys a car the residual gate has disowned — a pit lane keeps its row", () => {
+    // 30 m off the line: past MAX_RESIDUAL_M, so gapTo declines — but the car still
+    // has a place in the running order, and the key still says roughly where.
+    const off = buildProgressIndex(replayOf(ring(3), ring(3, 20, 1, 30)));
+    expect(gapTo(off, 0, 1, 30)).toBeNull();
+    expect(progressKeyAt(off, 0, 1, 30)).toBeCloseTo(-2, 1);
+  });
+
+  it("keys a car even where the seconds inverse cannot answer — a deeply lapped car", () => {
+    // A car crawling at a sixth of the pace is five laps down by the end of a
+    // six-lap window. FOCUSED, gapTo has no seconds (the four-lap walk cannot reach
+    // the leader's progress) — but the ORDER is still known, and the ruling says the
+    // row must be too.
+    const crawl: Sample[] = [];
+    for (let k = 0; k < PER_LAP * 6; k++) {
+      const a = (2 * Math.PI * k) / (PER_LAP * 6);
+      const radius = 1000 / (2 * Math.PI);
+      crawl.push({
+        t: k / RATE,
+        x: radius * Math.cos(a),
+        y: radius * Math.sin(a),
+        speed: 30,
+        throttle: 100,
+        brake: 0,
+        gear: 8,
+      });
+    }
+    const lapped = buildProgressIndex(replayOf(ring(6), crawl));
+    expect(gapTo(lapped, 1, 0, 119)).toBeNull();
+    // Nearly five laps ahead of the crawling focus, at ~20 s a lap.
+    expect(progressKeyAt(lapped, 1, 0, 119)).toBeLessThan(-90);
+  });
+
+  it("falls back to the window's own pace when no lap closed", () => {
+    // Half a lap, open: lapUnits is 0, so pace = 10 s over 500 units. An 8-sample
+    // shift is 40 units = 0.8 s.
+    const short = buildProgressIndex(replayOf(ring(0.5), ring(0.5, 8)));
+    expect(short.lapUnits).toBe(0);
+    expect(progressKeyAt(short, 0, 1, 5)).toBeCloseTo(-0.8, 2);
+  });
+
+  it("returns null only for a car with no progress to order by", () => {
+    const parked = ring(3).map((s) => ({ ...s, x: 500, y: 0, speed: 0 }));
+    const index = buildProgressIndex(replayOf(ring(3), parked));
+    expect(progressKeyAt(index, 0, 1, 30)).toBeNull();
+    expect(progressKeyAt(index, 1, 0, 30)).toBeNull();
+  });
+
+  it("residualAt reads the displacement in metres, and Infinity off a dead reference", () => {
+    const beside = buildProgressIndex(replayOf(ring(3), ring(3, 20, 1, 15)));
+    expect(residualAt(beside, 1, 30)).toBeCloseTo(15, 0);
+    expect(residualAt(beside, 0, 30)).toBeLessThan(1);
+
+    const parked = ring(3).map((s) => ({ ...s, x: 500, y: 0, speed: 0 }));
+    const dead = buildProgressIndex(replayOf(parked, ring(3)));
+    expect(residualAt(dead, 1, 30)).toBe(Infinity);
+
+    // A car the projection cannot see at all (outside every spatial-hash bucket)
+    // reads Infinity, never NaN — NaN fails every comparison and would classify a
+    // car a megametre away as ON the racing line.
+    const far = ring(3, 20).map((s) => ({ ...s, x: s.x + 1e6 }));
+    const lost = buildProgressIndex(replayOf(ring(3), far));
+    expect(residualAt(lost, 1, 30)).toBe(Infinity);
+  });
+
+  it("travelSoFarM integrates the car's own speed from the window start", () => {
+    const index = buildProgressIndex(replayOf(ring(3), ring(3, 20)));
+    // 50 m/s: 0 at the start, 500 m at 10 s in.
+    expect(travelSoFarM(index, 0, 0)).toBe(0);
+    expect(travelSoFarM(index, 0, 10)).toBeCloseTo(500, 4);
   });
 });
