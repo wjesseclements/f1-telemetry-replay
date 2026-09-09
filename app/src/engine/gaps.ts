@@ -723,24 +723,70 @@ export function travelSoFarM(
 }
 
 /**
- * The signed seconds between `carIndex` and `focusIndex` at `now`, WITHOUT the residual
- * gate — the timing tower's sort key (Slice 19).
+ * The timing tower's sort key: the progress deficit `ΔP`, expressed in seconds at the
+ * reference's own average lap pace (Slice 19, revised at its watch).
  *
- * Same computation as `gapTo.seconds`, same one definition of a gap; the difference is
- * what each answer is FOR. A displayed number claims "this is the interval", and a car
- * off the reference line (the pit lane, a spin) is not entitled to one — that is the
- * residual gate. A SORT KEY claims only "this car is ahead of that one", and a car in
- * the pit lane still has a place in the running order: its projection onto the
- * reference is distorted by the pit lane's geometry but still monotone in progress, so
- * ordering by it is sound where quoting it would not be. Before Slice 19 the tower
- * sorted on the gated value, so a car whose residual crossed the bound SANK to the
- * bottom mid-pit-stop and jumped back — measured on the rain window, and exactly the
- * "row stays in running order" defect that slice exists to fix.
+ * THE RULING THIS ENCODES: the running order is ALWAYS by track progress — 9d's `ΔP` —
+ * and the gap is a display column that can never reorder a row. The first cut of this
+ * key reused `gapTo`'s seconds without the residual gate, on the theorem that ordering
+ * by seconds and ordering by `ΔP` are identical. That theorem holds while `P_F` is
+ * strictly increasing, and a STANDING START is where it is not: `P_F` is flat through
+ * the hold, so `P_F⁻¹` jumps by the hold's whole length as a car's progress crosses the
+ * focus's parked value, and the measured launch transition showed the tower lagging
+ * true progress order for seconds at a time off the back of it. So the key now reads
+ * the progress series DIRECTLY — no inverse, no flat-stretch pathology, cheaper — and
+ * gap availability cannot touch it by construction.
  *
- * `null` where there is genuinely no key: either car never moved, or the lookup falls
- * outside the window plus `MAX_LAP_EXTENSION` laps.
+ * WHY IT IS STILL DENOMINATED IN SECONDS. 9d rejected a raw-`ΔP` key because
+ * `ORDER_HYSTERESIS_S` is seconds and a progress-denominated key would read the dead
+ * band as either ~0.9 mm of track (vacuous) or a fraction of a lap (frozen). The pace
+ * conversion answers that objection instead of re-litigating it: `ΔP` times
+ * `lapSeconds / lapUnits` (the window's own span-over-progress when no lap closed) is
+ * seconds again — approximate seconds, which is exactly what a dead band wants, and
+ * strictly monotone in progress, which is what the ruling demands.
+ *
+ * Focus-independent in the strong sense: two cars' keys differ by `P_j − P_i` at pace,
+ * with the focus contributing the same constant to both — so the ORDER cannot move on
+ * a focus change, and the hysteresis sees identical differences.
+ *
+ * `null` only where a car has no progress to order by: either car degenerate.
  */
-export function orderKeyAt(
+export function progressKeyAt(
+  index: ProgressIndex,
+  focusIndex: number,
+  carIndex: number,
+  now: number,
+): number | null {
+  if (index.degenerate[focusIndex] || index.degenerate[carIndex]) return null;
+  const cursor = now * index.sampleRateHz;
+  const deltaP =
+    at(index.progress[focusIndex], cursor) -
+    at(index.progress[carIndex], cursor);
+  return deltaP * paceSecondsPerUnit(index);
+}
+
+/**
+ * Seconds per progress unit at the reference's average pace.
+ *
+ * From the lap when one closed; from the whole window's span over the reference's own
+ * progress when none did (an open sub-lap window still has a pace). Callers reach this
+ * only past the degenerate gate, so the reference is known to have covered ground.
+ */
+function paceSecondsPerUnit(index: ProgressIndex): number {
+  if (index.lapUnits > 0) return index.lapSeconds / index.lapUnits;
+  const reference = index.progress[0];
+  const span = reference[reference.length - 1] - reference[0];
+  return (reference.length - 1) / index.sampleRateHz / span;
+}
+
+/**
+ * The signed seconds between `carIndex` and `focusIndex` at `now`, without the residual
+ * gate — `gapTo`'s seconds, factored so both share one definition.
+ *
+ * `null` where there is genuinely no answer: either car never moved, or the lookup
+ * falls outside the window plus `MAX_LAP_EXTENSION` laps.
+ */
+function secondsAt(
   index: ProgressIndex,
   focusIndex: number,
   carIndex: number,
@@ -776,9 +822,7 @@ export function gapTo(
   const residualM = residualAt(index, carIndex, now);
   if (!(residualM <= MAX_RESIDUAL_M)) return null;
 
-  // The seconds and the sort key are the SAME number by construction — see
-  // `orderKeyAt`. The degenerate-car gate lives there.
-  const seconds = orderKeyAt(index, focusIndex, carIndex, now);
+  const seconds = secondsAt(index, focusIndex, carIndex, now);
   if (seconds === null) return null;
   const past = now - seconds;
 

@@ -65,6 +65,7 @@
  * list. Its visible text "vs" is contained in its accessible name "vs {driver}"
  * (WCAG 2.5.3, same rule as the gap digits).
  */
+import type { ReactNode } from "react";
 import { SWATCH_MIN_LUMINANCE, floorLuminance } from "../engine/color";
 import { carHasDrs, isDrsOpen } from "../engine/drs";
 import {
@@ -121,6 +122,14 @@ export interface CarEntryProps {
    */
   retired: boolean;
   focused: boolean;
+  /**
+   * The focused car's speed trace, rendered under the readout block (Slice 19 watch,
+   * ruled: the trace describes the focused car and sits with it). A node built by the
+   * tower, not a subscription of this row's — only the focused row receives one, and
+   * it cannot live inside the readout's `<dl>` (a `<figure>` is invalid there — the
+   * Slice 7 Lighthouse class), so it renders as the dl's sibling.
+   */
+  trace?: ReactNode;
   /** Whether this car is the one overlaid on the speed trace. */
   compared: boolean;
   onFocus: () => void;
@@ -138,6 +147,7 @@ export function CarEntry({
   compared,
   onFocus,
   onCompare,
+  trace,
 }: CarEntryProps) {
   return (
     <li className="m-0 w-full list-none">
@@ -266,6 +276,11 @@ export function CarEntry({
       </div>
 
       {focused && <CarReadout car={car} snapshot={snapshot} tyre={tyre} />}
+      {/* `w-full` so the trace takes its own row in the sub-`md` strip, where the
+          readout wraps horizontally; in the sidebar it fills the column. */}
+      {focused && trace !== undefined && (
+        <div className="mt-3 w-full">{trace}</div>
+      )}
     </li>
   );
 }

@@ -4126,6 +4126,67 @@ thresholds, each argued from a measured population:
     HAM/NOR ≈6:19–7:00): the pitting car's gap is an em dash and its row
     stays in place instead of jumping to the bottom.
 
+**Watch (2026-09-08, human): three findings; the 2024 pit-window change, the
+blank-all reference and the declined schema fields RATIFIED. The findings'
+record:**
+
+1. **"LEC vanishes from the restart tower" — diagnosed as the DATA, not a
+   filter.** The restart asset has carried **21 cars and no LEC car object
+   since Slice 17 built it** (checked on disk; this branch touches no asset),
+   so no tower on any branch has ever listed him there — nothing app-side
+   drops him, and there is no `retiredAt`-at-0 or frozen-feed path involved.
+   The RULING still stands and is now pinned app-side: a car retired BEFORE
+   the window opens (`retiredAt` 0) renders grey, OUT, at the bottom,
+   focusable, at every clock — never absent (`Hud.test.tsx`). Red-flag LEC
+   after his crash: present as OUT at the bottom, pinned by test and
+   screenshot. **Listing LEC in the restart itself is a PIPELINE decision
+   filed for the human:** he has no telemetry in that window (car recovered,
+   feed gone), and the schema's car is samples-first — emitting him means
+   choosing what a telemetry-less DNF entry looks like (fabricated parked
+   samples fail honesty; a samples-free car fails the contract). Options to
+   argue in a future slice, not invented here.
+2. **"COL reaches P1 at the launch" — the ruling implemented; the engine's
+   reproduction shows the class, not that exact frame.** A 30 Hz sequential
+   sweep (hysteresis fed back, focus ANT/RUS/COL) never has COL above P3 —
+   but it DID show the tower lagging true progress order for seconds at a
+   time (t 81.2–86.4), because the first key (gapTo's ungated seconds) rides
+   `P_focus⁻¹`, which is FLAT through a hold and jumps by the hold's length as
+   a car crosses the focus's parked progress. The 9d theorem ("ordering by
+   seconds ≡ ordering by ΔP") needs strict monotonicity, and a standing start
+   is where it fails. **The ruling, built:** the sort key is now
+   `gaps.progressKeyAt` — ΔP read directly from the progress series, converted
+   to seconds at the reference's average pace (lap pace, or the window's own
+   span when no lap closed). That answers 9d's unit objection (the dead band
+   stays seconds-denominated), is focus-independent in the strong sense, and
+   is structurally blind to gap availability — pinned by a full-transition
+   sweep test (every tick, every focus, order === progress truth) and an
+   invariance test; the 9d supersession is recorded in `runningOrder.ts`'s
+   header. Re-swept on the real restart: the 81–86 s lags are gone; the one
+   remaining divergence class is the dead band holding a genuine side-by-side
+   (NOR ahead of COL by 5.5 ms at 88.07, swap lands at 88.5 when it exceeds
+   50 ms) — the anti-strobe behaviour working as sized. A deeply-lapped car
+   (beyond the 4-lap seconds walk) now keys too, where before it pinned to
+   the untimed bottom. Tick cost re-measured: **6.0 µs mean** (was 6.7 — the
+   inverse left the key path).
+3. **Trace into the focused readout block (scope addition, ruled).** The
+   `SpeedTrace` now renders inside the focused row, directly under the
+   DRS/tyre chips — built by the tower where the transport state lives and
+   handed down as a node (same ≤30 Hz derivation, no new subscriptions), as
+   the readout `<dl>`'s SIBLING because a `<figure>` inside a `<dl>` is the
+   Slice 7 Lighthouse class. Pinned by test (the figure is a descendant of
+   the focused row's `<li>`). 375 px verified by headless-Chrome capture
+   (a live Chrome window refuses widths under ~500, so `--headless
+   --window-size=375,900` is the instrument): readout, chips, then the
+   full-width trace, no horizontal overflow.
+
+**Re-verified after the findings:** `npm run check` green — **776 tests**
+(768 → 776), 0 warnings in the full log, engine coverage 100 % on all four
+metrics; both languages' gates standing (pytest 273 untouched). Drawcall md5s
+re-captured: **identical to the ledger baselines** — the canvas remains
+untouched. Assets, schema, pipeline, store: still untouched. Browser evidence:
+restart at 1:22 shows RUS/GAS/COL/VER/PIA — **COL P3, his true race
+position** — with real launch spacings.
+
 ### [ ] Slice 21 — tower reshuffle animation
 
 **Filed 2026-09-08 at Slice 17's acceptance.** When the running order changes,

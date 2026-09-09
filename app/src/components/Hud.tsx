@@ -44,7 +44,7 @@ import {
 import {
   buildProgressIndex,
   gapTo,
-  orderKeyAt,
+  progressKeyAt,
   type Gap,
 } from "../engine/gaps";
 import { sameOrder, towerOrder } from "../engine/runningOrder";
@@ -162,22 +162,22 @@ export function Hud({ replay }: HudProps) {
    */
   const [order, setOrder] = useState<number[]>([]);
   /**
-   * The sort key is the UNGATED seconds (`orderKeyAt`), not the displayed gap: a
-   * blanked number is still a car with a place in the running order, and gating the
-   * key was what sank a pitting car to the bottom of the tower mid-stop. The one car
-   * with no place — off-line, stationary, never yet moved: a pit-lane starter in its
-   * box — is nulled by `orderKeyFor` and takes the existing untimed-bottom path.
-   * Retired cars leave the running order entirely (`towerOrder`).
+   * The sort key is `progressKeyAt` — 9d's ΔP at reference pace, NEVER the displayed
+   * gap (the Slice 19 watch's ruling: the order is always by track progress; a gap is
+   * a display column and can never reorder a row). A blanked number is still a car
+   * with a place in the running order. The one car with no place — off-line,
+   * stationary, never yet moved: a pit-lane starter in its box — is nulled by
+   * `orderKeyFor` and takes the existing untimed-bottom path. Retired cars leave the
+   * running order entirely (`towerOrder`). No focus branch: the focused car's key is
+   * an exact zero by construction.
    */
   const next = towerOrder(
     order,
     snapshots.map((_, i) =>
-      i === focusedCarIndex
-        ? 0
-        : orderKeyFor(
-            orderKeyAt(progress, focusedCarIndex, i, clock),
-            carStates[i],
-          ),
+      orderKeyFor(
+        progressKeyAt(progress, focusedCarIndex, i, clock),
+        carStates[i],
+      ),
     ),
     snapshots.map((_, i) =>
       carStates[i].retired ? (replay.cars[i].retiredAt ?? 0) : null,
@@ -213,23 +213,25 @@ export function Hud({ replay }: HudProps) {
             onCompare={() =>
               setComparisonCarIndex(i === comparisonCarIndex ? null : i)
             }
+            /* The trace rides INSIDE the focused row's readout block (Slice 19
+               watch, ruled): it describes the focused car and sits with it. Built
+               here, where the transport state lives, and handed down as a node —
+               same <= 30 Hz derivation, no new subscriptions. Only the focused row
+               renders it. */
+            trace={
+              i === focusedCarIndex ? (
+                <SpeedTrace
+                  car={replay.cars[focusedCarIndex]}
+                  comparisonCar={comparisonCar}
+                  clock={clock}
+                  duration={replay.meta.duration}
+                  sampleRateHz={replay.meta.sampleRateHz}
+                />
+              ) : undefined
+            }
           />
         ))}
       </ul>
-
-      {/* The trace is the FOCUSED car's — the Slice 5 placeholder that read `cars[0]`
-          because there was only ever one car to mean. */}
-      {/* `w-full` so the trace takes its own row once the readout has wrapped: it is
-          the one element here that reads by its width rather than its digits. */}
-      <div className="w-full">
-        <SpeedTrace
-          car={replay.cars[focusedCarIndex]}
-          comparisonCar={comparisonCar}
-          clock={clock}
-          duration={replay.meta.duration}
-          sampleRateHz={replay.meta.sampleRateHz}
-        />
-      </div>
     </aside>
   );
 }

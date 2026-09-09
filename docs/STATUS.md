@@ -20,20 +20,22 @@ field showing grid order with no numbers until it launches, and a pit-lane car
 keeping its row with an em dash instead of a phantom number. The pipeline's pure
 half is the `replay_transform` package, one module per concern, screened by three
 detectors plus per-car anchor plans. Quality state on the Slice 19 branch:
-`npm run check` green with 768 tests and 0 warnings; 273 pytest with 100% lines +
+`npm run check` green with 776 tests and 0 warnings; 273 pytest with 100% lines +
 branches on every module; drawcall md5s IDENTICAL on both render modes (the canvas
 is untouched); assets, schema and pipeline untouched on disk; the whole tower
-derivation measured at 6.7 µs per tick on the 22-car asset.
+derivation measured at 6.0 µs per tick on the 22-car asset.
 
-**What is open, and what is blocked.** **Slice 19 is built and awaiting the human's
-watch** (2026-09-08, branch `feat/slice-19-tower-states`, not pushed): the three
-recorded exhibits are reproduced BEFORE and resolved AFTER — numerically through the
-shipped engine, as committed tests, and as screenshots — and the acceptance is
-pre-registered per scenario in the PLAN entry. One deviation is FLAGGED there rather
-than smoothed over: "the 2024 scenarios unchanged" cannot hold verbatim inside pit
-windows, because the goal sentence (a pit-lane car never mistaken for a car on
-track) applies to the 2024 pit lanes too — the finale is bit-identical everywhere,
-rain and pit-cycle change only while a car is actually in the pit. **The board
+**What is open, and what is blocked.** **Slice 19 is on PR #70 awaiting the
+human's re-watch** after its first watch returned three findings, all resolved
+in-branch (the 2024 pit-window change, the blank-all reference and the declined
+schema fields were RATIFIED at that watch): the sort key is now `progressKeyAt` —
+the watch's ruling that the running order is ALWAYS by track progress and a gap
+can never reorder a row, which retired the 9d seconds-key theorem where a standing
+start breaks it; a car retired before the window opens is pinned to render (grey,
+OUT, bottom — the restart's missing LEC turned out to be the DATA: that asset has
+carried 21 cars and no LEC since Slice 17, and listing him is a pipeline decision
+filed for the human); and the speed trace now rides inside the focused row's
+readout block, 375 px verified headless. **The board
 after 19: 21 (tower reshuffle animation) → 16 (pit-lane drawing) → 9k (NOR's
 relocation, adjudicated against 16's pit-lane geometry) → 18 (corner lore) →
 20 (Aston/Cadillac colour).** **Nothing is blocked**; the standing constraint

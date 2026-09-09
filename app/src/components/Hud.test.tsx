@@ -1123,6 +1123,46 @@ describe("Hud tower states (Slice 19)", () => {
     expect(screen.getByText("+2.000")).toBeInTheDocument();
   });
 
+  it("lists a car retired BEFORE the window opened: grey, OUT, at the bottom, focusable — never dropped", () => {
+    // retiredAt 0 is the pre-window retirement spelling: the car was already out
+    // when the data begins. It must hold a row at every clock, not vanish.
+    const replay = stateReplay(
+      { driver: "FOC", samples: ringSamples() },
+      { driver: "PRE", samples: ringSamples(20), retiredAt: 0 },
+      { driver: "RUN", samples: ringSamples(-10) },
+    );
+    for (const clock of [0, 17]) {
+      renderStates(replay, clock);
+      const order = rows().map((b) => b.textContent ?? "");
+      expect(order).toHaveLength(3);
+      expect(order[2]).toMatch(/PRE/);
+      expect(order[2]).toContain(GAP_OUT);
+      const pre = screen.getByRole("button", { name: /^PRE/ });
+      expect(pre.className).toContain("grayscale");
+      fireEvent.click(pre);
+      expect(pre).toHaveAttribute("aria-pressed", "true");
+      cleanup();
+      telemetry.reset();
+      useTransport.setState({ focusedCarIndex: 0, comparisonCarIndex: null });
+    }
+  });
+
+  it("renders the speed trace INSIDE the focused row, under the readout — the ruled placement", () => {
+    const replay = stateReplay(
+      { driver: "FOC", samples: ringSamples() },
+      { driver: "RUN", samples: ringSamples(-10) },
+    );
+    renderStates(replay, 5);
+    const focusedRow = screen
+      .getByRole("button", { name: /^FOC/ })
+      .closest("li");
+    expect(focusedRow).not.toBeNull();
+    const trace = screen.getByRole("img", { name: /^Speed trace for FOC/ });
+    expect(focusedRow).toContainElement(trace);
+    // The readout (the dl with the pills) precedes it inside the same row.
+    expect(focusedRow!.querySelector("dl")).not.toBeNull();
+  });
+
   it("blanks even two MOVING cars while the field forms up — the launch rule, not the states", () => {
     // A fourth pair drives normally while three others hold the grid: with a moving
     // focus and a moving car, neither per-car state nor the focus rule blanks

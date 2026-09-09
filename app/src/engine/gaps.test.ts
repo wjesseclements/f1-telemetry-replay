@@ -17,7 +17,7 @@ import {
   SEED_MARGIN_MIN,
   buildProgressIndex,
   gapTo,
-  orderKeyAt,
+  progressKeyAt,
   residualAt,
   travelSoFarM,
 } from "./gaps";
@@ -458,13 +458,45 @@ describe("gaps carry no assumption about the position unit", () => {
   });
 });
 
-describe("the tower's ungated readings (Slice 19)", () => {
-  it("orderKeyAt IS gapTo's seconds wherever both answer", () => {
+describe("the tower's sort key (Slice 19, revised at its watch)", () => {
+  it("is the pace-converted \u0394P: exact seconds on a constant-speed ring", () => {
+    // 20 samples of shift at 50 m/s: \u0394P = -100 units, pace = 20 s / 1000 units.
     const index = buildProgressIndex(replayOf(ring(3), ring(3, 20)));
     for (const now of [0, 22, 30, 41.5, 59.9]) {
-      expect(orderKeyAt(index, 0, 1, now)).toBe(
-        gapTo(index, 0, 1, now)!.seconds,
-      );
+      expect(progressKeyAt(index, 0, 1, now)).toBeCloseTo(-2, 6);
+    }
+  });
+
+  it("orders a racing field exactly as gapTo's seconds do — the 9d theorem, pinned", () => {
+    const field = buildProgressIndex(
+      replayOf(...[0, -25, -50, -75, -100, -123].map((sh) => ring(3, sh))),
+    );
+    for (const now of [10, 30, 50]) {
+      const byKey = [1, 2, 3, 4, 5]
+        .map((c) => [c, progressKeyAt(field, 0, c, now) as number] as const)
+        .sort((a, b) => a[1] - b[1])
+        .map(([c]) => c);
+      const bySeconds = [1, 2, 3, 4, 5]
+        .map((c) => [c, gapTo(field, 0, c, now)!.seconds] as const)
+        .sort((a, b) => a[1] - b[1])
+        .map(([c]) => c);
+      expect(byKey).toEqual(bySeconds);
+    }
+  });
+
+  it("is focus-independent: changing the reference shifts every key by one constant", () => {
+    const field = buildProgressIndex(
+      replayOf(...[0, -25, -50, -75].map((sh) => ring(3, sh))),
+    );
+    const from0 = [1, 2, 3].map(
+      (c) => progressKeyAt(field, 0, c, 30) as number,
+    );
+    const from2 = [1, 2, 3].map(
+      (c) => progressKeyAt(field, 2, c, 30) as number,
+    );
+    const shift = from2[0] - from0[0];
+    for (let i = 0; i < from0.length; i++) {
+      expect(from2[i]).toBeCloseTo(from0[i] + shift, 8);
     }
   });
 
@@ -473,18 +505,14 @@ describe("the tower's ungated readings (Slice 19)", () => {
     // has a place in the running order, and the key still says roughly where.
     const off = buildProgressIndex(replayOf(ring(3), ring(3, 20, 1, 30)));
     expect(gapTo(off, 0, 1, 30)).toBeNull();
-    expect(orderKeyAt(off, 0, 1, 30)).toBeCloseTo(-2, 1);
+    expect(progressKeyAt(off, 0, 1, 30)).toBeCloseTo(-2, 1);
   });
 
-  it("returns null only where there is genuinely no key", () => {
-    const parked = ring(3).map((s) => ({ ...s, x: 500, y: 0, speed: 0 }));
-    const index = buildProgressIndex(replayOf(ring(3), parked));
-    expect(orderKeyAt(index, 0, 1, 30)).toBeNull();
-    expect(orderKeyAt(index, 1, 0, 30)).toBeNull();
-
-    // Beyond the whole-lap extension: a car crawling at a sixth of the pace is five
-    // laps down by the end of a six-lap window. FOCUSED, it has never been where the
-    // reference now is — even walking back the full four-lap extension.
+  it("keys a car even where the seconds inverse cannot answer — a deeply lapped car", () => {
+    // A car crawling at a sixth of the pace is five laps down by the end of a
+    // six-lap window. FOCUSED, gapTo has no seconds (the four-lap walk cannot reach
+    // the leader's progress) — but the ORDER is still known, and the ruling says the
+    // row must be too.
     const crawl: Sample[] = [];
     for (let k = 0; k < PER_LAP * 6; k++) {
       const a = (2 * Math.PI * k) / (PER_LAP * 6);
@@ -500,7 +528,24 @@ describe("the tower's ungated readings (Slice 19)", () => {
       });
     }
     const lapped = buildProgressIndex(replayOf(ring(6), crawl));
-    expect(orderKeyAt(lapped, 1, 0, 119)).toBeNull();
+    expect(gapTo(lapped, 1, 0, 119)).toBeNull();
+    // Nearly five laps ahead of the crawling focus, at ~20 s a lap.
+    expect(progressKeyAt(lapped, 1, 0, 119)).toBeLessThan(-90);
+  });
+
+  it("falls back to the window's own pace when no lap closed", () => {
+    // Half a lap, open: lapUnits is 0, so pace = 10 s over 500 units. An 8-sample
+    // shift is 40 units = 0.8 s.
+    const short = buildProgressIndex(replayOf(ring(0.5), ring(0.5, 8)));
+    expect(short.lapUnits).toBe(0);
+    expect(progressKeyAt(short, 0, 1, 5)).toBeCloseTo(-0.8, 2);
+  });
+
+  it("returns null only for a car with no progress to order by", () => {
+    const parked = ring(3).map((s) => ({ ...s, x: 500, y: 0, speed: 0 }));
+    const index = buildProgressIndex(replayOf(ring(3), parked));
+    expect(progressKeyAt(index, 0, 1, 30)).toBeNull();
+    expect(progressKeyAt(index, 1, 0, 30)).toBeNull();
   });
 
   it("residualAt reads the displacement in metres, and Infinity off a dead reference", () => {

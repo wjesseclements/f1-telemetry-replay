@@ -40,6 +40,19 @@
  *    ordering by `ΔP` and ordering by `seconds` are **identical** — always, not
  *    approximately.
  *
+ * SLICE 19'S WATCH SUPERSEDED HALF OF THAT, and the record shows which half. The
+ * theorem above needs `P_F` STRICTLY increasing, and a standing start makes it flat:
+ * through a grid hold `P_F⁻¹` develops a discontinuity the size of the hold, and the
+ * measured launch transition showed the tower lagging true progress order for seconds
+ * off the back of it. The human's ruling: the running order is ALWAYS by track
+ * progress, and the gap is a display column that can never reorder a row. So the key
+ * is now `gaps.progressKeyAt` — `ΔP` read directly from the progress series,
+ * CONVERTED to seconds at the reference's average pace, which answers 9d's unit
+ * objection (the dead band is still denominated in the seconds it was sized in)
+ * while making the order structurally independent of gap availability. Where both
+ * cars are racing the two keys order identically, so this function and its dead band
+ * are untouched.
+ *
  * What 9d DID fix here is the input. The hysteresis was being asked to damp a ±lap
  * discontinuity at the half-lap boundary and could not — a 0.05 s dead band against an
  * 85 s jump. That discontinuity is gone from `gaps.ts`, so the dead band is back to

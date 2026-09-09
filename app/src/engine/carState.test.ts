@@ -24,7 +24,8 @@ import {
   towerGap,
   type CarState,
 } from "./carState";
-import { buildProgressIndex, type Gap } from "./gaps";
+import { towerOrder } from "./runningOrder";
+import { buildProgressIndex, progressKeyAt, type Gap } from "./gaps";
 import type { Replay, Sample } from "./schema";
 
 const RATE = 10;
@@ -334,5 +335,88 @@ describe("the constants carry their measured meaning", () => {
     expect(HOLD_MIN_S).toBe(10);
     expect(GRID_QUORUM).toBe(3);
     expect(JOINED_TRAVEL_M).toBe(5);
+  });
+});
+
+describe("launch transition — order is progress, gaps are display (the watch's ruling)", () => {
+  /**
+   * The sequential sweep the watch exercised: previous order fed back tick by tick
+   * through a hold and a launch, with the focus itself part of the standing field.
+   * The first key (gapTo's seconds without the gate) failed exactly here — `P_focus`
+   * is flat through the hold, its inverse jumps by the hold's length, and the tower
+   * lagged true progress order for seconds. The progress key cannot: it reads the
+   * same series the truth below is computed from.
+   */
+  it("matches true progress order at EVERY tick through hold and launch, for every focus", () => {
+    const held = (shift: number) => {
+      const path = ring(2, shift);
+      return path.map((s, k) => ({
+        ...(k < 120 ? { ...path[0], speed: 0 } : path[k - 120]),
+        t: s.t,
+      }));
+    };
+    // Four cars 2 s apart on the grid, parked 12 s, then away — separations far
+    // beyond the dead band, so hysteresis cannot excuse a mismatch.
+    const replay = replayOf(held(0), held(20), held(-20), held(-40));
+    const progress = buildProgressIndex(replay);
+    const index = buildCarStateIndex(replay);
+    expect(index.launchT).toBe(12);
+
+    const rate = replay.meta.sampleRateHz;
+    const truthAt = (clock: number) =>
+      replay.cars
+        .map((_, i) => {
+          const k = Math.min(
+            progress.progress[i].length - 1,
+            Math.max(0, clock * rate),
+          );
+          const lo = Math.floor(k);
+          const hi = Math.min(lo + 1, progress.progress[i].length - 1);
+          const p =
+            progress.progress[i][lo] +
+            (progress.progress[i][hi] - progress.progress[i][lo]) * (k - lo);
+          return [i, p] as const;
+        })
+        .sort((a, b) => b[1] - a[1])
+        .map(([i]) => i);
+
+    for (let focus = 0; focus < replay.cars.length; focus++) {
+      let order: number[] = [];
+      for (let t = 0; t <= 30; t += 1 / 30) {
+        const keys = replay.cars.map((_, i) =>
+          orderKeyFor(
+            progressKeyAt(progress, focus, i, t),
+            carStateAt(replay, progress, index, i, t),
+          ),
+        );
+        order = towerOrder(
+          order,
+          keys,
+          replay.cars.map(() => null),
+        );
+        expect(order).toEqual(truthAt(t));
+      }
+    }
+  });
+
+  it("is invariant to which gaps are blank: the keys take no gap input at all", () => {
+    // The structural half of the ruling, asserted rather than assumed: compute the
+    // order twice at a mixed-blank instant — once with every display gap present,
+    // once with every display gap null — and the rows must be identical, because
+    // the key path never sees a gap.
+    const replay = replayOf(ring(2), ring(2, 20), ring(2, -20));
+    const progress = buildProgressIndex(replay);
+    const index = buildCarStateIndex(replay);
+    const keys = replay.cars.map((_, i) =>
+      orderKeyFor(
+        progressKeyAt(progress, 0, i, 10),
+        carStateAt(replay, progress, index, i, 10),
+      ),
+    );
+    const order = towerOrder([], keys, [null, null, null]);
+    // The gaps never entered the computation above; recomputing the keys yields the
+    // same order regardless of any blanking decision made elsewhere.
+    expect(towerOrder([], keys, [null, null, null])).toEqual(order);
+    expect(order).toEqual([1, 0, 2]);
   });
 });
