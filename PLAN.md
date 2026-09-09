@@ -4187,6 +4187,53 @@ untouched. Assets, schema, pipeline, store: still untouched. Browser evidence:
 restart at 1:22 shows RUS/GAS/COL/VER/PIA — **COL P3, his true race
 position** — with real launch spacings.
 
+**Re-watch (2026-09-08, human): FAIL filed on the launch — "COL yo-yos
+4 → 2 → 8 → 1". Diagnosed with the browser as the instrument; no code defect
+found beyond the previous commit's; the browser path is now pinned by test.**
+
+1. **Stale-deploy check:** the re-watch URL (`…-14twaea4n…`) maps to deployment
+   sha `5b821f1` = the fixed branch head — not stale. BUT the FIRST watch's URL
+   (`…-hxxpiawo0…` = `cfe491f`, the old inverse key) remained live in an open
+   tab's reach; which artifact the eyes were on cannot be established from here,
+   so BOTH were instrumented.
+2. **The browser instrument:** headless Chrome over CDP (a live window's rAF was
+   suspended — `visibilityState: hidden` — so the DOM sampler runs where rAF is
+   real), driving each production build's actual bundle: restart scenario,
+   seek to 74 s, DOM tower order sampled at ~30 Hz for 28 s, COL's row per
+   tick. **Both builds, 800+ ticks each: clean single-row steps, no yo-yo** —
+   COL walks P5 → P4 → P3 → P2 (86.3 s) → P3 → … → P7 and back to P4, the two
+   artifacts near-identical through this window.
+3. **The order is the DATA's, verified projection-free:** residuals ≤ 1.2 m
+   through the whole launch, and raw X/Y distances to RUS agree with the
+   projected progress to the metre at every probed second — the tower renders
+   exactly what the asset's positions say. What they say: COL genuinely closes
+   to −17 m (second-furthest) through the T1 braking scrum; and **GAS carries a
+   real data anomaly** — speed stuck at exactly 218 km/h for five straight
+   seconds (84→88 s) while his position falls 0 → −59 m relative to RUS: a
+   speed-channel dropout that RESUMES, the class 9l's guard deliberately
+   declines to freeze. Filed in the backlog, not patched here.
+4. **The reframe that dissolves the "never higher than P3" contradiction:** the
+   race classification samples positions AT TIMING LINES; a nose-ahead in a
+   braking zone never appears in it. A continuous tower briefly showing COL P2
+   mid-scrum does not contradict a classification that never had him above P3.
+   The 4→2→8→1-in-seconds reading is consistent with watching the measured
+   P5→P2→P7 arc at 2–4× with rows that TELEPORT — Slice 21's reshuffle
+   animation is the filed remedy for that legibility, already sequenced next.
+5. **The pin (`Hud.launch.test.tsx`), on the BROWSER path as ordered:** the real
+   `Hud` mounted over the real committed restart asset, the real telemetry
+   channel driven tick by tick through 74–96 s. Two invariants: (a) the
+   rendered order equals true progress order at every tick, except adjacent
+   pairs inside `ORDER_HYSTERESIS_S` — the mechanism's own local invariant
+   (non-adjacent inversions can persist through a chain of sub-band
+   neighbours, measured at 54 ms via one intermediate; Slice 9 machinery,
+   untouched by ruling) — so any flap without positions behind it fails; and
+   (b) the measured story itself: RUS holds P1 throughout, COL's best row is
+   exactly P2 — a resurrected phantom P1 fails loudly.
+
+**Re-verified:** `npm run check` green — **778 tests** (776 → 778), 0 warnings,
+100 % engine coverage; nothing outside the new test changed, so md5s and both
+languages' gates stand as recorded above.
+
 ### [ ] Slice 21 — tower reshuffle animation
 
 **Filed 2026-09-08 at Slice 17's acceptance.** When the running order changes,
@@ -4257,6 +4304,14 @@ gaining the one input it lacked.
   than rejected. Scanned reversal on the emitted rain window: VER 8.40 → **1.48**,
   HAM 10.39 → **1.35**, zero windows over 2.0 for both. NOR's is declined and reported,
   and carries into Slice 9i.
+- **GAS's restart-launch speed dropout** — filed by Slice 19's re-watch
+  diagnosis: in the restart window GAS's speed channel reads exactly 218 km/h
+  for five straight seconds (84→88 s) while his raw position falls 0 → −59 m
+  relative to RUS — a dropout that RESUMES, which the 9l dead-feed guard
+  deliberately declines (pedal-alive after the trigger = dropout, not death).
+  A future screen for resuming dropouts would need its own measured band and
+  negative controls; until then the replay renders the (position-)truthful
+  fade through the field.
 - WebGL/3D escalation **only** if measured 20-car perf demands it (documented path).
 - Track-surface niceties: kerbs, sector coloring, mini-map.
 - Ghost/delta vs a reference lap; multi-lap stints.

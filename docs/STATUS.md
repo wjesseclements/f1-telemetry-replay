@@ -42,13 +42,15 @@ relocation, adjudicated against 16's pit-lane geometry) → 18 (corner lore) →
 remains: `build_replay.py` runs only from the human's home network (CLAUDE.md
 Gotchas).
 
-**What happens next.** The human watches Slice 19 against the pre-registered
-acceptance (PLAN): the red-flag scenario — LEC drops to the bottom in grey with
-OUT at ≈2:55 and every other gap blanks while the order keeps updating, with the
-pit-lane starters at the bottom rather than on top before the start; the restart —
-grid order with no gaps at all until the ≈1:19 launch (RUS −37 is gone); the
-rain — identical to today everywhere except the three pit stops, where the
-pitting car's row now keeps its place with an em dash. After the ruling:
-**Slice 21** (tower reshuffle animation — a retired car's row now knows where it
-belongs, 21 teaches it to travel there), then 16 → 9k → 18 → 20 per the board,
+**What happens next.** The human re-judges the launch with the diagnosis in
+hand: the re-watched "COL yo-yo" was instrumented in the browser (headless CDP,
+DOM sampled at 30 Hz on both deployed artifacts) and is the DATA's own story —
+COL genuinely reaches second-furthest-along in the T1 braking scrum (raw
+positions confirm the projection to the metre), which no timing-line
+classification would show, and the rendered order is now pinned to progress
+truth by a browser-path test over the real asset. Two follow-ups fell out:
+GAS's speed channel sticks at 218 km/h for five seconds through the launch
+while his position falls back (a resuming dropout, 9l's declined class —
+backlog), and Slice 21's reshuffle animation is the legibility remedy for
+teleporting rows at watch speed. Then 21 → 16 → 9k → 18 → 20 per the board,
 and the backlog's headline **fixture asymmetry overhaul** behind them.
