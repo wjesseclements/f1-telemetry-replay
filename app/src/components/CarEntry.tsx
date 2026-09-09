@@ -69,7 +69,8 @@ import type { ReactNode } from "react";
 import { SWATCH_MIN_LUMINANCE, floorLuminance } from "../engine/color";
 import { carHasDrs, isDrsOpen } from "../engine/drs";
 import {
-  GAP_OUT,
+  GAP_DNF,
+  GAP_PIT,
   formatGap,
   formatGapMetres,
   formatGear,
@@ -116,11 +117,17 @@ export interface CarEntryProps {
   /** The tyre the car is on, or `null` when the data has no answer (rule 8). */
   tyre: TyreState | null;
   /**
-   * Out of the race (Slice 19): the row greys, the gap columns say OUT, and the tower
+   * Out of the race (Slice 19): the row greys, the gap column says DNF, and the tower
    * has already sorted it to the bottom. Still a working row — a retired car can be
    * focused and compared; retirement is a fact about the car, not about the controls.
    */
   retired: boolean;
+  /**
+   * Off the racing line (Slice 19, second re-watch's copy ruling): the gap column
+   * says PIT instead of a dash — the pit lane is what off-line almost always means,
+   * and the caveat for the rare off-track excursion is recorded at `GAP_PIT`.
+   */
+  offline: boolean;
   focused: boolean;
   /**
    * The focused car's speed trace, rendered under the readout block (Slice 19 watch,
@@ -143,6 +150,7 @@ export function CarEntry({
   gap,
   tyre,
   retired,
+  offline,
   focused,
   compared,
   onFocus,
@@ -209,23 +217,30 @@ export function CarEntry({
               <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-dim">
                 {car.team}
               </span>
-              {/* OUT on the focused row too: retirement must survive focusing the
-                  car, or the one row a viewer is reading loses the one fact the
+              {/* DNF/PIT on the focused row too: the state must survive focusing
+                  the car, or the one row a viewer is reading loses the one fact the
                   tower is stating about it. */}
-              {retired && (
+              {retired ? (
                 <span className="font-mono text-sm font-bold tracking-wider text-dim">
-                  {GAP_OUT}
+                  {GAP_DNF}
                 </span>
+              ) : (
+                offline && (
+                  <span className="font-mono text-sm font-bold tracking-wider text-dim">
+                    {GAP_PIT}
+                  </span>
+                )
               )}
               <span className="font-mono text-[10px] uppercase tracking-widest text-accent">
                 Focus
               </span>
             </>
-          ) : retired ? (
+          ) : retired || offline ? (
             /* The broadcast spelling, in the gap column's place: a word, not a
-               number — a retired car has no interval to anyone (Slice 19). */
+               number — DNF for a car out of the race, PIT for one off the racing
+               line (Slice 19; copy ruled at the second re-watch). */
             <span className="ml-auto font-mono text-sm font-bold tracking-wider text-dim">
-              {GAP_OUT}
+              {retired ? GAP_DNF : GAP_PIT}
             </span>
           ) : (
             /*

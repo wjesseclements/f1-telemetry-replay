@@ -556,6 +556,13 @@ describe("the tower's sort key (Slice 19, revised at its watch)", () => {
     const parked = ring(3).map((s) => ({ ...s, x: 500, y: 0, speed: 0 }));
     const dead = buildProgressIndex(replayOf(parked, ring(3)));
     expect(residualAt(dead, 1, 30)).toBe(Infinity);
+
+    // A car the projection cannot see at all (outside every spatial-hash bucket)
+    // reads Infinity, never NaN — NaN fails every comparison and would classify a
+    // car a megametre away as ON the racing line.
+    const far = ring(3, 20).map((s) => ({ ...s, x: s.x + 1e6 }));
+    const lost = buildProgressIndex(replayOf(ring(3), far));
+    expect(residualAt(lost, 1, 30)).toBe(Infinity);
   });
 
   it("travelSoFarM integrates the car's own speed from the window start", () => {

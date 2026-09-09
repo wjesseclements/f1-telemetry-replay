@@ -4234,6 +4234,88 @@ found beyond the previous commit's; the browser path is now pinned by test.**
 100 % engine coverage; nothing outside the new test changed, so md5s and both
 languages' gates stand as recorded above.
 
+**Second re-watch (2026-09-09, human): FAIL at 1:52.7, NOT the launch — COL
+focused at 298 km/h braking into della Roggia, physically at the front of the
+train ON THE CANVAS, every gap positive. Tower and dot agreed, which exonerated
+the sort and indicted the POSITIONS. Diagnosed read-only; the mechanism:**
+
+1. **Reproduced in the browser** (headless CDP DOM sampler, 100–130 s, ~30 Hz,
+   904 ticks): COL P5 → P3 (111.5) → P2 (111.9) → **P1 at 112.3–117.0**, then
+   GAS takes P1 for twelve seconds — both excursions plainly in the rendered
+   tower. The first sampler's 74–102 s window had simply stopped short.
+2. **The emitted data carries the cause on its face:** COL's speed channel
+   reads **exactly 298 km/h for 6.3 s (t = 107.5 → 113.8)** while the whole
+   field brakes from ~300 to ~90 for della Roggia; GAS is simultaneously stuck
+   at exactly 290. The human's HUD corroboration, recorded for the detector:
+   during the dropout the readout shows **full throttle AND full brake at
+   once** — a frozen-feed signature no live car can produce.
+3. **Source vs emitted (read-only against the FastF1 cache):** the stuck 298
+   IS in the raw `car_data` (constant from st 5976.7 to 5983.0, then snapping
+   to 73 km/h), and the raw `pos_data` ALSO surges — F1's tracker dead-reckons
+   the dropped transponder forward, raw COL closing to **3.2 m of RUS at
+   t=111** — the 9l mechanism again, but RESUMING. So the phantom P1 exists in
+   the source; the pipeline then AMPLIFIES it: travel-driven placement
+   integrates the stuck 298 into ~370 phantom metres, and after the feed
+   resumes (raw COL already 50–120 m behind RUS) the emitted position stays
+   pinned near the front for ~10 further seconds until the next anchor reels
+   it in (emitted dist-to-RUS 0.8–13 m through t = 117–121 against raw
+   104–123 m). The snap-backs are what the placement instrument's component A
+   sees corpus-wide (COL 39.1, ALO 33.9, LIN 27.0, STR 16.1 arc-over-net; its
+   component B mis-anchors its marks on this restart window — kilometres of
+   scatter on visually clean cars — and was set aside per its own header's
+   caution).
+4. **Blast radius (corpus scan, emitted side, ≥2 s exactly-constant speed at
+   >100 km/h): the two 2026 Monza windows ONLY** — 34 runs in the red-flag
+   window, 44 in the restart, ZERO in all three 2024 windows. Per car the
+   restart events repeat **once per lap at a fixed track position** (COL
+   107.5 / 202.9 / 291.0 / 379.8; ALB 112.4 / 205.3 / 293.1 / 381.9 — ~88 s
+   spacing): a fixed coverage dead zone on the circuit that day, each car
+   hitting it at its own spot. Consistent with the same broken feed
+   infrastructure that died outright for LEC at the wall.
+5. **Classification (the human's third option): a source-data glitch of GAS's
+   stuck-speed class, pipeline-amplified — Slice 19 is CORRECT and the tower
+   renders the data truthfully.** Disposition ruled: **Slice 9m** filed (below)
+   and sequenced NEXT, ahead of 21; this PR ships with a known-artifact
+   `provenance.note` on the restart entry (the Slice 17 mechanism, retired
+   when 9m ships) — drafted copy, the human's to reword.
+6. **Copy rulings applied:** retired = **DNF** (was OUT), off-line = **PIT**
+   (was an em dash; the recorded off-track-excursion caveat stands at
+   `GAP_PIT`, with Slice 16's geometry as the honest upgrade). Applying PIT
+   surfaced and fixed a latent engine bug: `residualAt` interpolating between
+   two unprojectable (Infinity) residual samples returned **NaN**, which fails
+   every comparison and read a car a megametre off the circuit as ON the
+   racing line — `gapTo`'s `!(x <= bound)` gate had been silently swallowing
+   it. Normalised to Infinity, pinned in `gaps.test.ts`.
+7. **Re-watch outcomes recorded:** LEC DNF at the bottom in the red-flag
+   scenario confirmed; the launch order confirmed real (the data's own story);
+   the 1:52 P1 is the data defect now filed as 9m. **Auto-merge enabled on the
+   human's instruction.**
+
+### [ ] Slice 9m — stuck-channel dropout screen (next, before Slice 21)
+
+**Filed 2026-09-09 by Slice 19's second re-watch; diagnosis complete and
+recorded above.** F1's feed drops per car for 2–10 s — once a lap at a fixed
+track position in the 2026 Monza windows — freezing the speed channel at its
+last value (constant to the km/h at pace) while F1 dead-reckons the position
+stream forward; travel-driven placement then integrates the stuck speed into
+hundreds of phantom metres and holds them until the next anchor. The rule to
+build, in the 9-series method (measure, pre-register, adversarial negative
+controls, silent-never reporting):
+- **Detector:** a run of speed constant to the km/h at pace for ≥ N samples
+  (N corpus-calibrated; the emitted-side scan found 78 candidate runs ≥ 2 s in
+  the 2026 windows and zero in 2024 — measure the true-run and negative-run
+  populations on the RAW source, not the emitted grid). The human's HUD
+  observation is a second usable signature: frozen throttle AND brake
+  simultaneously non-zero. Negative controls that must NOT fire: the pit-lane
+  limiter (legitimately constant ~80), flat-out top-speed running (constant to
+  the km/h for a second or two), and the 2024 corpus wholesale.
+- **Repair:** during a detected dropout, travel must NOT be integrated from
+  the stuck value — bridge placement across the span from the position stream
+  or the neighbouring good travel (both edges are trusted: the feed resumes),
+  argued in-slice against the 9h/9i anchor machinery rather than bolted on.
+- **Regenerate the two 2026 assets**; the three 2024 assets must rebuild
+  byte-identical (the 9l no-collateral shape). Retire the restart entry's
+  `provenance.note`.
 ### [ ] Slice 21 — tower reshuffle animation
 
 **Filed 2026-09-08 at Slice 17's acceptance.** When the running order changes,
@@ -4304,14 +4386,11 @@ gaining the one input it lacked.
   than rejected. Scanned reversal on the emitted rain window: VER 8.40 → **1.48**,
   HAM 10.39 → **1.35**, zero windows over 2.0 for both. NOR's is declined and reported,
   and carries into Slice 9i.
-- **GAS's restart-launch speed dropout** — filed by Slice 19's re-watch
-  diagnosis: in the restart window GAS's speed channel reads exactly 218 km/h
-  for five straight seconds (84→88 s) while his raw position falls 0 → −59 m
-  relative to RUS — a dropout that RESUMES, which the 9l dead-feed guard
-  deliberately declines (pedal-alive after the trigger = dropout, not death).
-  A future screen for resuming dropouts would need its own measured band and
-  negative controls; until then the replay renders the (position-)truthful
-  fade through the field.
+- ~~**GAS's restart-launch speed dropout**~~ — **superseded by Slice 9m** (the
+  second re-watch found the same stuck-channel class behind COL's phantom P1
+  at 1:52.7 and mapped the blast radius: 78 runs across the two 2026 windows,
+  once per lap at a fixed track position per car; GAS's launch instance was
+  the first sighting).
 - WebGL/3D escalation **only** if measured 20-car perf demands it (documented path).
 - Track-surface niceties: kerbs, sector coloring, mini-map.
 - Ghost/delta vs a reference lap; multi-lap stints.

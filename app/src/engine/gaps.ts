@@ -693,7 +693,11 @@ function travelAt(index: ProgressIndex, car: number, t: number): number {
  * The residual as a first-class reading (Slice 19): `carState.ts` classifies a car as
  * OFF-LINE from it, which needs the value even where `gapTo` has already declined to
  * answer. `Infinity` on a degenerate index (`unitsPerMetre` 0) — a reference that never
- * moved has no line to be off.
+ * moved has no line to be off — and `Infinity` where the projection found nothing at
+ * all: an unprojectable point records an infinite residual, and interpolating between
+ * two of those is NaN, which would fail every comparison and read a car a megametre
+ * away as ON the line (found by the PIT label's test; `gapTo`'s `!(x <= bound)` gate
+ * happened to swallow the NaN, so it never showed as a dash).
  */
 export function residualAt(
   index: ProgressIndex,
@@ -701,9 +705,10 @@ export function residualAt(
   now: number,
 ): number {
   if (index.unitsPerMetre === 0) return Infinity;
-  return (
-    at(index.residual[carIndex], now * index.sampleRateHz) / index.unitsPerMetre
-  );
+  const residualM =
+    at(index.residual[carIndex], now * index.sampleRateHz) /
+    index.unitsPerMetre;
+  return Number.isFinite(residualM) ? residualM : Infinity;
 }
 
 /**

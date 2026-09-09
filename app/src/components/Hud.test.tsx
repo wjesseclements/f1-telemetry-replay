@@ -12,7 +12,7 @@ import sampleLap from "../engine/__fixtures__/sample-lap.json";
 import { parseReplay } from "../engine/load";
 import type { CarSnapshot } from "../engine/interpolate";
 import type { Replay } from "../engine/schema";
-import { GAP_OUT, NO_VALUE } from "../engine/format";
+import { GAP_DNF, GAP_PIT, NO_VALUE } from "../engine/format";
 import { SWATCH_MIN_LUMINANCE, floorLuminance } from "../engine/color";
 import {
   COMPARISON_MIN_LUMINANCE,
@@ -498,11 +498,14 @@ describe("Hud timing tower", () => {
     expect(container.textContent).toMatch(/\d+ m/);
   });
 
-  it("renders an em dash, not a zero, when the gap has no answer", () => {
-    // Nowhere near the circuit — a pit lane, a spin, or a car in its garage.
+  it("labels a car off the line PIT — one word where the two gap columns were", () => {
+    // Nowhere near the circuit — a pit lane, a spin, or a car in its garage. The
+    // copy ruling's PIT label (see GAP_PIT's caveat) replaces the seconds AND the
+    // metres columns: one label, not a label beside a dash, and never a zero.
     renderTower(4, atSample(20), offPathReplay);
-    // Both columns go blank together: there is one answer, and it is "no answer".
-    expect(screen.getAllByText(NO_VALUE)).toHaveLength(2);
+    expect(screen.getByText(GAP_PIT)).toBeInTheDocument();
+    expect(screen.queryByText(NO_VALUE)).toBeNull();
+    expect(screen.queryByText(/[+-]\d/)).toBeNull();
   });
 
   it("puts the car ahead above the car behind", () => {
@@ -1015,7 +1018,7 @@ describe("Hud tower states (Slice 19)", () => {
     expect(order[0]).toMatch(/FOC/);
     expect(order[1]).toMatch(/RUN/);
     expect(order[2]).toMatch(/GON/);
-    expect(order[2]).toContain(GAP_OUT);
+    expect(order[2]).toContain(GAP_DNF);
     // RUN, 1 s behind the focus, keeps its number: one car's retirement is not
     // everyone's blackout.
     expect(screen.getByText("+1.000")).toBeInTheDocument();
@@ -1039,7 +1042,7 @@ describe("Hud tower states (Slice 19)", () => {
     // The parked exhibit: LEC focused read as leading everyone by up to a lap. Now:
     // no number anywhere, OUT on the focused row, and the running order intact.
     expect(screen.queryByText(/^[+-]\d/)).toBeNull();
-    expect(screen.getAllByText(GAP_OUT)).toHaveLength(1);
+    expect(screen.getAllByText(GAP_DNF)).toHaveLength(1);
     expect(screen.getByRole("button", { name: /^GON/ })).toHaveAttribute(
       "aria-pressed",
       "true",
@@ -1056,7 +1059,7 @@ describe("Hud tower states (Slice 19)", () => {
       { driver: "GON", samples: ringSamples(20), retiredAt: 10 },
     );
     renderStates(replay, 5);
-    expect(screen.queryByText(GAP_OUT)).toBeNull();
+    expect(screen.queryByText(GAP_DNF)).toBeNull();
     expect(screen.getByText("-2.000")).toBeInTheDocument();
   });
 
@@ -1080,18 +1083,18 @@ describe("Hud tower states (Slice 19)", () => {
 
     const order = rows().map((b) => b.textContent ?? "");
     expect(order[2]).toMatch(/BOX/);
-    expect(order[2]).toContain(NO_VALUE);
+    expect(order[2]).toContain(GAP_PIT);
     expect(order[2]).not.toMatch(/[+-]\d/);
 
     // Once it is rolling it has JOINED: the row sorts by progress again — its lane
     // runs ahead of the reference, so it holds P1 — but an off-line car still shows
-    // no number: a row is a position, a number is a claim.
+    // no number, just the PIT label: a row is a position, a number is a claim.
     cleanup();
     telemetry.reset();
     renderStates(replay, 5);
     const later = rows().map((b) => b.textContent ?? "");
     expect(later[0]).toMatch(/BOX/);
-    expect(later[0]).toContain(NO_VALUE);
+    expect(later[0]).toContain(GAP_PIT);
     expect(later[0]).not.toMatch(/[+-]\d/);
   });
 
@@ -1136,7 +1139,7 @@ describe("Hud tower states (Slice 19)", () => {
       const order = rows().map((b) => b.textContent ?? "");
       expect(order).toHaveLength(3);
       expect(order[2]).toMatch(/PRE/);
-      expect(order[2]).toContain(GAP_OUT);
+      expect(order[2]).toContain(GAP_DNF);
       const pre = screen.getByRole("button", { name: /^PRE/ });
       expect(pre.className).toContain("grayscale");
       fireEvent.click(pre);

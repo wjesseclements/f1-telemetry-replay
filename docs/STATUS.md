@@ -25,32 +25,24 @@ branches on every module; drawcall md5s IDENTICAL on both render modes (the canv
 is untouched); assets, schema and pipeline untouched on disk; the whole tower
 derivation measured at 6.0 µs per tick on the 22-car asset.
 
-**What is open, and what is blocked.** **Slice 19 is on PR #70 awaiting the
-human's re-watch** after its first watch returned three findings, all resolved
-in-branch (the 2024 pit-window change, the blank-all reference and the declined
-schema fields were RATIFIED at that watch): the sort key is now `progressKeyAt` —
-the watch's ruling that the running order is ALWAYS by track progress and a gap
-can never reorder a row, which retired the 9d seconds-key theorem where a standing
-start breaks it; a car retired before the window opens is pinned to render (grey,
-OUT, bottom — the restart's missing LEC turned out to be the DATA: that asset has
-carried 21 cars and no LEC since Slice 17, and listing him is a pipeline decision
-filed for the human); and the speed trace now rides inside the focused row's
-readout block, 375 px verified headless. **The board
-after 19: 21 (tower reshuffle animation) → 16 (pit-lane drawing) → 9k (NOR's
-relocation, adjudicated against 16's pit-lane geometry) → 18 (corner lore) →
-20 (Aston/Cadillac colour).** **Nothing is blocked**; the standing constraint
-remains: `build_replay.py` runs only from the human's home network (CLAUDE.md
-Gotchas).
+**What is open, and what is blocked.** **Slice 19 is DONE and ACCEPTED**
+(2026-09-09, PR #70, auto-merge enabled): the tower renders the data truthfully —
+the second re-watch's 1:52.7 "COL P1" was diagnosed read-only down to its
+mechanism, and it is the DATA: F1's feed drops per car once a lap at a fixed spot
+in both 2026 Monza windows (78 stuck-speed runs; zero in 2024), freezing speed at
+pace while the position dead-reckons forward, and travel-driven placement
+amplifies each dropout into a phantom surge until the next anchor. Copy ruled at
+acceptance: retired = DNF, off-line = PIT; the restart entry carries a
+known-artifact provenance note until the fix ships. **The board, resequenced at
+acceptance: 9m (stuck-channel dropout screen — detector corpus-calibrated in the
+9-series method, placement bridged across dropouts, 2026 assets regenerated) →
+21 (tower reshuffle animation) → 16 (pit-lane drawing) → 9k → 18 → 20.**
+**Nothing is blocked**; the standing constraint remains: `build_replay.py` runs
+only from the human's home network (CLAUDE.md Gotchas).
 
-**What happens next.** The human re-judges the launch with the diagnosis in
-hand: the re-watched "COL yo-yo" was instrumented in the browser (headless CDP,
-DOM sampled at 30 Hz on both deployed artifacts) and is the DATA's own story —
-COL genuinely reaches second-furthest-along in the T1 braking scrum (raw
-positions confirm the projection to the metre), which no timing-line
-classification would show, and the rendered order is now pinned to progress
-truth by a browser-path test over the real asset. Two follow-ups fell out:
-GAS's speed channel sticks at 218 km/h for five seconds through the launch
-while his position falls back (a resuming dropout, 9l's declined class —
-backlog), and Slice 21's reshuffle animation is the legibility remedy for
-teleporting rows at watch speed. Then 21 → 16 → 9k → 18 → 20 per the board,
-and the backlog's headline **fixture asymmetry overhaul** behind them.
+**What happens next.** **Slice 9m** — the stuck-channel dropout screen, filed
+with its diagnosis already complete in Slice 19's PLAN entry (source-verified
+mechanism, blast radius mapped, the HUD's frozen throttle-AND-brake signature
+recorded as a second detector input, negative controls named: pit limiter,
+flat-out running, the whole 2024 corpus). Then 21 → 16 → 9k → 18 → 20 per the
+board, and the backlog's headline **fixture asymmetry overhaul** behind them.

@@ -207,6 +207,7 @@ export function Hud({ replay }: HudProps) {
             gap={gaps[i]}
             tyre={tyres[i]}
             retired={carStates[i].retired}
+            offline={carStates[i].offline}
             focused={i === focusedCarIndex}
             compared={i === comparisonCarIndex}
             onFocus={() => setFocusedCarIndex(i)}

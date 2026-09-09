@@ -633,20 +633,24 @@ function escapeRe(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-describe("the featured panel's data-artifact note (retired by Slice 9l)", () => {
+describe("the featured panel's data-artifact note (Slice 19: the restart discloses)", () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
   });
 
-  it("renders NO artifact note anywhere — the dead-feed freeze made the replay honest", () => {
-    // Slice 17 disclosed LEC's fabricated half-lap in a provenance note; 9l
-    // froze the car at the wall instead, so the disclosure is retired. The
-    // committed manifest carrying zero notes is the fact worth pinning here;
-    // the rendering branch itself stays covered in FeaturedPanel.note.test.tsx.
-    expect(SCENARIOS.every((s) => s.provenance.note === undefined)).toBe(true);
+  it("renders exactly ONE artifact note — the restart's stuck-channel disclosure", () => {
+    // Slice 17 disclosed LEC's fabricated half-lap; 9l froze the car and retired
+    // that note. Slice 19's second re-watch found the next feed failure the
+    // pipeline cannot yet repair — per-car stuck-channel dropouts in the 2026
+    // windows, COL's phantom P1 at 1:52 — so the RESTART entry discloses until
+    // Slice 9m ships the screen. One note, on that entry alone: honesty next to
+    // the data, and nothing else has anything to disclose. The rendering branch
+    // itself stays covered in FeaturedPanel.note.test.tsx.
+    const noted = SCENARIOS.filter((s) => s.provenance.note !== undefined);
+    expect(noted.map((s) => s.id)).toEqual(["monza-2026-restart"]);
     useTransport.setState({ replay });
     render(<App />);
-    expect(screen.queryByText(/Known data artifact/)).not.toBeInTheDocument();
+    expect(screen.getByText(/telemetry feed drops/)).toBeInTheDocument();
   });
 });
