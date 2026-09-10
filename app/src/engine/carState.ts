@@ -39,11 +39,13 @@
  *  - A RETIRED car's gap cell says OUT (rendered by the tower), sorts last, and the
  *    row greys — the broadcast treatment. Still focusable: focus is selection, not
  *    a claim about motion.
- *  - A car that is OFF-LINE or STATIONARY gets no number — an em dash, the module's
- *    existing "no honest answer" mark, NOT a "PIT" label: the data carries no
- *    pit-lane fact, and the corpus contains at-speed off-track excursions (ALO,
- *    restart window: three, 1.4–4.9 s, up to 310 km/h) that a PIT label would
- *    mislabel. Slice 16's pit-lane geometry is the honest upgrade path.
+ *  - A car that is OFF-LINE or STATIONARY gets no number. The word the tower may
+ *    put in the number's place is the `pit` flag's decision (Slice 16): "PIT"
+ *    when the file's pit-lane geometry agrees (or carries no geometry to
+ *    disagree — the pre-16 rendering, ratified at 9m's watch, stands for old
+ *    files), an em dash when the car is off-line far from a known lane — the
+ *    at-speed off-track excursion (ALO, restart window: three, up to 310 km/h)
+ *    that a blanket PIT label used to mislabel.
  *  - A focused car that is not racing blanks EVERY number (the rows keep their
  *    order). The alternatives were re-referencing to the leader — a silent change of
  *    what the column means, mid-replay — or freezing the last moving reference,
@@ -62,6 +64,7 @@
  */
 import type { Replay } from "./schema";
 import { residualAt, travelSoFarM, type ProgressIndex, type Gap } from "./gaps";
+import { distanceToPitLane } from "./pitLane";
 
 /**
  * Below this a car is "not moving", in km/h.
@@ -110,6 +113,23 @@ export const STATIONARY_MIN_S = 1.0;
  * re-opens it.
  */
 export const OFFLINE_RESIDUAL_M = 10;
+
+/**
+ * An OFF-LINE car within this many metres of `track.pitLane` is IN the pit lane,
+ * and the tower may say PIT about it honestly (Slice 16 — the upgrade this
+ * module's header and `GAP_PIT` both promised).
+ *
+ * Measured over the emitted lanes: every true pit traversal's samples sit 0–3.8 m
+ * from the file's lane polyline (3.8 is another team's pit box across the lane),
+ * while every off-line moment that is NOT the pit lane — ALO's at-speed
+ * excursions, NOR's displaced pit-entry branch, PIA's dead-reckon residue — sits
+ * 224 m and further from it. 25 sits inside that empty band with ~7x margin to
+ * the near population and ~9x to the far one, and is deliberately the same
+ * magnitude as `gaps.ts`'s `MAX_RESIDUAL_M` trust bound: "near" at the scale the
+ * projection itself considers meaningful. A corpus fact, not a law, like the
+ * bound above.
+ */
+export const PIT_NEAR_M = 25;
 
 /**
  * A stationary spell at least this long is a HOLD — a standing period gaps must not be
@@ -196,6 +216,17 @@ export interface CarState {
   offline: boolean;
   /** Inside a sustained below-floor spell. */
   stationary: boolean;
+  /**
+   * What the tower may CALL the off-line state (Slice 16): true when the car is
+   * off-line AND either the file carries no pit-lane geometry (no evidence
+   * either way — the pre-16 rendering stands, so old files change nothing) or
+   * the car is within `PIT_NEAR_M` of the lane the file does carry. An
+   * off-line car FAR from a known lane gets `pit: false`, and the tower falls
+   * back to the em dash — the honest non-claim for a genuine off-track moment
+   * (the ALO caveat recorded at `GAP_PIT`, resolved for files with geometry).
+   * A label decision only: `offline` keeps driving the gap and racing rules.
+   */
+  pit: boolean;
   /** Has covered at least `JOINED_TRAVEL_M` since the window opened. */
   joined: boolean;
   /**
@@ -311,18 +342,49 @@ export function carStateAt(
 ): CarState {
   const car = replay.cars[carIndex];
   const dropout = within(index.dropouts[carIndex], clock);
+  // A dropout CLEARS offline: the bridged position can wobble within a metre of the
+  // line, which the residual test would read as off-line and the tower would spell
+  // PIT — but the pipeline has flagged this as a dropped feed, which is not a pit
+  // stop. NO SIGNAL is the honest label, and `dropout` carries it.
+  const offline =
+    !dropout && residualAt(progress, carIndex, clock) > OFFLINE_RESIDUAL_M;
   return {
     retired: car.retiredAt !== undefined && clock >= car.retiredAt,
-    // A dropout CLEARS offline: the bridged position can wobble within a metre of the
-    // line, which the residual test would read as off-line and the tower would spell
-    // PIT — but the pipeline has flagged this as a dropped feed, which is not a pit
-    // stop. NO SIGNAL is the honest label, and `dropout` carries it.
-    offline:
-      !dropout && residualAt(progress, carIndex, clock) > OFFLINE_RESIDUAL_M,
+    offline,
     stationary: within(index.stationary[carIndex], clock),
     joined: travelSoFarM(progress, carIndex, clock) >= JOINED_TRAVEL_M,
     dropout,
+    pit: offline && nearPitLane(replay, progress, carIndex, clock),
   };
+}
+
+/**
+ * Is this car near `track.pitLane` right now? Vacuously true for a file with no
+ * lane geometry — absence of evidence keeps the pre-16 PIT rendering, it does
+ * not overturn it. Position is read at the nearest sample (O(1), the rule-3
+ * lookup): at pit speeds a half-step is ~1 m against a 25 m bound. A degenerate
+ * metre bridge (`unitsPerMetre` 0 — a reference that never moved) makes the
+ * distance unanswerable, and an unanswerable "near?" is false: the em dash
+ * cannot lie, a PIT label could.
+ */
+function nearPitLane(
+  replay: Replay,
+  progress: ProgressIndex,
+  carIndex: number,
+  clock: number,
+): boolean {
+  if (replay.track.pitLane.length === 0) return true;
+  if (progress.unitsPerMetre === 0) return false;
+  const samples = replay.cars[carIndex].samples;
+  const k = Math.min(
+    samples.length - 1,
+    Math.max(0, Math.round(clock * replay.meta.sampleRateHz)),
+  );
+  const s = samples[k];
+  return (
+    distanceToPitLane(replay.track, s.x, s.y) / progress.unitsPerMetre <=
+    PIT_NEAR_M
+  );
 }
 
 /**

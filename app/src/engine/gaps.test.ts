@@ -62,7 +62,7 @@ function replayOf(...cars: Sample[][]): Replay {
       track: "Test",
       session: "R",
     },
-    track: { corners: [], startFinish: { x: 0, y: 0, angle: 0 } },
+    track: { corners: [], startFinish: { x: 0, y: 0, angle: 0 }, pitLane: [] },
     cars: cars.map((samples, i) => ({
       driver: `C${i}`,
       team: "Test",

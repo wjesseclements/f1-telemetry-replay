@@ -43,6 +43,13 @@ export interface SceneCorner {
 export interface Scene {
   /** The track ribbon, in rotated world coordinates. */
   ribbon: readonly Point[];
+  /**
+   * The pit lane's polyline(s), rotated like the ribbon — `track.pitLane`
+   * (Slice 16), each one a path some car actually drove. Usually one; empty for
+   * a file with no pit traversal, which draws exactly as before the field
+   * existed.
+   */
+  pitLanes: readonly (readonly Point[])[];
   /** Every car's rotated path, in `replay.cars` order. */
   carPaths: readonly (readonly Point[])[];
   /**
@@ -114,6 +121,18 @@ export interface Viewport {
 /** Exported so a test can pick the ribbon's stroke out of a recording by width. */
 export const TRACK_EDGE_WIDTH = 13;
 const TRACK_FILL_WIDTH = 9;
+/**
+ * The pit lane is the circuit ribbon in miniature — the same two strokes, the
+ * same two colour tokens, at a narrower gauge (7/4 against 13/9, keeping the
+ * ribbon's 1.5–2 px of visible edge each side). Same tokens, deliberately: a
+ * service road is made of the same tarmac, it is just narrower — and reusing
+ * `line`/`trackFill` means no new palette token and no way for the lane to
+ * drift off-theme. Exported for the same by-width test selection as the
+ * ribbon's — and the widths must stay distinct from `TRACK_EDGE_WIDTH`'s pair,
+ * or that selection goes ambiguous.
+ */
+export const PIT_EDGE_WIDTH = 7;
+const PIT_FILL_WIDTH = 4;
 const CAR_GLOW_RADIUS = 6.5;
 const CAR_CORE_RADIUS = 3;
 const CAR_HEADING_LENGTH = 12;
@@ -145,9 +164,13 @@ export function buildScene(replay: Replay): Scene {
   );
   const ribbon = carPaths[0];
   const centre = centroid(ribbon);
+  const pitLanes = replay.track.pitLane.map((poly) =>
+    toScreenPoints(poly, rotation),
+  );
 
   return {
     ribbon,
+    pitLanes,
     carPaths,
     // The bucket of the segment LEAVING sample k, so index k is the trail segment
     // k → k+1. The last entry is only ever used by the head segment.
@@ -157,7 +180,10 @@ export function buildScene(replay: Replay): Scene {
     carCometBuckets: replay.cars.map((car) =>
       Uint8Array.from(car.samples, (s) => bucketOf(s.speed, COMET_BUCKETS)),
     ),
-    bounds: computeBounds(carPaths.flat()),
+    // Bounds span every car AND the pit lane: today's lanes are made of car
+    // samples so they add nothing, but a hand-made file whose lane outreaches
+    // its cars must not be fitted out of frame.
+    bounds: computeBounds([...carPaths.flat(), ...pitLanes.flat()]),
     rotationDeg: rotation,
     carColors: replay.cars.map((car) => car.color),
     carRetiredIndex: replay.cars.map((car) =>
@@ -238,6 +264,11 @@ export function drawFrame(
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
 
+  // UNDER the circuit ribbon, deliberately: the lane's entry and exit reach the
+  // racing line, and drawing the ribbon second lets it cover those joins so the
+  // lane appears to merge from beneath the track instead of lying over it —
+  // and everything that moves still draws above both.
+  if (paths.pitLane !== null) drawPitLane(ctx, paths.pitLane, colors);
   drawRibbon(ctx, paths.ribbon, colors);
 
   // Car positions are needed twice — by the trail's head segment here, and by the
@@ -288,6 +319,24 @@ export function drawFrame(
     const draw = i === focusedIndex ? drawFocusedCar : drawUnfocusedCar;
     draw(ctx, at[i * 2], at[i * 2 + 1], heading, scene.carColors[i], colors);
   }
+}
+
+/**
+ * The pit lane: the ribbon's own two strokes at the narrow gauge. One retained
+ * `Path2D` holds every polyline as a subpath, so a multi-segment lane is still
+ * exactly two stroke calls per frame — constant, independent of car count.
+ */
+function drawPitLane(
+  ctx: CanvasRenderingContext2D,
+  pitLane: Path2D,
+  colors: ChromeColors,
+): void {
+  ctx.strokeStyle = colors.line;
+  ctx.lineWidth = PIT_EDGE_WIDTH;
+  ctx.stroke(pitLane);
+  ctx.strokeStyle = colors.trackFill;
+  ctx.lineWidth = PIT_FILL_WIDTH;
+  ctx.stroke(pitLane);
 }
 
 /** The faint closed loop of the circuit: a light edge with a darker fill on top. */

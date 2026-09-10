@@ -120,11 +120,38 @@ def _race_window() -> "dict":
     )
 
 
+def _pit_window() -> "dict":
+    """
+    Two cars, one pit lane (Slice 16): AAA is the clean reference whose single
+    whole lap is the detector's racing line; BBB leaves the circle onto the
+    asymmetric dogleg, stops at its elbow, and rejoins — so the committed file
+    carries a `track.pitLane` whose every point is a sample BBB drove. Kept to
+    one lap and two cars for the same diffability reason RACE_WINDOW is 4 s.
+    """
+    start, end = synthetic.PIT_WINDOW
+    return build_window_replay_dict(
+        [
+            synthetic.window_car(
+                "AAA",
+                synthetic.session_telemetry(start, end),
+                *lap_context(*synthetic.PIT_LAP_TABLE_REF, synthetic.PIT_WINDOW),
+            ),
+            synthetic.window_car(
+                "BBB", synthetic.pit_session_telemetry(start, end)
+            ),
+        ],
+        synthetic.SESSION_META,
+        synthetic.PIT_WINDOW,
+        corners=synthetic.CORNERS,
+    )
+
+
 #: name -> the exact call that produced the committed file.
 CASES = {
     "lap-drs": lambda: _lap(True, synthetic.META, synthetic.LAP_TABLE_DRS),
     "lap-nodrs": lambda: _lap(False, synthetic.META_NO_DRS, synthetic.LAP_TABLE_NODRS),
     "race-window": _race_window,
+    "race-window-pit": _pit_window,
 }
 
 

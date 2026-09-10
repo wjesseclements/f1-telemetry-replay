@@ -50,8 +50,8 @@
  * PARAMETERS, fixed so two runs are comparable (Slice 10's, reproduced)
  * --------------------------------------------------------------------
  *  - the committed fixture `app/src/engine/__fixtures__/sample-lap.json`: 1 car, 585
- *    samples at 10 Hz, 58.5 s, 9 corners. Never a gitignored real file, so anyone can
- *    reproduce a digest.
+ *    samples at 10 Hz, 58.5 s, 9 corners, and (since Slice 16) a 5-point synthetic
+ *    pit-lane polyline. Never a gitignored real file, so anyone can reproduce a digest.
  *  - **701 frames at 100 ms**, playing at 1x from clock 0 — 70.0 s over a 58.5 s lap, so
  *    a full wrap is inside the run and the closed-mode trail's rebuild is captured.
  *  - viewport 1176x657 CSS px at dpr 2 (the canvas Slice 12 measured on).
@@ -59,10 +59,17 @@
  *  - `open` mode reuses the same fixture with `meta.loop` overridden, so the two modes
  *    differ in the painter and in nothing else.
  *
- * KNOWN-GOOD CROSS-CHECK. On unmodified code before Slice 9c this prints
- * **closed: 79,213 calls / 19 Path2D** and **open: 107,010 calls / 1 Path2D** — the
- * figures Slices 9b, 10 and 12 all recorded. If a future run does not reproduce those on
- * unchanged code, the harness has drifted, not the app.
+ * KNOWN-GOOD CROSS-CHECK. On unmodified code since Slice 16 this prints
+ * **closed: 80,615 calls / 20 Path2D, md5 cb43a0f8f3a91e99718acf9cf7a05e71** and
+ * **open: 113,388 calls / 2 Path2D, md5 e30b5b6e59fa23d56cf65244ae76431c**. If a future
+ * run does not reproduce those on unchanged code, the harness has drifted, not the app.
+ * The pre-16 baselines (closed 79,213 / 19, md5 04506b72…; open 111,986 / 1, md5
+ * 0aea33a3…) differ by EXACTLY +1,402 calls (2 pit-lane strokes x 701 frames) and
+ * +1 Path2D — the deliberate re-baseline recorded in PLAN Slice 16, the first canvas
+ * change since the 9e family. (This header's previous cross-check quoted 107,010
+ * open calls — the pre-9c figure, never updated when 9c/9e re-baselined; the md5s
+ * recorded in PLAN were always the baseline of record, and both reproduced
+ * bit-for-bit in Slice 16's BEFORE capture.)
  *
  * WHAT IT DOES NOT MEASURE, stated next to what it does
  * ----------------------------------------------------

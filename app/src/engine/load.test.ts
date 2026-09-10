@@ -272,6 +272,46 @@ describe("parseReplay — uniform-grid guard", () => {
   });
 });
 
+describe("parseReplay — track.pitLane (Slice 16)", () => {
+  it("defaults an absent field to [] — pre-16 files parse and mean 'no lane'", () => {
+    const bare = clone();
+    delete bare.track.pitLane;
+    expect(parseReplay(bare).track.pitLane).toEqual([]);
+  });
+
+  it("accepts driven polylines and preserves their points in order", () => {
+    const withLane = clone();
+    withLane.track.pitLane = [
+      [
+        { x: 1.5, y: 2 },
+        { x: 3, y: 4 },
+        { x: 5, y: 4.5 },
+      ],
+    ];
+    expect(parseReplay(withLane).track.pitLane).toEqual(withLane.track.pitLane);
+  });
+
+  it("rejects a one-point polyline, naming the path — a point is not a lane", () => {
+    const bad = clone();
+    bad.track.pitLane = [[{ x: 1, y: 2 }]];
+    const err = expectRejection(bad);
+    expect(err.message).toContain("track.pitLane[0]");
+    expect(err.message).toContain("at least 2 points");
+  });
+
+  it("rejects a malformed point", () => {
+    const bad = clone();
+    bad.track.pitLane = [
+      [
+        { x: 1, y: 2 },
+        { x: "3", y: 4 },
+      ],
+    ];
+    const err = expectRejection(bad);
+    expect(err.message).toContain("track.pitLane[0][1].x");
+  });
+});
+
 describe("parseReplay — meta.loop", () => {
   // `loop` tells the engine whether the samples are a CYCLE (a lap) or an open
   // session-time window (v2). It is additive within schemaVersion 1, which only

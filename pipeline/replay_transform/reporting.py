@@ -18,6 +18,7 @@ from .placement import KMH_S_PER_METRE, covers_ground, cumulative_travel
 from .repair import FixRejection, FrameDisplacement, ReversalRejection
 from .assembly import AnchorPlan, WindowCar
 from .dead_feed import DEAD_FEED_WINDOW_S, DeadFeedResult
+from .pit_lane import detect_pit_lane
 from .stuck_channel import StuckResult
 
 def stint_report(driver: str, laps: "Sequence[Mapping[str, Any]]", stints: "Sequence[Mapping[str, Any]]") -> str:
@@ -319,6 +320,70 @@ def anchor_report(driver: str, plan: "AnchorPlan") -> str:
         f"  {driver}: {n} extra anchor(s) - {len(plan.loop)} S/F crossing(s), "
         f"{len(plan.pit)} pit-span edge(s), {len(plan.stuck)} stuck-bridge edge(s)"
     )
+
+
+def pit_lane_report(
+    replay: "Mapping[str, Any]", declined_drivers: "Sequence[str]" = ()
+) -> str:
+    """
+    The pit lane (Slice 16), recomputed FROM THE EMITTED FILE — samples, laps and
+    all — through the same `detect_pit_lane` the builder ran, so the log and the
+    file agree by construction (the builder detects over emitted samples for
+    exactly this reason). Silent-never: a window with no traversal says so, and
+    a recomputation that disagrees with what the file carries is the loudest
+    line this can print, because it means the builder and the report were not
+    handed the same declined-driver facts.
+    """
+    cars = replay["cars"]
+    pit = detect_pit_lane(
+        [
+            (
+                str(car["driver"]),
+                [s["x"] for s in car["samples"]],
+                [s["y"] for s in car["samples"]],
+                [s["speed"] for s in car["samples"]],
+                str(car["driver"]) in set(declined_drivers),
+            )
+            for car in cars
+        ],
+        [lap["startT"] for lap in cars[0]["laps"]] or [0.0],
+        float(replay["meta"]["sampleRateHz"]),
+    )
+    lines = ["  pit lane:"]
+    if pit.n == 0:
+        lines.append("  none - no off-line span containing a stop, no geometry emitted")
+    rate = float(replay["meta"]["sampleRateHz"])
+    elected = {(t.driver, t.start_i) for t in pit.lane}
+    for t in pit.traversals:
+        clip = "".join(
+            [" [clipped at window start]" if t.clipped_start else "",
+             " [clipped at window end]" if t.clipped_end else ""]
+        )
+        if t.driver in pit.excluded:
+            verdict = "EXCLUDED - declined displacement; geometry inadmissible"
+        elif (t.driver, t.start_i) in elected:
+            verdict = "elected"
+        else:
+            verdict = "redundant (same lane already covered)"
+        lines.append(
+            f"  {t.driver}: traversal {t.start_i / rate:.1f}-{t.end_i / rate:.1f} s, "
+            f"stop {t.stop_s:.1f} s, max {t.max_res_m:.1f} m off-line{clip} - {verdict}"
+        )
+    emitted = replay["track"].get("pitLane", [])
+    recomputed = [[dict(p) for p in poly] for poly in pit.polylines]
+    if emitted != recomputed:
+        lines.append(
+            "  MISMATCH: the file's track.pitLane differs from this recomputation - "
+            "the builder and the report disagree about declined drivers; trust neither "
+            "until that is resolved"
+        )
+    elif pit.polylines:
+        pts = " + ".join(str(len(p)) for p in pit.polylines)
+        lines.append(
+            f"  emitted: {len(pit.polylines)} polyline(s), {pts} point(s) - matches "
+            f"this recomputation"
+        )
+    return "\n".join(lines)
 
 
 def reversal_report(driver: str, r: "ReversalRejection | None", offset: float = 0.0) -> str:

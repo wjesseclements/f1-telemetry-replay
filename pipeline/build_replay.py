@@ -72,6 +72,7 @@ from replay_transform import (
     closing_time,
     color_lookup_warning,
     anchor_report,
+    pit_lane_report,
     fix_rejection_report,
     reject_reversals,
     reversal_report,
@@ -586,6 +587,7 @@ def report_window(replay, window, cars, coverage, compact: bool = False) -> None
     # builder screens what the repair handed it.
     print("  position screening:")
     worst_share = 0.0
+    declined_drivers = []
     for car in cars:
         # Bridge the stuck-channel dropouts FIRST, exactly as the builder does, so every
         # screen below sees the same telemetry the builder screened and the log cannot
@@ -614,12 +616,12 @@ def report_window(replay, window, cars, coverage, compact: bool = False) -> None
         ))
         # The anchor plan (Slice 9i/9m), recomputed from the same pure function the
         # builder used on the same inputs, so the file and the log cannot disagree.
-        print(anchor_report(
-            str(car.driver),
-            window_anchor_plan(
-                b_t, b_v, repair, car, window[0], stuck_anchors=stuck_anchors,
-            ),
-        ))
+        plan = window_anchor_plan(
+            b_t, b_v, repair, car, window[0], stuck_anchors=stuck_anchors,
+        )
+        if plan.declined:
+            declined_drivers.append(str(car.driver))
+        print(anchor_report(str(car.driver), plan))
     if worst_share > REJECTED_FIX_WARN_SHARE:
         print(
             f"\nWARNING: a car lost {worst_share*100:.1f}% of its position fixes, over "
@@ -629,6 +631,11 @@ def report_window(replay, window, cars, coverage, compact: bool = False) -> None
             f"low - and bridging it invents a racing line rather than repairing one.\n"
             f"  Check the source telemetry before using this replay.\n"
         )
+
+    # The pit lane (Slice 16): recomputed from the EMITTED file through the same
+    # pure function the builder ran, with the declined-driver facts recomputed
+    # just above — the report itself checks that file and recomputation agree.
+    print(pit_lane_report(replay, declined_drivers))
 
     # What was actually WRITTEN, read back off the replay dict rather than
     # recomputed, so the report and the file cannot disagree. A strange session —

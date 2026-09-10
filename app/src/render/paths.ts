@@ -53,6 +53,13 @@ export interface ScenePaths {
   /** The closed track outline, retained so the frame does not rebuild it. */
   ribbon: Path2D;
   /**
+   * The pit lane, retained like the ribbon (Slice 16) — one `Path2D` holding
+   * every polyline as an OPEN subpath (a lane has an entry and an exit; only a
+   * lap closes). `null` for a replay with no lane, so the frame skips it with
+   * one comparison and a pit-less file draws byte-for-byte as before.
+   */
+  pitLane: Path2D | null;
+  /**
    * The painter each car gets WHEN FOCUSED, in `replay.cars` order (rule 2: an array).
    *
    * Which implementation that is depends on `meta.loop` and is decided HERE, once, not
@@ -107,6 +114,7 @@ export function buildScenePaths(scene: Scene, fit: FitTransform): ScenePaths {
 
   return {
     ribbon: buildRibbonPath(scene.ribbon, fit),
+    pitLane: buildPitLanePath(scene.pitLanes, fit),
     // The mode decides the focused car's painter once, here. A closed lap gets no
     // comet and an open window gets no retained trail — neither is built, so neither
     // can be reached by a later edit that forgets which mode it is in.
@@ -157,6 +165,27 @@ function buildRibbonPath(ribbon: readonly Point[], fit: FitTransform): Path2D {
   // A lap ends where it starts, so the outline is closed rather than left with a gap
   // across the start/finish line.
   path.closePath();
+  return path;
+}
+
+/**
+ * The pit lane's polylines as one retained path of OPEN subpaths — no
+ * `closePath`: a lane is a road between two points on the circuit, and closing
+ * it would stroke a phantom chord from exit back to entry.
+ */
+function buildPitLanePath(
+  pitLanes: readonly (readonly Point[])[],
+  fit: FitTransform,
+): Path2D | null {
+  if (pitLanes.length === 0) return null;
+  const path = new Path2D();
+  for (const poly of pitLanes) {
+    for (let i = 0; i < poly.length; i++) {
+      const p = applyTransform(poly[i], fit);
+      if (i === 0) path.moveTo(p.x, p.y);
+      else path.lineTo(p.x, p.y);
+    }
+  }
   return path;
 }
 

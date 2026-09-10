@@ -15,6 +15,7 @@ import {
   HOLD_MIN_S,
   JOINED_TRAVEL_M,
   OFFLINE_RESIDUAL_M,
+  PIT_NEAR_M,
   STATIONARY_MAX_KMH,
   STATIONARY_MIN_S,
   buildCarStateIndex,
@@ -70,7 +71,7 @@ function replayOf(
       track: "Test",
       session: "R",
     },
-    track: { corners: [], startFinish: { x: 0, y: 0, angle: 0 } },
+    track: { corners: [], startFinish: { x: 0, y: 0, angle: 0 }, pitLane: [] },
     cars: cars.map((car, i) => ({
       driver: `C${i}`,
       team: "Test",
@@ -105,6 +106,7 @@ const racing: CarState = {
   stationary: false,
   joined: true,
   dropout: false,
+  pit: false,
 };
 const gapOf = (seconds: number): Gap => ({
   seconds,
@@ -195,6 +197,111 @@ describe("off-line, retired, joined", () => {
     expect(isRacing({ ...racing, dropout: true })).toBe(false);
     // A car on its first metres is racing — joined gates the SORT, not the state.
     expect(isRacing({ ...racing, joined: false })).toBe(true);
+  });
+});
+
+describe("the pit flag — PIT only where the geometry agrees (Slice 16)", () => {
+  // C1 rides 15 m outside the reference ring: off-line, the measured pit band.
+  const offRing = ring(2, 20, OFFLINE_RESIDUAL_M + 5);
+  const laneOf = (points: Sample[]) => points.map((s) => ({ x: s.x, y: s.y }));
+
+  function withLane(lane: { x: number; y: number }[][]): {
+    replay: Replay;
+    index: ReturnType<typeof buildCarStateIndex>;
+    progress: ReturnType<typeof buildProgressIndex>;
+  } {
+    const replay = replayOf(ring(2), offRing);
+    replay.track.pitLane = lane;
+    return {
+      replay,
+      index: buildCarStateIndex(replay),
+      progress: buildProgressIndex(replay),
+    };
+  }
+
+  it("no geometry: pit mirrors offline — the pre-16 rendering stands", () => {
+    const { replay, index, progress } = withLane([]);
+    expect(carStateAt(replay, progress, index, 1, 5).pit).toBe(true);
+    expect(carStateAt(replay, progress, index, 0, 5).pit).toBe(false);
+  });
+
+  it("off-line ON the file's lane says PIT; off-line far from it does not", () => {
+    // The lane is a stretch of the off-line car's own driven points — the shape
+    // the pipeline emits — so C1 sits ~0 m from it.
+    const near = withLane([laneOf(offRing.slice(40, 60))]);
+    expect(carStateAt(near.replay, near.progress, near.index, 1, 5).pit).toBe(
+      true,
+    );
+    // The same geometry moved 5 km away: off-track, not the pit lane. The em
+    // dash path — pit false while offline (and the racing rule) is untouched.
+    const far = withLane([
+      laneOf(offRing.slice(40, 60)).map((p) => ({
+        x: p.x + 5000,
+        y: p.y + 5000,
+      })),
+    ]);
+    const state = carStateAt(far.replay, far.progress, far.index, 1, 5);
+    expect(state.pit).toBe(false);
+    expect(state.offline).toBe(true);
+    expect(isRacing(state)).toBe(false);
+  });
+
+  it("probes PIT_NEAR_M from both sides", () => {
+    // Concentric lanes just inside and outside the bound (chord sag on this
+    // ring is ~0.02 m — the 0.5 m margins dwarf it). C1 is 15 m off the
+    // reference, so a lane at 15 + PIT_NEAR_M ∓ 0.5 m is 24.5 / 25.5 m away.
+    const nearLane = laneOf(
+      ring(1, 20, OFFLINE_RESIDUAL_M + 5 + PIT_NEAR_M - 0.5).slice(40, 60),
+    );
+    const farLane = laneOf(
+      ring(1, 20, OFFLINE_RESIDUAL_M + 5 + PIT_NEAR_M + 0.5).slice(40, 60),
+    );
+    expect(
+      carStateAt(
+        withLane([nearLane]).replay,
+        withLane([nearLane]).progress,
+        withLane([nearLane]).index,
+        1,
+        5,
+      ).pit,
+    ).toBe(true);
+    expect(
+      carStateAt(
+        withLane([farLane]).replay,
+        withLane([farLane]).progress,
+        withLane([farLane]).index,
+        1,
+        5,
+      ).pit,
+    ).toBe(false);
+  });
+
+  it("a dropout clears pit exactly as it clears offline — NO SIGNAL outranks PIT", () => {
+    const replay = replayOf(ring(2), {
+      samples: offRing,
+    });
+    replay.track.pitLane = [laneOf(offRing.slice(40, 60))];
+    replay.cars[1].dropouts = [{ fromT: 4, toT: 8 }];
+    const index = buildCarStateIndex(replay);
+    const progress = buildProgressIndex(replay);
+    const during = carStateAt(replay, progress, index, 1, 5);
+    expect(during.dropout).toBe(true);
+    expect(during.offline).toBe(false);
+    expect(during.pit).toBe(false);
+  });
+
+  it("a degenerate metre bridge never claims PIT — the dash cannot lie", () => {
+    // A parked reference leaves unitsPerMetre 0: residuals read Infinity (so the
+    // car is off-line) but no distance is answerable, and pit stays false even
+    // with lane geometry present.
+    const parked = ring(2).map((s) => ({ ...s, x: 100, y: 0, speed: 0 }));
+    const replay = replayOf(parked, offRing);
+    replay.track.pitLane = [laneOf(offRing.slice(40, 60))];
+    const index = buildCarStateIndex(replay);
+    const progress = buildProgressIndex(replay);
+    const state = carStateAt(replay, progress, index, 1, 5);
+    expect(state.offline).toBe(true);
+    expect(state.pit).toBe(false);
   });
 });
 
@@ -355,6 +462,7 @@ describe("orderKeyFor — who has a place in the running order", () => {
         stationary: true,
         joined: false,
         dropout: false,
+        pit: true,
       }),
     ).toBeNull();
   });

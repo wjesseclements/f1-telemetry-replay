@@ -148,7 +148,11 @@ function ringReplay(name: string, ...cars: RawCar[]): Replay {
         track: "Test",
         session: "R",
       },
-      track: { corners: [], startFinish: { x: 0, y: 0, angle: 0 } },
+      track: {
+        corners: [],
+        startFinish: { x: 0, y: 0, angle: 0 },
+        pitLane: [],
+      },
       cars: cars.map((car) => ({
         team: "Test",
         color: "#888888",

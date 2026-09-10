@@ -408,8 +408,13 @@ const laps = replay.cars[0].samples;
 /** How far ahead the second car runs, in samples. 20 at 10 Hz is exactly 2 s. */
 const SHIFT = 20;
 
-function shiftedTwoCarReplay(displaceX = 0): Replay {
+function shiftedTwoCarReplay(displaceX = 0, keepPitLane = false): Replay {
   const raw = JSON.parse(JSON.stringify(sampleLap));
+  // The fixture carries pit-lane geometry since Slice 16, which GATES the PIT
+  // label by distance. These tests displace a car arbitrarily far, so unless a
+  // test is ABOUT the gate it strips the lane and keeps the no-geometry
+  // semantics (PIT for any off-line car, the pre-16 rendering).
+  if (!keepPitLane) raw.track.pitLane = [];
   const n = raw.cars[0].samples.length;
   raw.cars.push({
     ...raw.cars[0],
@@ -429,6 +434,9 @@ function shiftedTwoCarReplay(displaceX = 0): Replay {
 const twoCarReplay: Replay = shiftedTwoCarReplay();
 /** The same pair, with the second car parked a long way off the circuit. */
 const offPathReplay: Replay = shiftedTwoCarReplay(1e6);
+/** ...and the same again with the fixture's pit-lane geometry kept, so the car
+ *  is off-line a megametre from a KNOWN lane — the label gate's dash case. */
+const offPathWithLaneReplay: Replay = shiftedTwoCarReplay(1e6, true);
 
 /** A snapshot sitting exactly where the focused car was at sample `k`. */
 const atSample = (k: number, over: Partial<CarSnapshot> = {}): CarSnapshot =>
@@ -505,6 +513,16 @@ describe("Hud timing tower", () => {
     renderTower(4, atSample(20), offPathReplay);
     expect(screen.getByText(GAP_PIT)).toBeInTheDocument();
     expect(screen.queryByText(NO_VALUE)).toBeNull();
+    expect(screen.queryByText(/[+-]\d/)).toBeNull();
+  });
+
+  it("withholds PIT when the file's own pit lane says otherwise (Slice 16)", () => {
+    // The same displaced car, but the fixture's pit-lane geometry is KEPT: a car
+    // a megametre from a known lane is off-track, not pitting, and the honest
+    // spelling is the em dash — no word, no number.
+    renderTower(4, atSample(20), offPathWithLaneReplay);
+    expect(screen.queryByText(GAP_PIT)).toBeNull();
+    expect(screen.getAllByText(NO_VALUE).length).toBeGreaterThan(0);
     expect(screen.queryByText(/[+-]\d/)).toBeNull();
   });
 
@@ -973,7 +991,11 @@ describe("Hud tower states (Slice 19)", () => {
           track: "Test",
           session: "R",
         },
-        track: { corners: [], startFinish: { x: 0, y: 0, angle: 0 } },
+        track: {
+          corners: [],
+          startFinish: { x: 0, y: 0, angle: 0 },
+          pitLane: [],
+        },
         cars: cars.map((car) => ({
           team: "Test",
           color: "#888888",

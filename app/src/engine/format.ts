@@ -65,10 +65,11 @@ export const GAP_DNF = "DNF";
 /**
  * What the gap column says for a car off the racing line (Slice 19, ruled at the
  * second re-watch). The broadcast spelling for the overwhelmingly common case — the
- * pit lane. The recorded caveat stands: the data carries no pit-lane fact, so a
- * genuine off-track excursion (ALO's restart chicane cuts, 1.4–4.9 s at speed) wears
- * this label for the seconds it lasts; Slice 16's pit-lane geometry is the upgrade
- * path to saying it only where it is true.
+ * pit lane. Since Slice 16 the label is gated by `carState`'s `pit` flag: in a file
+ * carrying `track.pitLane` it is shown only within `PIT_NEAR_M` of that geometry,
+ * so a genuine off-track excursion (ALO's restart chicane cuts, 1.4–4.9 s at speed)
+ * gets the em dash instead — the caveat recorded here in 9m, resolved where the
+ * data can resolve it. Files with no geometry keep the blanket spelling.
  */
 export const GAP_PIT = "PIT";
 
