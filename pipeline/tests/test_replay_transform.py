@@ -3524,7 +3524,7 @@ def test_stuck_skips_a_run_that_reaches_the_array_end_with_no_resume():
     assert detect_stuck_channels(t, v, th, br, x, y).n == 0
 
 
-def test_bridge_removes_both_phantoms_and_returns_edge_anchors():
+def test_bridge_fixes_speed_keeps_the_polyline_and_returns_edge_anchors():
     rows = (
         _moving_rows(0.0, 5.0, 200.0)
         + _dropout_rows(5.0, 11.0, 298.0, sat=True, x0=30000.0)
@@ -3539,15 +3539,16 @@ def test_bridge_removes_both_phantoms_and_returns_edge_anchors():
     bridged, anchors = bridge_stuck_channels(telemetry, result)
     span = result.spans[0]
     interior = slice(span.start_i + 1, span.resume_i)
-    # Speed no longer holds the stuck 298 across the interior (it is bridged down).
+    # Speed no longer holds the stuck 298 across the interior (it is bridged down),
+    # killing the phantom travel.
     assert not np.all(bridged["Speed"][interior] == 298.0)
     # Pedals are neutralised — no throttle-and-brake contradiction survives.
     assert np.all(bridged["Throttle"][interior] == 0)
     assert np.all(bridged["Brake"][interior] == 0)
-    # The polyline interior is collinear with the chord (phantom arclength removed):
-    # every interior x lies between the two trusted-edge x values.
-    lo, hi = sorted((bridged["X"][span.start_i], bridged["X"][span.resume_i]))
-    assert np.all((bridged["X"][interior] >= lo) & (bridged["X"][interior] <= hi))
+    # The X/Y polyline is UNTOUCHED — it already traces the racing line, and keeping it
+    # is what places the car on the line instead of across the corner. Slice 6b's rule:
+    # position supplies the shape, speed supplies the progress.
+    assert np.array_equal(bridged["X"], x) and np.array_equal(bridged["Y"], y)
     # The edges are handed back as anchors, and the input is not mutated.
     assert span.start_i in anchors and span.resume_i in anchors
     assert telemetry["Speed"][interior].tolist() == [298.0] * len(v[interior])

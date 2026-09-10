@@ -73,6 +73,16 @@ export const GAP_DNF = "DNF";
 export const GAP_PIT = "PIT";
 
 /**
+ * What the tower and readout say for a car inside a feed dropout (Slice 9m). The
+ * pipeline's stuck-channel screen marks the seconds a car's telemetry dropped out and
+ * was bridged (`car.dropouts`); across them nothing the car reports is real, so the
+ * readout greys and the tower says NO SIGNAL rather than a fabricated number or a
+ * wrong PIT label. It takes precedence over PIT — a dropped feed is a known,
+ * pipeline-flagged fact, where off-line is only an inference from the residual.
+ */
+export const GAP_NO_SIGNAL = "NO SIGNAL";
+
+/**
  * A gap in seconds, signed, as a timing tower writes it.
  *
  * `+` is behind and `-` is ahead, which is the broadcast convention and the one the

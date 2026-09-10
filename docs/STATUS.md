@@ -34,24 +34,26 @@ amplifies each dropout into a phantom surge. 9m detects each dropout on the raw
 source by its physically-impossible signature (throttle-and-brake saturation, a
 frozen position at pace, or an ≥8 g resume snap — 37 firings in 2026, zero across
 the 2024 corpus, where the pit limiter's genuinely-constant 9 s at ~80 km/h is the
-decisive negative control that duration alone cannot separate), then bridges the
-placement across the span (speed and polyline chorded between trusted edges, pedals
-coasted, edges anchored) so it re-syncs at resume. Measured against the timing
-loops on the shipped restart asset: **COL's gap to the leader goes from +76 m ahead
-(the phantom P1) to a monotone −4 m — it never crosses RUS**; no affected car is
-left falsely at the front; placement scatter and reversal fall for COL/PIA/ALO. A
-per-car `dropouts` interval lands in the schema for a later HUD "no signal"
-treatment. Copy from Slice 19 stands (retired = DNF, off-line = PIT); the restart's
-known-artifact `provenance.note` is retired. **The board: 21 (tower reshuffle
-animation) → 16 (pit-lane drawing) → 9k → 18 → 20.** **Nothing is blocked**; the
-standing constraint remains: `build_replay.py` runs only from the human's home
-network (CLAUDE.md Gotchas).
+decisive negative control that duration alone cannot separate). The human's re-watch
+reshaped the repair: F1 dead-reckons along the racing line (≤ 0.8 m off, measured),
+so the bridge KEEPS the recorded polyline and fixes only the speed (Slice 6b's
+shape/progress split), anchoring the edges to re-sync at resume — an earlier straight
+chord cut the corner and mislabelled cars PIT. A car inside a dropout is a new
+DROPOUT state, exempt from the off-line/PIT classification, and both the tower and the
+focused readout show **NO SIGNAL** for the fabricated channels while the marker still
+moves. Measured against the timing loops on the shipped restart asset: **COL's gap to
+the leader goes from +76 m ahead (the phantom P1) to a monotone −4 m — it never
+crosses RUS**; every affected car stays ≤ 7.2 m off the line through its dropouts; the
+1:52 order sweep is clean and pinned. The restart's known-artifact `provenance.note`
+is retired. **The board: 21 (tower reshuffle animation) → 16 (pit-lane drawing) →
+9k → 18 → 20.** **Nothing is blocked**; the standing constraint remains:
+`build_replay.py` runs only from the human's home network (CLAUDE.md Gotchas).
 
-**What happens next.** The human watches the restart scenario at 0.5× to accept
+**What happens next.** The human re-watches the restart scenario at 0.5× to accept
 9m (pre-registered in its PLAN entry: COL stays in the pack into della Roggia, no
-surge and no snap-back; GAS likewise near the front with no throttle-and-brake HUD
-readout). Then **Slice 21** — the tower reshuffle animation — then 16 → 9k → 18 →
-20 per the board, and the backlog's headline **fixture asymmetry overhaul** behind
-them. Two smaller items surfaced by 9m are filed in the backlog: the HUD "no
-signal" treatment of the new `dropouts` intervals, and a housekeeping re-record of
-the three 2024 gallery assets (stale on `trackStatus` since Slice 17).
+surge and no snap-back; GAS likewise near the front; NO SIGNAL, never a fabricated
+readout or a PIT label, across any dropout). Then **Slice 21** — the tower reshuffle
+animation — then 16 → 9k → 18 → 20 per the board, and the backlog's headline
+**fixture asymmetry overhaul** behind them. One housekeeping item is filed: a
+re-record of the three 2024 gallery assets, stale on `trackStatus` since Slice 17
+(9m proved it left them byte-identical).

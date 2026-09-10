@@ -153,4 +153,53 @@ describe("the rendered tower through a real standing start", () => {
     }
     expect(colBest).toBe(1);
   });
+
+  it("della Roggia at 1:52: after the Slice 9m bridge, no phantom P1 and no order bounce", () => {
+    // The re-watch FAIL: COL flashed to the front into della Roggia at 1:52 (~112 s),
+    // and the tower bounced. The stuck-channel bridge follows the racing line at the
+    // real (bridged) pace, so over 100-130 s COL never reaches the front and the
+    // rendered order tracks true progress within the dead band — the same seam
+    // invariant as the launch sweep, on the corner the re-watch named. Pinned so a
+    // regression to the chord (which cut the corner) or to the raw phantom fails here.
+    const { container } = render(<Hud replay={replay} />);
+    const focus = replay.cars.findIndex((c) => c.driver === "ANT");
+    useTransport.setState({ focusedCarIndex: focus });
+
+    const drivers = replay.cars.map((c) => c.driver);
+    const byDriver = new Map(drivers.map((d, i) => [d, i]));
+
+    let nowMs = 5000;
+    for (let clock = 100; clock <= 130; clock += 0.1) {
+      nowMs += 40;
+      act(() => telemetry.publish(nowMs, clock, snapshots));
+      const rows = [
+        ...container.querySelectorAll('ul[aria-label="Running order"] > li'),
+      ].map((li) => (li.textContent ?? "").slice(0, 3));
+
+      // COL (genuinely ~P15) never leads; the front is RUS or GAS, the two the raw
+      // positions actually put there. A resurrected phantom P1 fails here.
+      expect(rows.indexOf("COL"), `t=${clock.toFixed(1)}`).toBeGreaterThan(0);
+      expect(["RUS", "GAS"], `t=${clock.toFixed(1)}`).toContain(rows[0]);
+
+      // And the seam invariant: rendered order == true progress within the dead band.
+      const rendered = rows.map((d) => byDriver.get(d) as number);
+      const truth = truthAt(clock);
+      if (rendered.join() === truth.join()) continue;
+      const truthRank = new Map(truth.map((i, r) => [i, r]));
+      for (let r = 0; r + 1 < rendered.length; r++) {
+        const above = rendered[r];
+        const below = rendered[r + 1];
+        if (
+          (truthRank.get(above) as number) > (truthRank.get(below) as number)
+        ) {
+          const ka = progressKeyAt(progress, focus, above, clock) as number;
+          const kb = progressKeyAt(progress, focus, below, clock) as number;
+          expect(
+            Math.abs(ka - kb),
+            `t=${clock.toFixed(1)}: ${drivers[above]} above ${drivers[below]} outside the band`,
+          ).toBeLessThanOrEqual(ORDER_HYSTERESIS_S + 1e-9);
+        }
+      }
+    }
+  });
 });

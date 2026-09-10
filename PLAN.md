@@ -4403,6 +4403,49 @@ else are unchanged except that Gasly's real P2 getaway now shows a touch more
 faithfully off the line. If instead COL still flashes to the front, or the HUD shows
 full throttle and full brake together, the fix regressed.
 
+**Re-watch (2026-09-09, human): FAIL on three counts, all fixed on the same branch.**
+The first build shipped a straight-chord bridge and deferred the HUD to a follow-up;
+the re-watch refuted both.
+
+1. **The bridge now FOLLOWS THE TRACK, not a chord.** Measured: F1's tracker
+   dead-reckons the dropped transponder ALONG the racing line — COL's recorded polyline
+   through the della Roggia dropout sits ≤ 0.8 m off the reference the whole way,
+   including its frozen tail (0.2 m). So there was never any phantom ARCLENGTH to
+   remove; the phantom was entirely in the speed (travel). The chord threw away a good
+   on-line shape and cut the corner: >10 m off the line on the curved approach, which
+   tripped the app's off-line classifier and mislabelled COL as PIT with blanked gaps.
+   The fix is Slice 6b's own split — **keep the recorded polyline (the shape), bridge
+   only the speed (the progress), anchor the edges** — which drops the X/Y chording
+   entirely (a simpler bridge). Re-scored against the timing loops on the shipped
+   asset: every affected car now stays ≤ 7.2 m off the line THROUGH its dropouts (was
+   >10 m); COL's gap to the leader still goes +76 m → −4 m (phantom P1 gone); reversal
+   at 1:52 is a clean 1.0 for both COL and GAS.
+2. **A car in a dropout is EXEMPT from the off-line/PIT classification — new DROPOUT
+   state.** `carState.ts` reads the emitted `dropouts` intervals; a car inside one is
+   `dropout: true`, which CLEARS `offline` (a bridged span can leave the arc-progress
+   wobbling within a metre of the line, which the residual test would read as PIT — but
+   a pipeline-flagged dropped feed is not a pit stop) and is a hold for gaps
+   (`isRacing` false). The tower renders **NO SIGNAL** (new `GAP_NO_SIGNAL`), precedence
+   DNF > NO SIGNAL > PIT.
+3. **The HUD now shows NO SIGNAL for the fabricated channels — built now, not deferred.**
+   Across a dropout the focused readout's speed, gear, throttle and brake are the
+   bridge's coasts, so `CarEntry` greys them to NO SIGNAL rather than stating a value
+   the data does not have; the marker still moves (the bridged position is on the
+   line). DRS and tyres are season/stint facts the dropout does not touch and render as
+   usual. Pinned in `Hud.test.tsx` (readout + tower label + the PIT-precedence case)
+   and `carState.test.ts`.
+
+The 1:52 order sweep is re-measured and pinned in `Hud.launch.test.tsx` (the DOM-path
+harness): over 100–130 s COL never leads, the front is RUS or GAS (the two the raw
+positions put there), and the rendered order tracks true progress within the
+hysteresis band — no bounce. Residual, owned by the DROPOUT state and stated: a car
+whose dead-reckon OVERSHOT and retraced within a span (PIA, ALO — declined cars whose
+reversal screen is withheld) keeps that on-line back-and-forth in arc-progress; it
+stays within a metre of the line and reads as NO SIGNAL, and reconstructing the true
+progress would mean inventing the unrecorded braking curve (the 9g surrender line).
+Gates re-run green both languages (788 app tests, 293 pytest, 100 % coverage each,
+drawcall md5s still identical — the canvas is untouched by all of this).
+
 ### [ ] Slice 21 — tower reshuffle animation
 
 **Filed 2026-09-08 at Slice 17's acceptance.** When the running order changes,
@@ -4476,23 +4519,19 @@ gaining the one input it lacked.
 - ~~**GAS's restart-launch speed dropout**~~ — **CLOSED by Slice 9m**, which
   detected and bridged it along with the whole stuck-channel class (37 dropouts
   across the two 2026 windows; GAS's launch instance was the first sighting).
-- **HUD "no signal" for `dropouts` intervals** — filed by Slice 9m, not built. 9m
-  emits per-car `dropouts: [{fromT,toT}]` and bridges the placement, but during a
-  bridged span the HUD still shows the coasted speed/pedals. A follow-up would read
-  the interval at the ≤30 Hz tick and render "no signal" (or a distinct treatment)
-  across it, so the viewer knows the feed dropped rather than seeing a plausible
-  coast. Data-only for now, deliberately: the transform is done, the UI is separable.
-- **Curvature-aware stuck-channel bridge** — filed by Slice 9m's `/review`, not
-  built (no corpus case yet). 9m's bridge replaces a dropout's fabricated polyline
-  with the straight chord between its trusted edges (`i→k`), which is near-perfect on
-  a straight and on a braking approach (where it was scored — della Roggia) but would
-  CUT a corner if a dropout ever spanned an apex. Every dropout in the current corpus
-  sits on a straight or a braking zone, so the chord is safe as shipped. When the
-  corpus first produces a dropout across a corner (measurable: chord length vs the
-  dead-reckoned arclength diverging, or placement scatter spiking on an affected car),
-  replace the chord with a curvature-following bridge — reuse the recorded polyline's
-  SHAPE where it is real and only chord the frozen tail, or fit a short arc through the
-  edges. Data-shape-driven, so it waits for the data that needs it.
+- ~~**HUD "no signal" for `dropouts` intervals**~~ — **BUILT in Slice 9m's re-watch**
+  (the human ruled it the second half of the fix, not a follow-up): the tower and the
+  focused readout show NO SIGNAL across a dropout, and a car in one is exempt from the
+  off-line/PIT classification (new DROPOUT state). See the 9m re-watch entry.
+- ~~**Curvature-aware stuck-channel bridge**~~ — **SUPERSEDED by Slice 9m's re-watch.**
+  The concern was the straight chord cutting a corner; the re-watch removed the chord
+  entirely in favour of keeping the recorded polyline (which dead-reckons along the
+  racing line, measured ≤ 0.8 m off), so the bridge already follows the track's
+  curvature by construction — there is no chord left to make curvature-aware. The one
+  residue is a declined car whose dead-reckon overshot and retraced within a span
+  (PIA, ALO), noted in the 9m entry and owned by the DROPOUT state; cleaning it would
+  need the field's racing line, not the per-car polyline, and waits for a case where
+  it is visible rather than just measurable.
 - **Re-record the three 2024 gallery assets** — housekeeping surfaced by Slice 9m.
   The committed 2024 assets predate Slice 17's `trackStatus` emission, so a fresh
   rebuild adds a `trackStatus:[]` and differs by ~59 bytes each; 9m proved this is

@@ -49,35 +49,50 @@ over the whole corpus (all three 2024 windows, both 2026 windows): this screen f
 37 runs, ALL in the two 2026 windows, and ZERO in 2024 — the pit limiter, flat-out
 top-speed running, and every clean lap stay silent. PLAN Slice 9m carries the table.
 
-THE BRIDGE, AND WHAT IT CAN AND CANNOT DO
------------------------------------------
-Across a detected span the placement must not integrate the frozen value, and it must
-re-sync at RESUME rather than at the next timing loop (the second half of the defect).
-So `bridge_stuck_channels` does three things between the last trusted fix before the
-run (`i`) and the first trusted fix after it (`k`):
+THE BRIDGE — FIX THE PROGRESS, KEEP THE SHAPE (Slice 6b's own rule)
+------------------------------------------------------------------
+The defect is entirely in the SPEED channel. F1's tracker dead-reckons the dropped
+transponder ALONG THE RACING LINE — measured on the 2026 restart, COL's recorded
+polyline through the della Roggia dropout sits <= 0.8 m off the reference line the
+whole way, including through its frozen tail (0.2 m off). So the recorded polyline's
+SHAPE is good; only the stuck speed integrates into phantom TRAVEL, which
+travel-driven placement then reads as a surge along that good line. This is exactly
+Slice 6b's split — position supplies the shape, speed supplies the progress — so the
+bridge fixes only the progress and leaves the shape alone:
 
 * SPEED is linearly bridged `i -> k`, so `cumulative_travel` no longer integrates the
-  stuck value — the phantom TRAVEL is gone.
-* the fabricated polyline is replaced by the straight chord `i -> k`, so
-  `cumulative_arclength` no longer carries the dead-reckoned overshoot — the phantom
-  ARCLENGTH is gone.
-* the pedals are neutralised to a coast (throttle 0, brake 0), so the HUD cannot show
-  the impossible throttle-and-brake readout; the honest "no signal" belongs to the
-  emitted `dropouts` interval and its HUD treatment is a follow-up.
+  stuck value; the car then moves along its own recorded (on-line) polyline at a sane
+  pace instead of surging along it.
+* the pedals are neutralised to a coast (throttle 0, brake 0) over `[i, k)`, so no
+  emitted sample carries the impossible throttle-and-brake readout; the honest "no
+  signal" is the emitted `dropouts` interval, which the HUD greys out.
+* the span's edges are handed back as ANCHORS, pinning the travel->path map to `i` and
+  `k` so the repair is confined and the car re-syncs at RESUME, not at the next timing
+  loop (the second half of the defect).
 
-The span's edges are then handed back as ANCHORS, which pin the travel->path map to
-`i` and `k` so the repair is confined to the span and the car re-syncs at `k`.
+The X/Y polyline is DELIBERATELY untouched — an earlier draft replaced it with the
+straight chord `i -> k` to "remove phantom arclength", but there is no phantom
+arclength (the shape is real), and the chord CUT the corner: on the curved della
+Roggia approach it sat >10 m off the racing line, tripping the app's off-line
+classifier so the car was mislabelled PIT and its gaps blanked. Keeping the recorded
+line holds the whole affected field within 7.2 m of the reference through every
+dropout — on the line, correctly placed, no misclassification.
 
-WHAT IT CANNOT DO, stated rather than hidden: the resume fix `k` is the point at which
-F1's dead-reckon FROZE, which for a car that was braking hard is a little ahead of
-where the car really was, and the position stream never snaps back — it continues from
-the frozen spot until the next timing loop. Anchoring to `k` is therefore right for a
-car that is genuinely far back (Colapinto: the phantom P1 is fully removed) but leaves a
-bounded residual for a car that is genuinely at the front, where a few tens of metres of
-forward error crosses the leader (Gasly, P3 on the road: a brief nose-ahead into della
-Roggia remains, reeled in at the next loop). Removing that residual would mean
-reconstructing the unrecorded braking curve, which is the surrender doctrine's line
-(9g): we bridge what the trusted endpoints allow and invent nothing between them.
+WHAT IT CANNOT DO, stated rather than hidden. A car whose feed drops is a car with no
+data, so two residues remain and are OWNED by the emitted `dropouts` interval (the app
+renders the span as "no signal") rather than papered over:
+
+* The resume fix `k` is where F1's dead-reckon FROZE — for a hard-braking car a little
+  ahead of where it was — and the position never snaps back. Anchoring to `k` is right
+  for a car genuinely far back (Colapinto: the phantom P1 is fully removed, gap to the
+  leader stays negative) and leaves a small bounded residue for one genuinely at the
+  front (Gasly, P2 on the road).
+* A car whose dead-reckon OVERSHOT and retraced within the span (PIA, ALO) keeps that
+  on-line back-and-forth: its position stays within a metre of the racing line but its
+  arc-progress briefly wobbles. Reconstructing the true progress would mean inventing
+  the unrecorded braking curve — the surrender doctrine's line (9g) — so instead the
+  span is flagged as a dropout and shown as no signal, and the car is exempt from the
+  off-line/PIT classification while it is in one.
 """
 
 from __future__ import annotations
@@ -268,12 +283,13 @@ def bridge_stuck_channels(
     """
     Bridge every detected span and return `(telemetry, anchor_indices)`.
 
-    Between each span's trusted edges `start_i -> resume_i`, speed and the x/y polyline
-    are linearly bridged (killing the phantom travel and the phantom arclength) and the
-    pedals are neutralised to a coast. The edge indices are returned as anchors for
-    `resample_positions_by_travel`, which confines the repair and re-syncs the car at
-    resume. A car with no spans comes back with its telemetry unchanged and no anchors,
-    so callers can apply this unconditionally.
+    Between each span's trusted edges `start_i -> resume_i`, the SPEED is linearly
+    bridged (killing the phantom travel) and the pedals are neutralised to a coast.
+    The X/Y polyline is NOT touched — it already traces the racing line, and keeping it
+    is what places the car on the line rather than across the corner (see the module
+    docstring). The edge indices come back as anchors for `resample_positions_by_travel`,
+    which confines the repair and re-syncs the car at resume. A car with no spans comes
+    back unchanged with no anchors, so callers can apply this unconditionally.
 
     The returned telemetry is a fresh dict of fresh arrays — the input is never mutated,
     because the report recomputes the screen on the ORIGINAL rows and the two must not
@@ -287,10 +303,10 @@ def bridge_stuck_channels(
     anchors: "list[int]" = []
     for span in result.spans:
         i, k = span.start_i, span.resume_i
-        interior = slice(i + 1, k)  # rows i+1 .. k-1 are the fabrication
-        edges = [t[i], t[k]]
-        for ch in ("Speed", "X", "Y"):
-            out[ch][interior] = np.interp(t[interior], edges, [out[ch][i], out[ch][k]])
+        interior = slice(i + 1, k)  # rows i+1 .. k-1 carry the stuck value
+        out["Speed"][interior] = np.interp(
+            t[interior], [t[i], t[k]], [out["Speed"][i], out["Speed"][k]]
+        )
         # Neutralise the pedals to a coast: honest "no input", never the impossible
         # throttle-and-brake readout. The dropout interval carries the real "no
         # signal". This covers the run's OWN start row (`i` inclusive) as well as the
