@@ -4453,7 +4453,7 @@ PIA/ALO on-line arc wobble was noted as the documented residual. One cosmetic fo
 filed to Slice 21: "NO SIGNAL" wraps to two lines in the header and compact rows — a
 compact label or glyph is wanted there.
 
-### [ ] Slice 21 — tower reshuffle animation
+### [x] Slice 21 — tower reshuffle animation
 
 **Filed 2026-09-08 at Slice 17's acceptance.** When the running order changes,
 tower rows animate to their new positions so the eye can follow an overtake
@@ -4475,6 +4475,115 @@ there.
   words where there is room (the DNF/PIT columns have the same width budget, so
   whatever solves this should be consistent across all three state labels). Copy is
   the human's to rule, per the standing convention.
+
+**Built 2026-09-10, awaiting the human's acceptance watch** (the restart launch at
+2×: COL's P5→P2→P7 arc followable by eye; the 2024 pit cycle's swaps reading as
+moves; nothing laggy or floaty). Branch `feat/slice-21-tower-animation`; app-only,
+`pipeline/` untouched.
+
+**Mechanism: FLIP through the Web Animations API, not a CSS transition — and the
+difference is the mid-animation answer.** Both animate `transform` alone on the
+compositor (no layout, no paint, no per-frame JS — rule 1 equally safe either way).
+But React moves a row with `insertBefore`, which removes and reinserts the node,
+and a CSS transition is CANCELLED by that removal — a resort landing mid-animation
+would snap the row to its inline transform and teleport exactly when reshuffles are
+fastest (the launch, the case this slice exists for). A WAAPI animation belongs to
+the element and survives the move, so the FLIP pass (`components/towerFlip.ts`)
+answers the filed mid-animation question by RETARGETING: cancel the in-flight
+animation, measure pure layout, and start the new slide from where the eye actually
+left off (the cached visual top). The filed "transition to identity" phrasing is
+thereby amended, not violated: same keyframes, same compositor, different API for
+one stated reason.
+
+- **The commit-time pass, and what it costs.** A `useLayoutEffect` in `Hud` runs
+  after every ≤30 Hz commit: it measures each row's `getBoundingClientRect().top`
+  (cached by driver code — the same identity React keys rows by) and, ONLY on a
+  commit where `sameOrder` broke against the previous commit's order on the same
+  replay, cancels in-flight slides and animates each moved row from cached-top to
+  measured-top. Measuring every commit rather than only on resorts is what keeps
+  the cache honest against moves that must NOT animate (focus-height changes,
+  scroll, resize) and is what a retarget needs (the cache holds VISUAL positions,
+  in-flight transform included). Cost: one batched read pass — reads then
+  transform-only writes, no interleave — after a commit that already dirtied
+  layout, i.e. the same layout the browser was about to do for paint, done early.
+  Measured rather than assumed, below.
+- **What animates, ruled in-slice:** a reorder on the same replay (an overtake, a
+  car dropping to DNF, the focused block travelling with its car — one mechanism,
+  no special cases); a SEEK's wholesale reshuffle also slides (300 ms of settle,
+  argued as the same rule rather than new plumbing). What does not: a replay or
+  scenario switch (`flipPrev.replay` identity mismatch → cache DROPPED, not just
+  unused — two 2026 scenarios share driver codes, so a same-length switch would
+  otherwise slide RUS's row between different sessions and invent continuity);
+  a focus change alone (order is focus-independent, so only the cache refreshes —
+  the readout's height change SNAPS, because animating height is per-frame layout,
+  which rule 1 forbids; the displaced rows snap with it); `prefers-reduced-motion`
+  (checked at the reorder via `motion.ts`'s read-at-need doctrine — the reorder
+  lands, the slide is skipped). Residual, stated: a genuine overtake landing on
+  the same tick as a focus click would animate deltas that include the readout's
+  height shift — coincidence-rare, cosmetic, accepted.
+- **PRE-REGISTERED tuning, written before the watch:** `TOWER_MOVE_MS = 300`,
+  `TOWER_MOVE_EASING = "ease-out"` (`towerFlip.ts`, the `COMET_SECONDS` pattern —
+  exported, eyeball-tunable). The bracket: the floor is the teleport (a tick is
+  ~33 ms, a frame ~16 ms; 300 ms ≈ 9 ticks ≈ 18–36 frames of visible travel); the
+  ceiling is the launch at 2×, where places change hands every ~250–500 ms of wall
+  clock — 300 ms overlaps the fastest swaps, and the WAAPI retarget is what makes
+  that overlap read as one continuous curve through P5→P2→P7 rather than a lag or
+  a queue. The hysteresis dead band needs no term in the duration: 0.05 s of sort
+  key means a pair cannot legitimately re-swap until 0.1 s of relative progress
+  builds, so oscillation is damped upstream and the animation never fights it.
+  Ease-out because the START of the motion is the information (the row leaves the
+  instant the overtake registers, then settles) and because a retarget beginning
+  at speed hides the velocity discontinuity where the eye is watching. Expect the
+  human to tune; the number is one constant.
+- **The rider: `GAP_NO_SIGNAL_COMPACT = "NO SIG"`** (`format.ts`, non-breaking
+  space so it can truncate but never wrap), rendered in exactly the two spots the
+  rider named — the focused row's header and a compact row's gap column — via
+  `CarEntry`'s `NoSignalWord`: the compact spelling `aria-hidden`, an sr-only
+  "NO SIGNAL" beside it so the accessible name keeps the full words (the tyre
+  dot's mark-vs-information split). Six characters sits inside the gap column's
+  own "+12.345" budget, which is the consistency the rider asked for with DNF/PIT
+  (three letters each — already fine, untouched). The focused READOUT keeps the
+  full words (speed slot, pedal tracks — they have the room). **Copy pending the
+  human's ruling**, per convention: the proposal is "NO SIG"; it is one constant
+  to change.
+- **Tests (11 new; 799 total, 100 % coverage):** `Hud.flip.test.tsx` mounts the
+  real component with a jsdom stand-in layout (row top = sibling index × 30 px)
+  and a recording `Element.prototype.animate`: the deterministic DNF-drop reorder
+  slides both rows exactly ±30 px at the registered duration/easing; the shipped
+  restart asset's launch swap animates in both directions in whole-row multiples
+  (the reference case, on the committed file); a scenario switch that reorders the
+  SAME drivers animates nothing; reduced-motion reorders land without a slide; a
+  focus change animates nothing. `flipRows` unit tests pin the retarget (in-flight
+  cancel before measure, new slide from the cached spot) and the 1 px sub-pixel
+  snap threshold. `Hud.test.tsx` gains the rider pin: "NO SIG" visible exactly
+  twice (focused header + compact row), `aria-hidden`, full words in each
+  accessible name and in the readout.
+- **Evidence, before → after:** drawcall md5s captured before touching anything
+  and re-captured after — closed `04506b72f177b7447ecb7d230998d506`, open
+  `0aea33a376958344b1be15033399e8ec`, **IDENTICAL both modes** (the canvas is
+  untouched). `hud-tick.mjs` on the restart asset: mean 16.45 → 16.49 µs/tick,
+  p95 21.6 → 21.1 µs, focus change 5.35 → 5.24 µs — noise, no regression (the
+  engine gained one string constant). `npm run check` green: 799 tests, 0
+  warnings, 100 % lines/branches/functions on `src/engine/**`.
+- **fps-probe, the first sidebar-work measurement (procedure per its header:
+  production preview, visible foreground tab):** the shipped restart asset, 21
+  cars, 2×, run started at clock 80 s so the 600-frame window spans the launch
+  (~80–90 s) — the exact acceptance scene. 120 fps display: interval p50 8.3 ms /
+  p95 9.6 ms / max 10.4 ms, **0 frames over 20 ms, 0 over 33 ms**; callback p50
+  0.6 ms / p95 4.2 ms / p99 4.9 ms / max 5.8 ms (dpr 2, canvas 976×494 CSS px).
+  The per-commit measure pass and the compositor slides are inside budget with
+  headroom; nothing new subscribes and the loop is untouched.
+- **Browser pass, stills recorded:** a launch screenshot catches rows mid-slide
+  (overlapping rows in transit — the mechanism visibly working in the shipped
+  build); GAS inside his 83.8–89.5 s dropout shows a one-line **NO SIG** in the
+  compact row and, focused, a one-line header (`GAS · NO SIG · FOCUS`) over a
+  readout still saying the full NO SIGNAL; 375 px strip intact — one-line labels,
+  both gap columns present sub-`md`, transport fine.
+
+**Watch (2026-09-10, human): PASS, ACCEPTED.** The launch arc followable at 2×,
+the 2024 pit cycle's swaps reading as moves. The pre-registered 300 ms stands
+untouched — no tune requested. **"NO SIG" ratified** as the compact spelling.
+Push + PR + auto-merge authorised.
 
 ### [ ] Slice 20 — colour distinction under the luminance floor
 

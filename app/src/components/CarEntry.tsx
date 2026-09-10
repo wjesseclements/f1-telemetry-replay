@@ -71,6 +71,7 @@ import { carHasDrs, isDrsOpen } from "../engine/drs";
 import {
   GAP_DNF,
   GAP_NO_SIGNAL,
+  GAP_NO_SIGNAL_COMPACT,
   GAP_PIT,
   NO_VALUE,
   formatGap,
@@ -237,7 +238,7 @@ export function CarEntry({
                 </span>
               ) : dropout ? (
                 <span className="font-mono text-sm font-bold tracking-wider text-dim">
-                  {GAP_NO_SIGNAL}
+                  <NoSignalWord />
                 </span>
               ) : (
                 offline && (
@@ -257,7 +258,7 @@ export function CarEntry({
                Precedence retired > dropout > offline: a dropped feed is a flagged
                fact, a PIT is an inference from the residual. */
             <span className="ml-auto font-mono text-sm font-bold tracking-wider text-dim">
-              {retired ? GAP_DNF : dropout ? GAP_NO_SIGNAL : GAP_PIT}
+              {retired ? GAP_DNF : dropout ? <NoSignalWord /> : GAP_PIT}
             </span>
           ) : (
             /*
@@ -321,6 +322,24 @@ export function CarEntry({
         <div className="mt-3 w-full">{trace}</div>
       )}
     </li>
+  );
+}
+
+/**
+ * NO SIGNAL where the gap column's width budget rules (Slice 21's rider): the state
+ * word sits where DNF and PIT sit, and those fit in three letters while "NO SIGNAL"
+ * wrapped to two lines in exactly the two spots this renders in — the focused row's
+ * header and a compact row. Sighted eyes get the compact spelling; the accessible
+ * name keeps the full words, the same mark-vs-information split as the tyre dot.
+ * The focused READOUT keeps the full words (its speed slot and pedal tracks have
+ * the room), so nothing else changes spelling.
+ */
+function NoSignalWord() {
+  return (
+    <>
+      <span aria-hidden="true">{GAP_NO_SIGNAL_COMPACT}</span>
+      <span className="sr-only">{GAP_NO_SIGNAL}</span>
+    </>
   );
 }
 

@@ -83,6 +83,17 @@ export const GAP_PIT = "PIT";
 export const GAP_NO_SIGNAL = "NO SIGNAL";
 
 /**
+ * `GAP_NO_SIGNAL` where the full words don't fit (Slice 21's rider): the focused
+ * row's header and a compact tower row give the state label DNF/PIT's width budget,
+ * and "NO SIGNAL" wraps to two lines there. Six characters sits inside the gap
+ * column's own "+12.345" width, and the space is non-breaking so the label can
+ * truncate but never wrap. Display-only — the accessible name keeps the full words
+ * (`CarEntry` pairs this with an sr-only `GAP_NO_SIGNAL`). The spelling is the
+ * human's to ratify, per the copy convention.
+ */
+export const GAP_NO_SIGNAL_COMPACT = "NO\u00A0SIG";
+
+/**
  * A gap in seconds, signed, as a timing tower writes it.
  *
  * `+` is behind and `-` is ahead, which is the broadcast convention and the one the

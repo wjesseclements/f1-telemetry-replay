@@ -17,40 +17,37 @@ semantics (Slice 19): per-car RETIRED/OFF-LINE/STATIONARY states derived at the
 ≤30 Hz tick from data the file already carries, a retired car at the bottom in grey
 saying DNF, no gap quoted unless both cars are moving on the racing line, a standing
 field showing grid order with no numbers until it launches, and a pit-lane car
-keeping its row. The pipeline's pure half is the `replay_transform` package, one
+keeping its row. The tower's reorders now ANIMATE (Slice 21): FLIP
+slides driven by the Web Animations API — compositor-only transforms, a per-commit
+measure pass at the ≤30 Hz tick, mid-animation resorts retargeted from the row's
+current visual position — with a replay/scenario switch deliberately snapping (no
+false continuity), reduced-motion honoured, and the 9m rider folded in (a one-line
+"NO SIG" where the width budget rules, full words in the readout and every
+accessible name). The pipeline's pure half is the `replay_transform` package, one
 module per concern, screened by FOUR detectors (frame-displacement, impossible-fix,
 reversal, dead-feed) plus the Slice 9m stuck-channel screen and per-car anchor plans.
-Quality state on the Slice 9m branch: `npm run check` green with 783 tests and 0
+Quality state on the Slice 21 branch: `npm run check` green with 799 tests and 0
 warnings; 293 pytest with 100% lines + branches on every module; drawcall md5s
-IDENTICAL on both render modes (the canvas is untouched); the two 2026 assets
-regenerated, all three 2024 assets byte-identical old-code vs new-code.
+IDENTICAL on both render modes (the canvas is untouched); fps-probe over the
+restart launch at 2× — 0 frames over 20 ms, callback p95 4.2 ms.
 
-**What is open, and what is blocked.** **Slice 9m is DONE and ACCEPTED**
-(2026-09-10, PR #71, auto-merge enabled): the stuck-channel dropout screen. Slice 19's 1:52.7 "COL P1" was the DATA — F1's feed
-drops per car once a lap at a fixed spot in both 2026 Monza windows, freezing speed
-at pace while the position dead-reckons forward, and travel-driven placement
-amplifies each dropout into a phantom surge. 9m detects each dropout on the raw
-source by its physically-impossible signature (throttle-and-brake saturation, a
-frozen position at pace, or an ≥8 g resume snap — 37 firings in 2026, zero across
-the 2024 corpus, where the pit limiter's genuinely-constant 9 s at ~80 km/h is the
-decisive negative control that duration alone cannot separate). The human's re-watch
-reshaped the repair: F1 dead-reckons along the racing line (≤ 0.8 m off, measured),
-so the bridge KEEPS the recorded polyline and fixes only the speed (Slice 6b's
-shape/progress split), anchoring the edges to re-sync at resume — an earlier straight
-chord cut the corner and mislabelled cars PIT. A car inside a dropout is a new
-DROPOUT state, exempt from the off-line/PIT classification, and both the tower and the
-focused readout show **NO SIGNAL** for the fabricated channels while the marker still
-moves. Measured against the timing loops on the shipped restart asset: **COL's gap to
-the leader goes from +76 m ahead (the phantom P1) to a monotone −4 m — it never
-crosses RUS**; every affected car stays ≤ 7.2 m off the line through its dropouts; the
-1:52 order sweep is clean and pinned. The restart's known-artifact `provenance.note`
-is retired. **The board: 21 (tower reshuffle animation) → 16 (pit-lane drawing) →
-9k → 18 → 20.** **Nothing is blocked**; the standing constraint remains:
-`build_replay.py` runs only from the human's home network (CLAUDE.md Gotchas).
+**What is open, and what is blocked.** **Slice 21 is DONE and ACCEPTED**
+(2026-09-10, watch PASS): the tower reshuffle animation, with the pre-registered
+`TOWER_MOVE_MS = 300` / ease-out surviving the watch untouched and the "NO SIG"
+compact spelling ratified — the launch arc followable at 2×, the 2024 pit cycle's
+swaps reading as moves. Before it, **Slice 9m shipped** (2026-09-10,
+PR #71): the stuck-channel dropout screen — F1's feed drops per car once a lap in
+both 2026 Monza windows, and 9m detects each dropout by its physically-impossible
+signature (37 firings in 2026, zero across the 2024 corpus), bridges it along the
+recorded polyline (which dead-reckons the racing line, ≤ 0.8 m off, measured), and
+shows NO SIGNAL through it as a new DROPOUT state; COL's phantom P1 is gone (gap to
+the leader monotone, never crossing RUS) and the restart's known-artifact
+`provenance.note` is retired. **The board: 16 (pit-lane drawing) → 9k → 18 → 20.**
+**Nothing is blocked**; the standing constraint remains: `build_replay.py` runs
+only from the human's home network (CLAUDE.md Gotchas).
 
-**What happens next.** **Slice 21** — the tower reshuffle animation — is next, and it
-now carries a cosmetic rider from 9m's acceptance: "NO SIGNAL" wraps to two lines in
-the header and compact rows, wanting a compact label or glyph. Then 16 → 9k → 18 →
-20 per the board, and the backlog's headline **fixture asymmetry overhaul** behind
-them. One housekeeping item is filed: a re-record of the three 2024 gallery assets,
-stale on `trackStatus` since Slice 17 (9m proved it left them byte-identical).
+**What happens next.** **Slice 16** (pit-lane drawing) per the board:
+16 → 9k → 18 → 20, with the backlog's headline **fixture asymmetry overhaul**
+behind them. One housekeeping item is filed: a re-record of
+the three 2024 gallery assets, stale on `trackStatus` since Slice 17 (9m proved it
+left them byte-identical).
