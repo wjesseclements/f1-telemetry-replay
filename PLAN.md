@@ -3698,6 +3698,45 @@ fabricates.
   his recorded branch is 224+ m from the lane); his actual stop still says
   PIT.
 
+**Watch (2026-09-10, human): merge held on two findings — the lane's body
+right, both ENDS wrong. The record:**
+
+1. **Diagnosis first, and it was neither offered hypothesis.** Not a union
+   artifact (no merging exists at either track — each file's lane is one car's
+   own samples end to end) and not the 25 m PIT gate (that only gates the
+   tower label). It was the **10 m DETECTION bound doing double duty as the
+   drawing bound**: the polyline started/ended at the first/last sample beyond
+   ~10 m of residual (±one grid sample). Measured on the emitted lanes: the
+   Monza lane ended at 9.9 m residual while the elected car takes another
+   **4.3 s (12 → 0 m over ~43 samples at 217 km/h)** to converge — the exit
+   gap; and the entry's first drawn point was already 8 m off-line with the
+   0–8 m departure curve undrawn, so the lane's round end cap butted against
+   the ribbon at an unrelated heading — the hook. Entry multi-crossing of the
+   gate: ZERO at all three tracks.
+2. **The fix, as the watch prescribed: each unclipped end extends to the
+   ON-LINE ENVELOPE, not the detection gate.** New `PIT_ONLINE_RESIDUAL_M` =
+   2.0 (on-line running reads 0–1 m in every end profile; the exit
+   convergence tails pass through 2 on their way to 0; 2 m lands inside the
+   drawn ribbon's own width, so the joint is seamless) with the walk capped at
+   `PIT_JOIN_MAX_S` = 10 s (over 2× the slowest measured convergence) and a
+   closest-approach fallback when the envelope is out of reach — never the
+   raw gate. Window-clipped ends unchanged (the red-flag lane still starts at
+   LAW's box, 19 m off, honestly).
+3. **Verified:** lane ends re-measured on the regenerated assets — Monza
+   START 0.56 m / END 1.82 m, rain 0.33 / 1.39, red-flag END 0.42 (START
+   19.0, clipped, as it must be). Lanes widened to 298 / 262 / 93 points;
+   election/exclusion verdicts unchanged. Both suites green — **821 vitest**
+   (unchanged; the fix is data-side) and **322 pytest** (320 → 322: the
+   ramped-envelope join and the closest-approach fallback, each with exact
+   indices), 100 % both languages' bars; the pit golden re-recorded (the
+   three pit-less goldens byte-identical again); **drawcall md5s unchanged
+   from the recorded Slice 16 baseline** (`cb43a0f8…`/`e30b5b6e…` — the
+   canvas code is untouched by this fix). Close-ups in
+   `docs/screenshots/slice-16b-*`: Monza and Silverstone entry and exit each
+   flowing off and back onto the ribbon — the Silverstone entry now visibly
+   peels off before turn 16 and the exit merges at turn 1, which is where the
+   real ones are.
+
 **The trace learns to hold two cars.** A "vs" control on each tower row overlays a
 second car's speed on the focused car's scrolling trace — same 20 s window, same
 y-scale — so a viewer can see exactly where one driver gains on another. App-only:

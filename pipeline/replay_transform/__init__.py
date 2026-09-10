@@ -188,10 +188,12 @@ from .stuck_channel import (
 )
 from .pit_lane import (
     NO_PIT_LANE,
+    PIT_JOIN_MAX_S,
     PIT_LANE_NEW_FRAC,
     PIT_LANE_REDUNDANT_M,
     PIT_MIN_EXTENT_M,
     PIT_OFFLINE_M,
+    PIT_ONLINE_RESIDUAL_M,
     PIT_STOP_MAX_KMH,
     PIT_STOP_MIN_S,
     PitLaneResult,

@@ -60,6 +60,29 @@ PIT_STOP_MAX_KMH = 15.0
 #: `HOLD_MIN_S` argument.
 PIT_STOP_MIN_S = 1.0
 
+#: A traversal's DRAWN ends reach the racing line: each unclipped end extends
+#: outward from the off-line core to the first sample within this many metres of
+#: the line — the departure point on the way in, the rejoin point on the way
+#: out — so the polyline flows off the ribbon and back onto it the way the car
+#: actually drove. The watch found what a single-sample extension does instead:
+#: the lane started and ended at the 10 m DETECTION bound, leaving the 0-10 m
+#: departure curve undrawn (an end-cap "hook" against the ribbon) and stopping
+#: the exit ~10 m short of the track (Monza's elected car takes another 4.3 s,
+#: 12 -> 0 m, to converge). Measured: on-line running reads 0-1 m residual in
+#: every end profile; the exit convergence tails pass through 2 m on their way
+#: to 0. 2.0 sits above the on-line noise and far under the 10 m gate, and lands
+#: inside the drawn ribbon's own width, so the joint is seamless at any zoom.
+PIT_ONLINE_RESIDUAL_M = 2.0
+
+#: ...and the walk is bounded: at most this many seconds of extension per end.
+#: Measured convergences are 1.7-4.3 s (rain 17 samples, Monza and the red-flag
+#: exit 43); 10 s is over 2x the worst. If the envelope is never reached inside
+#: the cap (a car that hovers a few metres off-line — the corpus's widest
+#: legitimate deviation at pace is 9.2 m), the end falls back to the walked
+#: stretch's CLOSEST APPROACH to the line: the most honest joint the data
+#: offers.
+PIT_JOIN_MAX_S = 10.0
+
 #: A traversal GOES somewhere: its bounding-box diagonal must span at least this
 #: many metres. This is what tells a drive through the lane from a car PARKED
 #: off-line (Slice 8's legitimate case): a parked position channel jitters, and
@@ -88,9 +111,10 @@ class PitTraversal:
     """One car's drive through the pit lane, in grid indices (inclusive)."""
 
     driver: str
-    #: Entry/exit indices, extended one on-line sample beyond the off-line core
-    #: where the window allows — so the polyline touches the racing line at both
-    #: ends and the drawn lane meets the circuit ribbon.
+    #: Entry/exit indices: each unclipped end extends beyond the off-line core
+    #: to the on-line envelope (`PIT_ONLINE_RESIDUAL_M`, the departure/rejoin
+    #: points), so the polyline touches the racing line at both ends and the
+    #: drawn lane merges with the circuit ribbon.
     start_i: int
     end_i: int
     #: Seconds below `PIT_STOP_MAX_KMH` inside the span — the discriminator.
@@ -230,8 +254,11 @@ def detect_traversals(
     """
     Every pit-lane traversal in one car's grid positions: a maximal span more
     than `PIT_OFFLINE_M` off the racing line that contains at least
-    `PIT_STOP_MIN_S` below `PIT_STOP_MAX_KMH`. Ends are extended one on-line
-    sample where the window allows, so the polyline meets the ribbon.
+    `PIT_STOP_MIN_S` below `PIT_STOP_MAX_KMH`. Each unclipped end is extended
+    to the ON-LINE ENVELOPE (`PIT_ONLINE_RESIDUAL_M`, capped by
+    `PIT_JOIN_MAX_S`) so the polyline runs departure point to rejoin point and
+    touches the racing line at both ends — the 10 m gate DETECTS a traversal,
+    it does not bound the drawn road.
     """
     xs = np.asarray(x, dtype=float)
     ys = np.asarray(y, dtype=float)
@@ -239,6 +266,7 @@ def detect_traversals(
     if upm <= 0 or len(xs) < 2 or len(line_x) < 2:
         return []
     res_m = polyline_distance(xs, ys, line_x, line_y) / upm
+    cap = max(1, int(round(PIT_JOIN_MAX_S * rate)))
     out: "list[PitTraversal]" = []
     for a, b in _spans(res_m > PIT_OFFLINE_M):
         stop_s = float((sp[a : b + 1] < PIT_STOP_MAX_KMH).sum()) / rate
@@ -259,8 +287,8 @@ def detect_traversals(
         out.append(
             PitTraversal(
                 driver=driver,
-                start_i=a if clipped_start else a - 1,
-                end_i=b if clipped_end else b + 1,
+                start_i=a if clipped_start else _join_index(res_m, a, -1, cap),
+                end_i=b if clipped_end else _join_index(res_m, b, +1, cap),
                 stop_s=round(stop_s, 1),
                 max_res_m=round(float(res_m[a : b + 1].max()), 1),
                 clipped_start=clipped_start,
@@ -268,6 +296,28 @@ def detect_traversals(
             )
         )
     return out
+
+
+def _join_index(res_m: np.ndarray, edge: int, step: int, cap: int) -> int:
+    """
+    Where a traversal's drawn end joins the racing line: walking outward from
+    the off-line core's `edge` in direction `step`, the first sample whose
+    residual is inside the on-line envelope. If the envelope is never reached
+    within `cap` samples (or the window's edge), the walked stretch's closest
+    approach to the line joins instead — never the raw 10 m detection bound,
+    which is what the watch saw as a hook at entry and a gap at exit.
+    """
+    i = edge
+    best = edge
+    for _ in range(cap):
+        if i + step < 0 or i + step >= len(res_m):
+            break
+        i += step
+        if res_m[i] < res_m[best]:
+            best = i
+        if res_m[i] <= PIT_ONLINE_RESIDUAL_M:
+            return i
+    return best
 
 
 def _driven_length(xs: np.ndarray, ys: np.ndarray) -> float:

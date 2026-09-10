@@ -3661,9 +3661,11 @@ def test_window_builder_omits_dropouts_for_a_clean_field():
 
 from replay_transform import (  # noqa: E402  (section-local, matching the file's style)
     NO_PIT_LANE,
+    PIT_JOIN_MAX_S,
     PIT_LANE_REDUNDANT_M,
     PIT_MIN_EXTENT_M,
     PIT_OFFLINE_M,
+    PIT_ONLINE_RESIDUAL_M,
     PIT_STOP_MAX_KMH,
     PIT_STOP_MIN_S,
     PitTraversal,
@@ -3758,7 +3760,9 @@ def test_detect_traversals_finds_the_span_and_extends_it_onto_the_line():
     found = detect_traversals("XXX", x, y, v, line_x, line_y, 1.0, 10.0)
     assert len(found) == 1
     t = found[0]
-    # The off-line core is [150, 249]; the ends extend ONE on-line sample.
+    # The off-line core is [150, 249]; on this step-shaped fixture the sample
+    # either side is already inside the on-line envelope, so the envelope walk
+    # joins there.
     assert (t.start_i, t.end_i) == (149, 250)
     assert not t.clipped_start and not t.clipped_end
     assert t.stop_s == pytest.approx(2.5)
@@ -3783,6 +3787,57 @@ def test_detect_traversals_rejects_a_parked_cluster():
     v[150:250] = 0.0
     found = detect_traversals("PRK", x, y, v, np.arange(400.0), np.zeros(400), 1.0, 10.0)
     assert found == []
+
+
+def test_detect_traversals_joins_ramped_ends_at_the_online_envelope():
+    # The watch's finding, as a fixture: residual RAMPS off the line the way a
+    # real pit entry does (0,1,2,...) instead of stepping. The drawn end must
+    # reach the departure/rejoin points (first sample inside the envelope), not
+    # stop at the 10 m detection gate — that gate cut Monza's exit ~10 m short
+    # of the track and left the 0-8 m departure curve undrawn at entry.
+    n = 400
+    x = np.arange(float(n))
+    y = np.zeros(n)
+    v = np.full(n, 36.0)
+    # entry ramp over [140, 160): 2.5 m per sample; core plateau 50 m; exit
+    # ramp down over [250, 270).
+    for k in range(20):
+        y[140 + k] = 2.5 * (k + 1)
+        y[269 - k] = 2.5 * (k + 1)
+    y[160:250] = 50.0
+    v[190:215] = 0.0
+    x[190:215] = x[190]
+    found = detect_traversals("XXX", x, y, v, np.arange(400.0), np.zeros(400), 1.0, 10.0)
+    assert len(found) == 1
+    t = found[0]
+    # First samples inside the 2 m envelope: y[140]=2.5 exceeds it, so the join
+    # is the flat sample before the ramp (139) and after it (270) — residual 0.
+    assert (t.start_i, t.end_i) == (139, 270)
+
+
+def test_detect_traversals_falls_back_to_closest_approach_when_the_envelope_is_out_of_reach():
+    # A car that leaves the pit but then hovers 5 m off-line for longer than
+    # the join cap: the envelope is never reached, and the drawn end joins at
+    # the walked stretch's closest approach — never at the raw 10 m gate.
+    n = 400
+    x = np.arange(float(n))
+    y = np.full(n, 5.0)  # hovering 5 m off-line everywhere...
+    y[150:250] = 50.0  # ...except the traversal core
+    y[120] = 3.0  # the closest approach on the entry side, inside the cap
+    v = np.full(n, 36.0)
+    v[190:215] = 0.0
+    x[190:215] = x[190]
+    found = detect_traversals("XXX", x, y, v, np.arange(400.0), np.zeros(400), 1.0, 10.0)
+    assert len(found) == 1
+    t = found[0]
+    cap = int(PIT_JOIN_MAX_S * 10.0)
+    # Entry: the walk spans [149-cap, 149] and its minimum residual is at 120.
+    assert t.start_i == 120
+    # Exit: the walk's residuals are a flat 5 m, so the closest approach is the
+    # first walked sample — one past the core, exactly where the old rule
+    # stopped, because here the data genuinely never comes closer.
+    assert t.end_i == 250
+    assert 149 - cap <= t.start_i
 
 
 def test_detect_traversals_marks_window_clipped_spans_and_does_not_extend_them():
@@ -3983,6 +4038,8 @@ def test_the_pit_thresholds_sit_inside_their_measured_bands():
     assert 0.0 < PIT_STOP_MIN_S <= 3.1  # stops measured 3.1-7.8 s; false: 0.0
     assert 9.2 < PIT_OFFLINE_M <= 15.8  # on-line max 9.2 m; lanes 15.8+ m off
     assert 8.4 < PIT_MIN_EXTENT_M <= 150.0  # parked ~8 m; narrowest lane 150 m
+    assert 1.0 < PIT_ONLINE_RESIDUAL_M < PIT_OFFLINE_M  # on-line noise <=1 m; gate 10
+    assert PIT_JOIN_MAX_S >= 2 * 4.3  # slowest measured convergence 4.3 s (Monza exit)
     assert 3.8 < PIT_LANE_REDUNDANT_M <= 224.0  # same-lane <=3.8 m; other geometry 224+
     assert PIT_STOP_MAX_KMH == 15.0  # the anchor family's walking-pace bound
 
