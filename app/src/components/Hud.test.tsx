@@ -1155,6 +1155,36 @@ describe("Hud tower states (Slice 19)", () => {
     expect(later?.textContent).not.toContain(GAP_NO_SIGNAL);
   });
 
+  it("spells NO SIGNAL compactly in the header and compact rows, full words in the readout — Slice 21 rider", () => {
+    // FOC (focused header) and OFF (compact row) are both inside a dropout: the two
+    // spots whose width budget wrapped "NO SIGNAL" to two lines. Sighted eyes get
+    // the compact spelling; the accessible name keeps the full words beside it.
+    const replay = stateReplay(
+      {
+        driver: "FOC",
+        samples: ringSamples(),
+        dropouts: [{ fromT: 4, toT: 8 }],
+      },
+      {
+        driver: "OFF",
+        samples: ringSamples(20),
+        dropouts: [{ fromT: 4, toT: 8 }],
+      },
+    );
+    renderStates(replay, 6);
+
+    // RTL normalises the label's non-breaking space to a plain one.
+    const compact = screen.getAllByText("NO SIG");
+    expect(compact).toHaveLength(2); // focused header + OFF's compact row
+    for (const el of compact) {
+      expect(el).toHaveAttribute("aria-hidden", "true");
+      // The sibling sr-only text keeps the full words in the accessible name.
+      expect(el.parentElement?.textContent).toContain(GAP_NO_SIGNAL);
+    }
+    // The focused READOUT keeps the full words — its slots have the room.
+    expect(screen.getAllByText(GAP_NO_SIGNAL).length).toBeGreaterThanOrEqual(3);
+  });
+
   it("shows a standing field as order without numbers until launch, then numbers — exhibit 3", () => {
     // All three cars below the floor for the first 15 s (a grid hold with quorum),
     // then racing. The BEFORE behaviour quoted RUS −52.8 s from a stationary ANT.

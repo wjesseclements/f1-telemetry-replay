@@ -34,7 +34,7 @@
  * tyre is. The signature's clock term already forces an emit whenever the answer
  * could change.
  */
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   buildCarStateIndex,
   carStateAt,
@@ -50,11 +50,13 @@ import {
 import { sameOrder, towerOrder } from "../engine/runningOrder";
 import type { Replay } from "../engine/schema";
 import { tyreStateAt } from "../engine/tyres";
+import { prefersReducedMotion } from "../store/motion";
 import { useTransport } from "../store/transport";
 import { EMPTY_FRAME } from "../telemetry/channel";
 import { useTelemetry } from "../telemetry/useTelemetry";
 import { CarEntry } from "./CarEntry";
 import { SpeedTrace } from "./SpeedTrace";
+import { flipRows } from "./towerFlip";
 
 export interface HudProps {
   replay: Replay;
@@ -185,6 +187,48 @@ export function Hud({ replay }: HudProps) {
   );
   if (!sameOrder(next, order)) setOrder(next);
 
+  /**
+   * The reshuffle animation (Slice 21): a FLIP pass after every commit. The refs are
+   * the animation's memory — where each row was last seen (`rowTops`, by driver) and
+   * what the previous commit rendered (`flipPrev`) — read and written only inside
+   * the effect, so nothing here re-renders anything.
+   *
+   * What animates is decided per commit, not per row:
+   *  - a REORDER on the same replay animates (an overtake, a car dropping to DNF,
+   *    the focused block travelling with its car — all the same mechanism);
+   *  - a replay or scenario switch does NOT (`flipPrev.replay` mismatch): the same
+   *    driver's row in a different session is a different fact, and sliding it
+   *    would invent continuity. The cached tops are dropped, not just unused, so
+   *    the first reorder of the new session cannot reach across the switch;
+   *  - a focus change alone does not (the order is focus-independent, so
+   *    `sameOrder` holds and the pass only refreshes the cache): the readout's
+   *    height change snaps, per the PLAN argument — animating height is layout
+   *    per frame, which rule 1 forbids;
+   *  - `prefers-reduced-motion` does not, checked at the moment it matters (the
+   *    reorder), consistent with `motion.ts`'s read-at-need doctrine.
+   */
+  const rowsRef = useRef<HTMLUListElement>(null);
+  const rowTops = useRef<ReadonlyMap<string, number>>(new Map());
+  const flipPrev = useRef<{ replay: Replay | null; order: readonly number[] }>({
+    replay: null,
+    order: [],
+  });
+  useLayoutEffect(() => {
+    const list = rowsRef.current;
+    if (list === null) return;
+    const prev = flipPrev.current;
+    const sameReplay = prev.replay === replay;
+    flipPrev.current = { replay, order: next };
+    rowTops.current = flipRows(
+      // The list's children ARE the rows, in `next` order — CarEntry renders one
+      // `<li>` and nothing else at that level.
+      Array.from(list.children) as HTMLElement[],
+      next.map((i) => replay.cars[i].driver),
+      sameReplay ? rowTops.current : new Map(),
+      sameReplay && !sameOrder(prev.order, next) && !prefersReducedMotion(),
+    );
+  });
+
   return (
     // A sidebar when there is width for one, a strip under the track when there is
     // not. The border follows the edge it is actually on, so the panel never looks
@@ -196,6 +240,7 @@ export function Hud({ replay }: HudProps) {
       {/* `overflow-y-auto` because twenty cars are taller than any sidebar; three fit
           without it ever showing. */}
       <ul
+        ref={rowsRef}
         aria-label="Running order"
         className="m-0 flex w-full min-w-0 list-none flex-col gap-1 overflow-y-auto p-0"
       >
