@@ -25,9 +25,8 @@ warnings; 293 pytest with 100% lines + branches on every module; drawcall md5s
 IDENTICAL on both render modes (the canvas is untouched); the two 2026 assets
 regenerated, all three 2024 assets byte-identical old-code vs new-code.
 
-**What is open, and what is blocked.** **Slice 9m is DONE, awaiting the human's
-watch** (2026-09-09, branch `feat/slice-9m-stuck-channel`, not pushed): the
-stuck-channel dropout screen. Slice 19's 1:52.7 "COL P1" was the DATA — F1's feed
+**What is open, and what is blocked.** **Slice 9m is DONE and ACCEPTED**
+(2026-09-10, PR #71, auto-merge enabled): the stuck-channel dropout screen. Slice 19's 1:52.7 "COL P1" was the DATA — F1's feed
 drops per car once a lap at a fixed spot in both 2026 Monza windows, freezing speed
 at pace while the position dead-reckons forward, and travel-driven placement
 amplifies each dropout into a phantom surge. 9m detects each dropout on the raw
@@ -49,11 +48,9 @@ is retired. **The board: 21 (tower reshuffle animation) → 16 (pit-lane drawing
 9k → 18 → 20.** **Nothing is blocked**; the standing constraint remains:
 `build_replay.py` runs only from the human's home network (CLAUDE.md Gotchas).
 
-**What happens next.** The human re-watches the restart scenario at 0.5× to accept
-9m (pre-registered in its PLAN entry: COL stays in the pack into della Roggia, no
-surge and no snap-back; GAS likewise near the front; NO SIGNAL, never a fabricated
-readout or a PIT label, across any dropout). Then **Slice 21** — the tower reshuffle
-animation — then 16 → 9k → 18 → 20 per the board, and the backlog's headline
-**fixture asymmetry overhaul** behind them. One housekeeping item is filed: a
-re-record of the three 2024 gallery assets, stale on `trackStatus` since Slice 17
-(9m proved it left them byte-identical).
+**What happens next.** **Slice 21** — the tower reshuffle animation — is next, and it
+now carries a cosmetic rider from 9m's acceptance: "NO SIGNAL" wraps to two lines in
+the header and compact rows, wanting a compact label or glyph. Then 16 → 9k → 18 →
+20 per the board, and the backlog's headline **fixture asymmetry overhaul** behind
+them. One housekeeping item is filed: a re-record of the three 2024 gallery assets,
+stale on `trackStatus` since Slice 17 (9m proved it left them byte-identical).

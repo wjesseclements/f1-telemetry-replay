@@ -4291,7 +4291,7 @@ the sort and indicted the POSITIONS. Diagnosed read-only; the mechanism:**
    the 1:52 P1 is the data defect now filed as 9m. **Auto-merge enabled on the
    human's instruction.**
 
-### [x] Slice 9m — stuck-channel dropout screen (done 2026-09-09)
+### [x] Slice 9m — stuck-channel dropout screen (done 2026-09-09, ACCEPTED 2026-09-10)
 
 **Filed 2026-09-09 by Slice 19's second re-watch; built the same day in the
 9-series method (measure → pre-register → build → verify against the
@@ -4446,6 +4446,13 @@ progress would mean inventing the unrecorded braking curve (the 9g surrender lin
 Gates re-run green both languages (788 app tests, 293 pytest, 100 % coverage each,
 drawcall md5s still identical — the canvas is untouched by all of this).
 
+**Re-watch (2026-09-10, human): PASS, ACCEPTED, auto-merge enabled.** COL stays in the
+pack through della Roggia; NO SIGNAL renders during the dropout instead of zeros or a
+PIT label; the order is steady; GAS's simultaneous dropout is visible as intended. The
+PIA/ALO on-line arc wobble was noted as the documented residual. One cosmetic follow-up
+filed to Slice 21: "NO SIGNAL" wraps to two lines in the header and compact rows — a
+compact label or glyph is wanted there.
+
 ### [ ] Slice 21 — tower reshuffle animation
 
 **Filed 2026-09-08 at Slice 17's acceptance.** When the running order changes,
@@ -4460,6 +4467,14 @@ happens when a resort lands mid-animation, and whether the focused row's
 readout (which changes height) animates or snaps. Sequenced after 19 — a
 retired car's row should learn where it BELONGS before it learns to travel
 there.
+
+- **Cosmetic rider (filed at Slice 9m's re-watch acceptance, 2026-09-10):** the
+  `GAP_NO_SIGNAL` label ("NO SIGNAL") wraps to two lines in the focused readout's
+  header and in a compact tower row — the words are correct but the layout is not.
+  Fold in a compact spelling or a glyph in those tight spots while keeping the full
+  words where there is room (the DNF/PIT columns have the same width budget, so
+  whatever solves this should be consistent across all three state labels). Copy is
+  the human's to rule, per the standing convention.
 
 ### [ ] Slice 20 — colour distinction under the luminance floor
 
