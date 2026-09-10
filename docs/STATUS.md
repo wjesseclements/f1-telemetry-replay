@@ -31,13 +31,11 @@ warnings; 293 pytest with 100% lines + branches on every module; drawcall md5s
 IDENTICAL on both render modes (the canvas is untouched); fps-probe over the
 restart launch at 2× — 0 frames over 20 ms, callback p95 4.2 ms.
 
-**What is open, and what is blocked.** **Slice 21 is BUILT and awaiting the
-acceptance watch** (2026-09-10, branch `feat/slice-21-tower-animation`): the tower
-reshuffle animation, with the pre-registered `TOWER_MOVE_MS = 300` / ease-out
-written into PLAN before the watch, and the "NO SIG" compact spelling pending the
-human's copy ruling. The acceptance scene is the restart launch at 2× — following
-COL's P5→P2→P7 arc by eye — plus the 2024 pit cycle's swaps reading as moves.
-Before it, **Slice 9m shipped** (2026-09-10,
+**What is open, and what is blocked.** **Slice 21 is DONE and ACCEPTED**
+(2026-09-10, watch PASS): the tower reshuffle animation, with the pre-registered
+`TOWER_MOVE_MS = 300` / ease-out surviving the watch untouched and the "NO SIG"
+compact spelling ratified — the launch arc followable at 2×, the 2024 pit cycle's
+swaps reading as moves. Before it, **Slice 9m shipped** (2026-09-10,
 PR #71): the stuck-channel dropout screen — F1's feed drops per car once a lap in
 both 2026 Monza windows, and 9m detects each dropout by its physically-impossible
 signature (37 firings in 2026, zero across the 2024 corpus), bridges it along the
@@ -48,8 +46,8 @@ the leader monotone, never crossing RUS) and the restart's known-artifact
 **Nothing is blocked**; the standing constraint remains: `build_replay.py` runs
 only from the human's home network (CLAUDE.md Gotchas).
 
-**What happens next.** The Slice 21 acceptance watch, then **Slice 16** (pit-lane
-drawing) per the board: 16 → 9k → 18 → 20, with the backlog's headline **fixture
-asymmetry overhaul** behind them. One housekeeping item is filed: a re-record of
+**What happens next.** **Slice 16** (pit-lane drawing) per the board:
+16 → 9k → 18 → 20, with the backlog's headline **fixture asymmetry overhaul**
+behind them. One housekeeping item is filed: a re-record of
 the three 2024 gallery assets, stale on `trackStatus` since Slice 17 (9m proved it
 left them byte-identical).

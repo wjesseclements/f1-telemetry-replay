@@ -4580,6 +4580,11 @@ one stated reason.
   readout still saying the full NO SIGNAL; 375 px strip intact — one-line labels,
   both gap columns present sub-`md`, transport fine.
 
+**Watch (2026-09-10, human): PASS, ACCEPTED.** The launch arc followable at 2×,
+the 2024 pit cycle's swaps reading as moves. The pre-registered 300 ms stands
+untouched — no tune requested. **"NO SIG" ratified** as the compact spelling.
+Push + PR + auto-merge authorised.
+
 ### [ ] Slice 20 — colour distinction under the luminance floor
 
 **Filed 2026-09-08 by Slice 17's browser pass.** The floor fixes visibility, not
