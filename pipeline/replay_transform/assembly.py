@@ -17,6 +17,11 @@ from typing import Any, Iterable, Mapping, Sequence
 import numpy as np
 
 from .dead_feed import detect_dead_feed, freeze_telemetry
+from .stuck_channel import (
+    bridge_stuck_channels,
+    detect_stuck_channels,
+    dropout_intervals,
+)
 
 from .contract import (
     LOOP_CLOSED,
@@ -405,8 +410,13 @@ def build_window_replay_dict(
     # disagreeing about whether DRS exists is incoherent. Requiring the channel on
     # every car (rather than raising when one lacks it) degrades in the safe
     # direction — the indicator disappears for everybody instead of the build failing.
+    n = len(grid)
+    duration = round(n / rate, 3)
+
     per_car = []
     retired_at: "dict[str, float]" = {}
+    stuck_anchors_by_driver: "dict[str, list[int]]" = {}
+    dropouts_by_driver: "dict[str, list[dict[str, float]]]" = {}
     for car in cars:
         check_columns(car.telemetry.keys())
         # The dead-feed screen runs FIRST, on the source rows, because everything
@@ -429,6 +439,27 @@ def build_window_replay_dict(
             retired_at[str(car.driver)] = round(
                 max(feed.freeze_t - float(window[0]), 0.0), 3
             )
+        # The stuck-channel screen (Slice 9m) runs next, still on the source rows and
+        # still before every position screen: it bridges each frozen-feed dropout so
+        # placement never integrates the stuck value, and hands back the span edges as
+        # anchors and the dropout intervals for the schema. A dead-feed-frozen car has
+        # no resuming dropout to find (the two screens are mutually exclusive by the
+        # 9l resume/death distinction), so the order between them does not matter.
+        stuck = detect_stuck_channels(
+            car.telemetry["Time"],
+            car.telemetry["Speed"],
+            car.telemetry["Throttle"],
+            car.telemetry["Brake"],
+            car.telemetry["X"],
+            car.telemetry["Y"],
+        )
+        bridged, stuck_anchors = bridge_stuck_channels(car.telemetry, stuck)
+        if stuck.n:
+            car = dataclasses.replace(car, telemetry=bridged)
+        stuck_anchors_by_driver[str(car.driver)] = stuck_anchors
+        drops = dropout_intervals(stuck, float(window[0]), duration)
+        if drops:
+            dropouts_by_driver[str(car.driver)] = drops
         t = _window_time_axis(car)
         per_car.append((car, t, resample_channels(src, t, car.telemetry)))
 
@@ -446,7 +477,10 @@ def build_window_replay_dict(
         x, y = repair.x, repair.y
         rejection = reject_impossible_fixes(t, x, y, speed)
         rejections.append((str(car.driver), rejection))
-        plan = window_anchor_plan(t, speed, repair, car, window[0])
+        plan = window_anchor_plan(
+            t, speed, repair, car, window[0],
+            stuck_anchors=stuck_anchors_by_driver.get(str(car.driver), ()),
+        )
         # The reversal screen (Slice 9j), under the same guard as the anchors: a car
         # with a DECLINED displacement is a known-corrupt region and gets no
         # surgical edits — its fixes ship exactly as the ratio screen left them.
@@ -481,7 +515,6 @@ def build_window_replay_dict(
             )
         )
 
-    n = len(grid)
     _, ref_x, ref_y, ref_samples = built[0]
 
     return {
@@ -493,7 +526,7 @@ def build_window_replay_dict(
             "track": str(meta.track),
             "rotation": float(meta.rotation),
             "sampleRateHz": rate,
-            "duration": round(n / rate, 3),
+            "duration": duration,
             # A window does not close — the app holds the last sample rather than
             # gliding every car back to where it started. See LOOP_OPEN.
             "loop": LOOP_OPEN,
@@ -528,6 +561,15 @@ def build_window_replay_dict(
                 **(
                     {"retiredAt": retired_at[str(car.driver)]}
                     if str(car.driver) in retired_at
+                    else {}
+                ),
+                # `dropouts` is OPTIONAL with the same doctrine as `retiredAt`: it
+                # appears only when the stuck-channel screen bridged one or more
+                # frozen-feed dropouts (Slice 9m), and an empty list is not emitted —
+                # absence means "the feed never dropped". Window-relative `{fromT,toT}`.
+                **(
+                    {"dropouts": dropouts_by_driver[str(car.driver)]}
+                    if str(car.driver) in dropouts_by_driver
                     else {}
                 ),
             }
@@ -565,15 +607,25 @@ class AnchorPlan:
     loop: "tuple[int, ...]"
     #: Anchors bracketing below-`IMPOSSIBLE_MIN_SPEED` spans (`slow_span_anchors`).
     pit: "tuple[int, ...]"
+    #: Anchors bracketing every bridged stuck-channel dropout (Slice 9m): the last
+    #: trusted fix before the freeze and the resume fix after it. Unlike loop/pit
+    #: these are NOT withheld by a declined displacement — a bridged span is a region
+    #: this pipeline itself reconstructed as a clean chord, so its edges are trusted
+    #: ground by construction, which is the opposite of a declined relocation's
+    #: known-unreal path.
+    stuck: "tuple[int, ...]"
     #: True when the car carries a DECLINED frame displacement, which withholds
-    #: every extra anchor: anchoring asserts the path between anchors is ground the
-    #: car covered, and a declined relocation is known-unreal path. The 41.7 m
+    #: the loop and pit anchors: anchoring asserts the path between anchors is ground
+    #: the car covered, and a declined relocation is known-unreal path. The 41.7 m
     #: guard — measured, not stylistic: anchoring rain NOR moved his held-out
     #: sector2 error from 47.6 m to 60.2 m (PLAN.md Slice 9i, candidate table).
     declined: bool
 
     def extra(self) -> "list[int]":
-        return [] if self.declined else sorted(set(self.loop + self.pit))
+        base = list(self.stuck)
+        if not self.declined:
+            base += list(self.loop) + list(self.pit)
+        return sorted(set(base))
 
 
 def window_anchor_plan(
@@ -582,19 +634,25 @@ def window_anchor_plan(
     repair: FrameDisplacement,
     car: WindowCar,
     t0: float,
+    stuck_anchors: "Sequence[int]" = (),
 ) -> AnchorPlan:
     """
-    The anchor plan for one window car: S/F loop crossings UNION pit-span brackets,
-    all withheld for a car with a declined displacement.
+    The anchor plan for one window car: S/F loop crossings UNION pit-span brackets
+    UNION bridged stuck-channel edges, the first two withheld for a car with a
+    declined displacement.
 
     The union, chosen by simulation rather than argument (PLAN.md Slice 9i Phase 2
     table): the two families fix different things — loop anchors carry the timing
     loops' authority once per lap, pit brackets confine the path/travel break to the
     span it happens in — and the union's worst held-out sector cell improves or ties
-    in every window.
+    in every window. The stuck edges (Slice 9m) join them: they pin the bridged chord
+    so the reconstructed span does not re-place the rest of the window, and they
+    re-sync the car at resume rather than at the next timing loop.
 
     Called by `build_window_replay_dict` AND recomputed by `build_replay.py`'s
-    report, same inputs, so the file and the log cannot disagree.
+    report, same inputs, so the file and the log cannot disagree. `stuck_anchors` is
+    passed in rather than recomputed here because the detection also produces the
+    bridged telemetry, and running it twice would risk the two diverging.
 
     The crossings are `t0 + lap.startT` — the lap table the pipeline already
     receives (Slice 14); no new inputs. A lap in progress at the window start
@@ -605,5 +663,6 @@ def window_anchor_plan(
     return AnchorPlan(
         loop=tuple(lap_start_anchors(ts, crossings)),
         pit=tuple(slow_span_anchors(ts, speed, IMPOSSIBLE_MIN_SPEED)),
+        stuck=tuple(sorted(set(int(a) for a in stuck_anchors))),
         declined=bool(repair.jump_times) and not repair.repaired,
     )

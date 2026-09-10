@@ -166,6 +166,12 @@ export interface CarStateIndex {
   /** Per car: the subset of `stationary` at least `HOLD_MIN_S` long. */
   readonly holds: readonly (readonly Interval[])[];
   /**
+   * Per car: the feed-dropout intervals the pipeline emitted (`car.dropouts`,
+   * Slice 9m). Carried in the index like the others so a tick answers membership
+   * from a precomputed list; already sorted and non-overlapping by the schema.
+   */
+  readonly dropouts: readonly (readonly Interval[])[];
+  /**
    * When the field launches from a standing start, or `null` when the window holds no
    * standing field. The end of the first spell of `GRID_QUORUM`-or-more simultaneously
    * stationary cars lasting `HOLD_MIN_S` — until that instant EVERY gap is blank,
@@ -192,11 +198,25 @@ export interface CarState {
   stationary: boolean;
   /** Has covered at least `JOINED_TRAVEL_M` since the window opened. */
   joined: boolean;
+  /**
+   * Inside one of the car's `dropouts` intervals — a stretch the pipeline's
+   * stuck-channel screen flagged as a frozen feed and bridged (Slice 9m). During it
+   * nothing the car reports is real: the position is a best-effort reconstruction
+   * (on the racing line, so the marker still moves) but speed and pedals are
+   * fabricated, so the tower and readout show NO SIGNAL. It takes PRECEDENCE over
+   * `offline`: a bridged span can leave the arc-progress wobbling within a metre of
+   * the line, which the residual test would read as off-line and mislabel PIT — but a
+   * dropped feed is a flagged fact, not a pit stop, so `carStateAt` clears `offline`
+   * whenever this is set. It is a hold for gaps like the others (`isRacing` false).
+   */
+  dropout: boolean;
 }
 
 /** Racing = the state a time gap may be quoted against (the rule, as a predicate). */
 export function isRacing(state: CarState): boolean {
-  return !state.retired && !state.offline && !state.stationary;
+  return (
+    !state.retired && !state.offline && !state.stationary && !state.dropout
+  );
 }
 
 /** Below-floor spells for one car, with the window-edge rule. O(samples). */
@@ -234,6 +254,11 @@ export function buildCarStateIndex(replay: Replay): CarStateIndex {
   const holds = stationary.map((spells) =>
     spells.filter((s) => s.toT - s.fromT >= HOLD_MIN_S),
   );
+  // The pipeline's dropout intervals, straight from the schema — already the `Interval`
+  // shape, sorted and non-overlapping. A car that never dropped carries `[]`.
+  const dropouts = replay.cars.map((car) =>
+    car.dropouts.map((d) => ({ fromT: d.fromT, toT: d.toT })),
+  );
 
   // The field-standing count per sample, from the raw floor rather than the spells:
   // the quorum interval's own duration gate does the sustaining.
@@ -259,7 +284,7 @@ export function buildCarStateIndex(replay: Replay): CarStateIndex {
     }
   }
 
-  return { stationary, holds, launchT };
+  return { stationary, holds, dropouts, launchT };
 }
 
 /** Is `clock` inside any of these intervals? The lists are short (≤3 in the corpus). */
@@ -285,11 +310,18 @@ export function carStateAt(
   clock: number,
 ): CarState {
   const car = replay.cars[carIndex];
+  const dropout = within(index.dropouts[carIndex], clock);
   return {
     retired: car.retiredAt !== undefined && clock >= car.retiredAt,
-    offline: residualAt(progress, carIndex, clock) > OFFLINE_RESIDUAL_M,
+    // A dropout CLEARS offline: the bridged position can wobble within a metre of the
+    // line, which the residual test would read as off-line and the tower would spell
+    // PIT — but the pipeline has flagged this as a dropped feed, which is not a pit
+    // stop. NO SIGNAL is the honest label, and `dropout` carries it.
+    offline:
+      !dropout && residualAt(progress, carIndex, clock) > OFFLINE_RESIDUAL_M,
     stationary: within(index.stationary[carIndex], clock),
     joined: travelSoFarM(progress, carIndex, clock) >= JOINED_TRAVEL_M,
+    dropout,
   };
 }
 

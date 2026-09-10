@@ -78,6 +78,7 @@ function replayOf(
       samples: Array.isArray(car) ? car : car.samples,
       laps: [],
       stints: [],
+      dropouts: [],
       ...(Array.isArray(car) || car.retiredAt === undefined
         ? {}
         : { retiredAt: car.retiredAt }),
@@ -103,6 +104,7 @@ const racing: CarState = {
   offline: false,
   stationary: false,
   joined: true,
+  dropout: false,
 };
 const gapOf = (seconds: number): Gap => ({
   seconds,
@@ -190,8 +192,44 @@ describe("off-line, retired, joined", () => {
     expect(isRacing({ ...racing, retired: true })).toBe(false);
     expect(isRacing({ ...racing, offline: true })).toBe(false);
     expect(isRacing({ ...racing, stationary: true })).toBe(false);
+    expect(isRacing({ ...racing, dropout: true })).toBe(false);
     // A car on its first metres is racing — joined gates the SORT, not the state.
     expect(isRacing({ ...racing, joined: false })).toBe(true);
+  });
+});
+
+describe("feed dropout (Slice 9m)", () => {
+  // C1 rides 15 m off the reference line (off-line by residual) AND carries a dropout
+  // interval over t=[4, 8): the dropout must win, clearing offline so it is not
+  // mislabelled PIT. C0 is clean.
+  const replay = replayOf(ring(2), ring(2, 20, OFFLINE_RESIDUAL_M + 5));
+  replay.cars[1] = {
+    ...replay.cars[1],
+    dropouts: [{ fromT: 4, toT: 8 }],
+  };
+  const index = buildCarStateIndex(replay);
+  const progress = buildProgressIndex(replay);
+
+  it("classifies a car inside its dropout interval as DROPOUT", () => {
+    expect(carStateAt(replay, progress, index, 1, 3.9).dropout).toBe(false);
+    expect(carStateAt(replay, progress, index, 1, 4).dropout).toBe(true);
+    expect(carStateAt(replay, progress, index, 1, 7.9).dropout).toBe(true);
+    expect(carStateAt(replay, progress, index, 1, 8).dropout).toBe(false);
+    // A car with no dropouts is never in one.
+    expect(carStateAt(replay, progress, index, 0, 5).dropout).toBe(false);
+  });
+
+  it("clears OFF-LINE inside a dropout so the tower never spells PIT", () => {
+    // Outside the dropout the same 15 m offset reads OFF-LINE; inside it, the dropout
+    // supersedes and offline is false — NO SIGNAL, not PIT.
+    expect(carStateAt(replay, progress, index, 1, 9).offline).toBe(true);
+    const during = carStateAt(replay, progress, index, 1, 6);
+    expect(during.dropout).toBe(true);
+    expect(during.offline).toBe(false);
+  });
+
+  it("makes a dropout a hold for gaps (isRacing false)", () => {
+    expect(isRacing(carStateAt(replay, progress, index, 1, 6))).toBe(false);
   });
 });
 
@@ -316,6 +354,7 @@ describe("orderKeyFor — who has a place in the running order", () => {
         offline: true,
         stationary: true,
         joined: false,
+        dropout: false,
       }),
     ).toBeNull();
   });

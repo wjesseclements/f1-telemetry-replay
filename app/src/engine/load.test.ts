@@ -621,3 +621,44 @@ describe("parseReplay — retiredAt (Slice 9l)", () => {
     expect(err.message).toContain("meta.duration");
   });
 });
+
+describe("parseReplay — dropouts (Slice 9m)", () => {
+  it("defaults to an empty array — a feed that never dropped is the unmarked state", () => {
+    expect(sampleLap.cars[0]).not.toHaveProperty("dropouts");
+    expect(parseReplay(sampleLap).cars[0].dropouts).toEqual([]);
+  });
+
+  it("accepts ordered, non-overlapping, in-window intervals", () => {
+    const ok = clone();
+    ok.cars[0].dropouts = [
+      { fromT: 5, toT: 11 },
+      { fromT: 20, toT: 26 },
+    ];
+    expect(parseReplay(ok).cars[0].dropouts).toHaveLength(2);
+  });
+
+  it("rejects a backwards interval", () => {
+    const bad = clone();
+    bad.cars[0].dropouts = [{ fromT: 10, toT: 10 }];
+    const err = expectRejection(bad);
+    expect(err.message).toContain("must run forwards");
+  });
+
+  it("rejects overlapping or unordered intervals", () => {
+    const bad = clone();
+    bad.cars[0].dropouts = [
+      { fromT: 5, toT: 12 },
+      { fromT: 10, toT: 20 },
+    ];
+    const err = expectRejection(bad);
+    expect(err.message).toContain("ordered and non-overlapping");
+  });
+
+  it("rejects a dropout past the window's end, naming the car", () => {
+    const bad = clone();
+    bad.cars[0].dropouts = [{ fromT: 50, toT: 60 }]; // fixture duration is 58.5
+    const err = expectRejection(bad);
+    expect(err.message).toContain("dropout ending at 60");
+    expect(err.message).toContain("meta.duration");
+  });
+});

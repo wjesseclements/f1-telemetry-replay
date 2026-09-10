@@ -18,6 +18,7 @@ from .placement import KMH_S_PER_METRE, covers_ground, cumulative_travel
 from .repair import FixRejection, FrameDisplacement, ReversalRejection
 from .assembly import AnchorPlan, WindowCar
 from .dead_feed import DEAD_FEED_WINDOW_S, DeadFeedResult
+from .stuck_channel import StuckResult
 
 def stint_report(driver: str, laps: "Sequence[Mapping[str, Any]]", stints: "Sequence[Mapping[str, Any]]") -> str:
     """
@@ -62,6 +63,28 @@ def dead_feed_report(driver: str, result: "DeadFeedResult", t0: float = 0.0) -> 
             "pedal activity after it; a feed that resumes is a dropout, not a death"
         )
     return f"  {driver}: no dead feed"
+
+
+def stuck_channel_report(driver: str, result: "StuckResult", t0: float = 0.0) -> str:
+    """
+    One line per car for the stuck-channel screen (Slice 9m), silent-never like every
+    other screen: a car with no dropout prints "no stuck-channel dropouts" rather than
+    nothing, and a car with dropouts names each span, its frozen speed, and which
+    impossible signature fired — so a future reader classifies the detection from the
+    log without re-deriving it.
+    """
+    if result.n == 0:
+        return f"  {driver}: no stuck-channel dropouts"
+    spans = "; ".join(
+        f"t={s.start_t - t0:.1f}-{s.resume_t - t0:.1f}s "
+        f"({s.resume_t - s.start_t:.1f}s @ {s.speed:.0f} km/h, {s.reason})"
+        for s in result.spans[:6]
+    )
+    more = " ..." if result.n > 6 else ""
+    return (
+        f"  {driver}: {result.n} stuck-channel dropout(s) bridged, worst "
+        f"{result.worst_duration:.1f}s - {spans}{more}"
+    )
 
 
 def status_report(intervals: "Sequence[Mapping[str, Any]]", unknown_codes: "Sequence[str]" = ()) -> str:
@@ -279,16 +302,22 @@ def anchor_report(driver: str, plan: "AnchorPlan") -> str:
     """
     if plan.declined:
         held = len(plan.loop) + len(plan.pit)
+        stuck = (
+            f"; {len(plan.stuck)} stuck-bridge edge(s) still applied"
+            if plan.stuck
+            else ""
+        )
         return (
-            f"  {driver}: anchors WITHHELD ({held} candidate(s)) - declined "
+            f"  {driver}: loop/pit anchors WITHHELD ({held} candidate(s)) - declined "
             f"displacement; the map stays global rather than pin known-unreal path"
+            f"{stuck}"
         )
     n = len(plan.extra())
     if n == 0:
-        return f"  {driver}: 0 extra anchors (no crossings or slow spans in coverage)"
+        return f"  {driver}: 0 extra anchors (no crossings, slow spans or dropouts in coverage)"
     return (
         f"  {driver}: {n} extra anchor(s) - {len(plan.loop)} S/F crossing(s), "
-        f"{len(plan.pit)} pit-span edge(s)"
+        f"{len(plan.pit)} pit-span edge(s), {len(plan.stuck)} stuck-bridge edge(s)"
     )
 
 

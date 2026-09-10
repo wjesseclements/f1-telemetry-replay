@@ -87,6 +87,21 @@ const StatusIntervalSchema = z.object({
   toT: z.number(),
 });
 
+/**
+ * One stretch during which a car's telemetry feed dropped out and the pipeline
+ * bridged its placement across the frozen value (the Slice 9m stuck-channel screen).
+ * Window-relative seconds, sorted and non-overlapping per car (enforced below). A
+ * consumer can render "no signal" on the HUD across these instead of the bridged
+ * coast; the placement itself is already repaired in `samples`, so ignoring the field
+ * is safe — it is provenance, not a transform the app must apply.
+ */
+const DropoutIntervalSchema = z.object({
+  /** Seconds from the start of the replay, inclusive. */
+  fromT: z.number().nonnegative(),
+  /** Seconds from the start of the replay; must exceed `fromT`. */
+  toT: z.number(),
+});
+
 const MetaSchema = z.object({
   schemaVersion: z.literal(SCHEMA_VERSION, {
     error: `replay.meta.schemaVersion must be ${SCHEMA_VERSION}; regenerate the JSON with a matching pipeline`,
@@ -214,6 +229,16 @@ const CarSchema = z
      * tower/gap semantics are Slice 19's.
      */
     retiredAt: z.number().nonnegative().optional(),
+    /**
+     * Feed-dropout intervals this car's telemetry carried, which the pipeline
+     * bridged in `samples` (the Slice 9m stuck-channel screen). ADDITIVE within
+     * schemaVersion 1 with `.default([])`, the `laps`/`trackStatus` doctrine: an
+     * empty array means "the feed never dropped", so every file written before the
+     * field existed still validates and behaves identically, while `z.infer` makes
+     * the parsed value REQUIRED and consumers branch on `length`. Provenance, not a
+     * transform — the placement is already repaired — so a consumer may ignore it.
+     */
+    dropouts: z.array(DropoutIntervalSchema).default([]),
   })
   .superRefine((car, ctx) => {
     // Time must be sorted: interpolation and seek assume it. Unsorted or duplicate
@@ -285,6 +310,30 @@ const CarSchema = z
         break;
       }
     }
+    // Dropout intervals must run forwards and be ordered and non-overlapping, the same
+    // contract as trackStatus: a consumer renders "no signal" across each, and a
+    // backwards or overlapping interval is pipeline drift that would paint nonsense.
+    // The upper bound against meta.duration lives on ReplaySchema, where duration is in
+    // scope (the same place retiredAt's bound lives).
+    for (let i = 0; i < car.dropouts.length; i++) {
+      const cur = car.dropouts[i];
+      if (cur.toT <= cur.fromT) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["dropouts", i],
+          message: `dropout intervals must run forwards: interval ${i} runs from ${cur.fromT} to ${cur.toT}`,
+        });
+        break;
+      }
+      if (i > 0 && cur.fromT < car.dropouts[i - 1].toT) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["dropouts", i],
+          message: `dropout intervals must be ordered and non-overlapping: interval ${i} starts at ${cur.fromT} but the previous one ends at ${car.dropouts[i - 1].toT}`,
+        });
+        break;
+      }
+    }
   });
 
 /**
@@ -330,6 +379,20 @@ export const ReplaySchema = z
           code: "custom",
           path: ["cars", c, "retiredAt"],
           message: `car ${car.driver} retires at ${car.retiredAt}s but meta.duration is ${replay.meta.duration}s`,
+        });
+      }
+      // A dropout past the window's end is unreachable data, the same argument as
+      // retiredAt above. The forwards/ordered/non-overlap checks live on CarSchema;
+      // this upper bound needs meta.duration, which is only in scope here.
+      const last = car.dropouts[car.dropouts.length - 1];
+      if (
+        last !== undefined &&
+        last.toT > replay.meta.duration + GRID_TOLERANCE_S
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["cars", c, "dropouts", car.dropouts.length - 1],
+          message: `car ${car.driver} has a dropout ending at ${last.toT}s but meta.duration is ${replay.meta.duration}s`,
         });
       }
     });
@@ -422,6 +485,7 @@ export type Car = Replay["cars"][number];
 export type Sample = Car["samples"][number];
 export type Lap = Car["laps"][number];
 export type Stint = Car["stints"][number];
+export type Dropout = Car["dropouts"][number];
 /** One of `COMPOUNDS` — 2024-era names plus in-band `"UNKNOWN"`. */
 export type Compound = Stint["compound"];
 /** `"closed"` (a lap) or `"open"` (a session-time window). See `LOOP_MODES`. */

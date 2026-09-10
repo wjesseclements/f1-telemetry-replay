@@ -36,6 +36,7 @@ function carFromPoints(points: readonly [number, number][]): Car {
     samples: samplesOut,
     laps: [],
     stints: [],
+    dropouts: [],
   };
 }
 
@@ -236,6 +237,7 @@ describe("sampleCarAt — open replays hold the last sample", () => {
     })),
     laps: [],
     stints: [],
+    dropouts: [],
   };
   /** Heading of the last real segment, (10,10) -> (10,20): due south-in-world. */
   const LAST_SEGMENT_HEADING = Math.PI / 2;

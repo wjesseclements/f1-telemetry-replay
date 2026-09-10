@@ -70,6 +70,19 @@ from replay_transform import (
     freeze_telemetry,
     ALIVE,
     DeadFeedResult,
+    NO_STUCK,
+    STUCK_EXIT_DECEL_G,
+    STUCK_MIN_DUR_S,
+    STUCK_MIN_ROWS,
+    STUCK_MIN_SPEED,
+    STUCK_POS_FREEZE_S,
+    STUCK_SAT_S,
+    StuckResult,
+    StuckSpan,
+    bridge_stuck_channels,
+    detect_stuck_channels,
+    dropout_intervals,
+    stuck_channel_report,
     status_report,
     stint_report,
     window_status_intervals,
@@ -2716,13 +2729,23 @@ def test_slow_span_anchors_drop_edges_at_the_array_bounds():
 
 
 def test_anchor_plan_union_is_sorted_and_deduplicated():
-    plan = AnchorPlan(loop=(9, 3), pit=(3, 5), declined=False)
-    assert plan.extra() == [3, 5, 9]
+    plan = AnchorPlan(loop=(9, 3), pit=(3, 5), stuck=(5, 11), declined=False)
+    assert plan.extra() == [3, 5, 9, 11]
 
 
-def test_anchor_plan_withholds_everything_for_a_declined_displacement():
-    plan = AnchorPlan(loop=(3,), pit=(5,), declined=True)
+def test_anchor_plan_withholds_loop_and_pit_for_a_declined_displacement():
+    # Loop and pit anchors are withheld — they assert the path between them is ground
+    # the car covered, which a declined relocation contradicts.
+    plan = AnchorPlan(loop=(3,), pit=(5,), stuck=(), declined=True)
     assert plan.extra() == []
+
+
+def test_anchor_plan_keeps_stuck_anchors_through_a_declined_displacement():
+    # Stuck-bridge edges are NOT withheld: a bridged span is a chord this pipeline
+    # reconstructed, so its edges are trusted ground by construction (Slice 9m) — the
+    # opposite of a declined relocation's known-unreal path.
+    plan = AnchorPlan(loop=(3,), pit=(5,), stuck=(7, 9), declined=True)
+    assert plan.extra() == [7, 9]
 
 
 def test_window_anchor_plan_reads_crossings_from_the_lap_table():
@@ -2739,7 +2762,7 @@ def test_window_anchor_plan_reads_crossings_from_the_lap_table():
         telemetry["Time"], telemetry["Speed"], repair, car, start
     )
     # 4.0 s is inside coverage; 40.0 s is past the window and contributes nothing.
-    assert len(plan.loop) == 1 and plan.pit == () and not plan.declined
+    assert len(plan.loop) == 1 and plan.pit == () and plan.stuck == () and not plan.declined
     assert plan.extra() == list(plan.loop)
 
 
@@ -2764,6 +2787,12 @@ def test_window_anchor_plan_declines_with_an_unrepaired_displacement():
         telemetry["Time"], telemetry["Speed"], declined, car, start
     )
     assert plan.declined and plan.loop and plan.extra() == []
+    # but a stuck-bridge edge passed in survives the decline (Slice 9m).
+    plan_stuck = window_anchor_plan(
+        telemetry["Time"], telemetry["Speed"], declined, car, start,
+        stuck_anchors=[7],
+    )
+    assert plan_stuck.declined and plan_stuck.stuck == (7,) and plan_stuck.extra() == [7]
 
 
 def test_window_builder_moves_samples_for_an_anchored_car():
@@ -2792,12 +2821,19 @@ def test_window_builder_moves_samples_for_an_anchored_car():
 
 
 def test_anchor_report_names_all_three_states():
-    withheld = anchor_report("NOR", AnchorPlan((3,), (5,), True))
+    withheld = anchor_report("NOR", AnchorPlan((3,), (5,), (), True))
     assert "WITHHELD" in withheld and "declined" in withheld
-    none = anchor_report("VER", AnchorPlan((), (), False))
+    none = anchor_report("VER", AnchorPlan((), (), (), False))
     assert "0 extra anchors" in none
-    both = anchor_report("LEC", AnchorPlan((3, 9), (5,), False))
-    assert "3 extra anchor(s)" in both and "2 S/F" in both and "1 pit-span" in both
+    both = anchor_report("LEC", AnchorPlan((3, 9), (5,), (7,), False))
+    assert "4 extra anchor(s)" in both and "2 S/F" in both and "1 pit-span" in both
+    assert "1 stuck-bridge" in both
+
+
+def test_anchor_report_names_stuck_edges_kept_through_a_decline():
+    # A declined car that still carries a bridged span reports both facts.
+    line = anchor_report("GAS", AnchorPlan((3,), (5,), (7, 9), True))
+    assert "WITHHELD" in line and "2 stuck-bridge edge(s) still applied" in line
 
 
 # --- the reversal screen (Slice 9j) -------------------------------------------------
@@ -3318,3 +3354,298 @@ def test_dead_feed_report_names_all_three_states():
     assert "DECLINED" in line and "40.00" in line and "dropout" in line
 
     assert "no dead feed" in dead_feed_report("YYY", ALIVE)
+
+
+# --- the stuck-channel screen (Slice 9m) --------------------------------------------
+# Thresholds are corpus-calibrated (PLAN 9m: 0 firings across the whole 2024 corpus,
+# 37 across the two 2026 Monza windows; the pit limiter holds a genuinely constant
+# ~80 km/h for 9.08 s and does NOT fire, because the SIGNATURE separates the
+# populations and duration does not). These tests pin the rule's mechanics on
+# synthetic shapes; the corpus is the calibration evidence, re-checked by the
+# byte-identical rebuild of every 2024 window.
+
+
+def _dropout_rows(t0, t1, speed, *, sat=False, pos_freeze=False, x0=0.0, step=0.2):
+    """A frozen-feed dropout: speed pinned, optionally saturated pedals or frozen x/y.
+
+    Without pos_freeze the x/y dead-reckon forward at the stuck speed (0.1 m units,
+    so `speed/3.6*10 * dt` position-units per step); with it they sit still.
+    """
+    rows = []
+    x = x0
+    for t in np.arange(t0, t1, step):
+        th = 104.0 if sat else 0.0
+        br = 1 if sat else 0
+        rows.append((t, speed, th, br, (x0 if pos_freeze else x), 0.0))
+        x += speed / 3.6 * 10.0 * step
+    return rows
+
+
+def _moving_rows(t0, t1, speed, x0=0.0, step=0.2):
+    """A live car: speed jittering by 1 km/h a step so no run is 'constant', pedals
+    working, x/y advancing at the stuck-free rate."""
+    rows = []
+    x = x0
+    for k, t in enumerate(np.arange(t0, t1, step)):
+        rows.append((t, speed + (k % 2), 60.0, 0, x, 0.0))
+        x += speed / 3.6 * 10.0 * step
+    return rows
+
+
+def _stuck_cols(rows):
+    """(times, speed, throttle, brake, x, y) arrays from 6-tuples."""
+    t, v, th, br, x, y = (np.array(c, dtype=float) for c in zip(*rows))
+    return t, v, th, br, x, y
+
+
+def test_stuck_fires_on_saturation_and_names_the_span():
+    rows = (
+        _moving_rows(0.0, 5.0, 200.0)
+        + _dropout_rows(5.0, 11.0, 298.0, sat=True, x0=30000.0)
+        + _moving_rows(11.0, 16.0, 110.0, x0=60000.0)
+    )
+    t, v, th, br, x, y = _stuck_cols(rows)
+    result = detect_stuck_channels(t, v, th, br, x, y)
+    assert result.n == 1
+    span = result.spans[0]
+    assert span.speed == 298.0
+    assert "sat" in span.reason
+    # The trusted edges bracket the run, and the resume is a real post-freeze row.
+    assert v[span.start_i] == 298.0 and v[span.resume_i] != 298.0
+
+
+def test_stuck_fires_on_position_freeze_without_saturation():
+    # No saturated pedals, but the x/y sit still for > STUCK_POS_FREEZE_S at pace.
+    rows = (
+        _moving_rows(0.0, 5.0, 200.0)
+        + _dropout_rows(5.0, 8.0, 260.0, pos_freeze=True, x0=30000.0)
+        + _moving_rows(8.0, 13.0, 120.0, x0=30000.0)
+    )
+    t, v, th, br, x, y = _stuck_cols(rows)
+    result = detect_stuck_channels(t, v, th, br, x, y)
+    assert result.n == 1 and "pos" in result.spans[0].reason
+    assert "sat" not in result.spans[0].reason
+
+
+def test_stuck_fires_on_the_impossible_exit_snap():
+    # A short constant run that neither saturates nor freezes position, but the speed
+    # step leaving it implies a deceleration far past any real car — a resume snap.
+    rows = (
+        _moving_rows(0.0, 5.0, 300.0)
+        + [(5.0 + k * 0.2, 300.0, 0.0, 0, 30000.0 + k * 1000.0, 0.0) for k in range(6)]
+        + [(6.2, 90.0, 20.0, 0, 40000.0, 0.0)]  # 210 km/h drop in 0.2 s ~ 30 g
+        + _moving_rows(6.4, 11.0, 90.0, x0=41000.0)
+    )
+    t, v, th, br, x, y = _stuck_cols(rows)
+    result = detect_stuck_channels(t, v, th, br, x, y)
+    assert result.n == 1 and "exit" in result.spans[0].reason
+
+
+def test_stuck_ignores_a_genuinely_constant_pit_limiter_run():
+    # ~80 km/h held dead constant for 9 s — the pit limiter, the corpus's longest
+    # innocent constant run. No saturation, position advances, gentle exit: silent.
+    rows = (
+        _moving_rows(0.0, 3.0, 120.0)
+        + [(3.0 + k * 0.2, 80.0, 40.0, 0, 20000.0 + k * 444.0, 0.0) for k in range(45)]
+        + _moving_rows(12.0, 15.0, 85.0, x0=40000.0)
+    )
+    t, v, th, br, x, y = _stuck_cols(rows)
+    assert detect_stuck_channels(t, v, th, br, x, y).n == 0
+
+
+def test_stuck_ignores_flat_out_running_at_vmax():
+    # A second of near-constant top speed with no impossible signature — real racing.
+    rows = (
+        _moving_rows(0.0, 5.0, 330.0)
+        + [(5.0 + k * 0.2, 335.0, 100.0, 0, 30000.0 + k * 1861.0, 0.0) for k in range(6)]
+        + _moving_rows(6.2, 11.0, 330.0, x0=42000.0)
+    )
+    t, v, th, br, x, y = _stuck_cols(rows)
+    assert detect_stuck_channels(t, v, th, br, x, y).n == 0
+
+
+def test_stuck_ignores_a_short_run_below_the_row_and_duration_floors():
+    # Three constant samples never qualifies — below both STUCK_MIN_ROWS and duration.
+    short = _moving_rows(0.0, 3.0, 200.0) + [
+        (3.0, 298.0, 104.0, 1, 30000.0, 0.0),
+        (3.2, 298.0, 104.0, 1, 30000.0, 0.0),
+        (3.4, 298.0, 104.0, 1, 30000.0, 0.0),
+    ] + _moving_rows(3.6, 6.0, 100.0, x0=30000.0)
+    t, v, th, br, x, y = _stuck_cols(short)
+    assert detect_stuck_channels(t, v, th, br, x, y).n == 0
+
+
+def test_stuck_ignores_a_constant_run_below_the_speed_floor():
+    # A car crawling at 30 km/h holding one value is not a pace dropout.
+    rows = (
+        _moving_rows(0.0, 3.0, 40.0)
+        + _dropout_rows(3.0, 8.0, 30.0, sat=True, x0=10000.0)
+        + _moving_rows(8.0, 11.0, 40.0, x0=10000.0)
+    )
+    t, v, th, br, x, y = _stuck_cols(rows)
+    assert detect_stuck_channels(t, v, th, br, x, y).n == 0
+
+
+def test_detect_stuck_returns_no_stuck_for_too_few_rows():
+    t = np.array([0.0, 0.2])
+    assert detect_stuck_channels(t, t, t, t, t, t) is NO_STUCK
+
+
+def test_stuck_resume_skips_merge_pad_transition_rows():
+    # FastF1's merged axis leaves diluted transition values in the ~0.02 s right after
+    # the feed resumes. The resume edge must skip them so the exit snap is measured
+    # against the real resumed speed, not the half-way transition value. Two sub-pad
+    # rows sit between the run and the true resume; the span still fires and its
+    # resume lands on the real row past them.
+    rows = _moving_rows(0.0, 5.0, 300.0) + _dropout_rows(
+        5.0, 11.0, 298.0, sat=True, x0=30000.0
+    )
+    last_t = rows[-1][0]
+    rows += [
+        (last_t + 0.01, 220.0, 40.0, 0, 60000.0, 0.0),  # merge-pad transition
+        (last_t + 0.02, 150.0, 40.0, 0, 60050.0, 0.0),  # merge-pad transition
+    ]
+    rows += _moving_rows(last_t + 0.2, last_t + 4.0, 90.0, x0=60100.0)
+    t, v, th, br, x, y = _stuck_cols(rows)
+    result = detect_stuck_channels(t, v, th, br, x, y)
+    assert result.n == 1
+    # The resume is the first row strictly beyond the merge pad — not a transition row.
+    assert t[result.spans[0].resume_i] >= last_t + 0.2 - 1e-9
+
+
+def test_stuck_skips_a_run_that_reaches_the_array_end_with_no_resume():
+    # A saturated dropout that runs to the very last telemetry row has no trusted
+    # resume edge to bridge to, so it is skipped rather than invented (the resume
+    # index walks off the array — the k>=n guard).
+    rows = _moving_rows(0.0, 5.0, 200.0) + _dropout_rows(
+        5.0, 11.0, 298.0, sat=True, x0=30000.0
+    )
+    t, v, th, br, x, y = _stuck_cols(rows)
+    assert detect_stuck_channels(t, v, th, br, x, y).n == 0
+
+
+def test_bridge_fixes_speed_keeps_the_polyline_and_returns_edge_anchors():
+    rows = (
+        _moving_rows(0.0, 5.0, 200.0)
+        + _dropout_rows(5.0, 11.0, 298.0, sat=True, x0=30000.0)
+        + _moving_rows(11.0, 16.0, 110.0, x0=60000.0)
+    )
+    t, v, th, br, x, y = _stuck_cols(rows)
+    telemetry = {
+        "Time": t, "Speed": v, "Throttle": th, "Brake": br.astype(int),
+        "X": x, "Y": y, "nGear": np.full_like(t, 7),
+    }
+    result = detect_stuck_channels(t, v, th, br, x, y)
+    bridged, anchors = bridge_stuck_channels(telemetry, result)
+    span = result.spans[0]
+    interior = slice(span.start_i + 1, span.resume_i)
+    # Speed no longer holds the stuck 298 across the interior (it is bridged down),
+    # killing the phantom travel.
+    assert not np.all(bridged["Speed"][interior] == 298.0)
+    # Pedals are neutralised — no throttle-and-brake contradiction survives.
+    assert np.all(bridged["Throttle"][interior] == 0)
+    assert np.all(bridged["Brake"][interior] == 0)
+    # The X/Y polyline is UNTOUCHED — it already traces the racing line, and keeping it
+    # is what places the car on the line instead of across the corner. Slice 6b's rule:
+    # position supplies the shape, speed supplies the progress.
+    assert np.array_equal(bridged["X"], x) and np.array_equal(bridged["Y"], y)
+    # The edges are handed back as anchors, and the input is not mutated.
+    assert span.start_i in anchors and span.resume_i in anchors
+    assert telemetry["Speed"][interior].tolist() == [298.0] * len(v[interior])
+
+
+def test_bridge_is_a_noop_for_a_clean_car():
+    rows = _moving_rows(0.0, 10.0, 200.0)
+    t, v, th, br, x, y = _stuck_cols(rows)
+    telemetry = {
+        "Time": t, "Speed": v, "Throttle": th, "Brake": br.astype(int),
+        "X": x, "Y": y, "nGear": np.full_like(t, 7),
+    }
+    bridged, anchors = bridge_stuck_channels(telemetry, NO_STUCK)
+    assert anchors == []
+    assert np.array_equal(bridged["Speed"], v) and np.array_equal(bridged["X"], x)
+
+
+def test_bridge_holds_gear_and_leaves_a_boolean_brake_boolean():
+    rows = (
+        _moving_rows(0.0, 5.0, 200.0)
+        + _dropout_rows(5.0, 11.0, 298.0, sat=True, x0=30000.0)
+        + _moving_rows(11.0, 16.0, 110.0, x0=60000.0)
+    )
+    t, v, th, br, x, y = _stuck_cols(rows)
+    gear = np.full_like(t, 7)
+    telemetry = {
+        "Time": t, "Speed": v, "Throttle": th, "Brake": br > 0,  # boolean brake
+        "X": x, "Y": y, "nGear": gear,
+    }
+    result = detect_stuck_channels(t, v, th, br, x, y)
+    bridged, _ = bridge_stuck_channels(telemetry, result)
+    span = result.spans[0]
+    interior = slice(span.start_i + 1, span.resume_i)
+    assert bridged["Brake"].dtype == bool and not bridged["Brake"][interior].any()
+    assert np.all(bridged["nGear"][interior] == 7)
+
+
+def test_dropout_intervals_rebases_and_clips_to_the_window():
+    span = StuckSpan(start_i=10, resume_i=40, start_t=105.0, resume_t=111.0,
+                     speed=298.0, reason="sat,pos,exit")
+    result = StuckResult(spans=(span,))
+    intervals = dropout_intervals(result, window_start=100.0, duration=200.0)
+    assert intervals == [{"fromT": 5.0, "toT": 11.0}]
+    # A span entirely past the emitted duration is clipped to nothing (its clipped
+    # start already meets the duration, so the clipped end cannot exceed it).
+    late = StuckSpan(11, 40, 205.0, 211.0, 300.0, "sat")
+    assert dropout_intervals(StuckResult((late,)), 100.0, 100.0) == []
+
+
+def test_stuck_channel_report_names_spans_and_stays_silent_never():
+    assert "no stuck-channel dropouts" in stuck_channel_report("VER", NO_STUCK)
+    span = StuckSpan(10, 40, 205.0, 211.3, 298.0, "sat,pos,exit")
+    line = stuck_channel_report("COL", StuckResult((span,)), t0=100.0)
+    assert "1 stuck-channel dropout(s) bridged" in line
+    assert "105.0-111.3s" in line and "298 km/h" in line and "sat,pos,exit" in line
+
+
+def test_stuck_channel_report_truncates_a_long_list():
+    spans = tuple(
+        StuckSpan(k * 100, k * 100 + 30, 10.0 + k, 15.0 + k, 300.0, "sat")
+        for k in range(8)
+    )
+    line = stuck_channel_report("ALO", StuckResult(spans))
+    assert "8 stuck-channel dropout(s)" in line and "..." in line
+
+
+def test_window_builder_bridges_a_dropout_and_emits_the_interval():
+    # End to end through the real builder: a car with a saturated dropout comes out
+    # with a `dropouts` interval and its stuck speed no longer frozen in the samples.
+    start, end = WINDOW
+    base = synthetic.session_telemetry(start, end)
+    t = np.asarray(base["Time"], dtype=float)
+    v = np.asarray(base["Speed"], dtype=float).copy()
+    th = np.asarray(base["Throttle"], dtype=float).copy()
+    br = np.asarray(base["Brake"]).astype(int).copy()
+    # Impose a 1.2 s saturated freeze in the middle of the window.
+    mid = len(t) // 2
+    lo, hi = mid, mid + max(STUCK_MIN_ROWS + 2, int(1.4 / (t[1] - t[0])))
+    v[lo:hi] = 280.0
+    th[lo:hi] = 104.0
+    br[lo:hi] = 1
+    tel = dict(base)
+    tel["Speed"], tel["Throttle"], tel["Brake"] = v, th, br
+    car = synthetic.window_car("AAA", tel)
+    built = build_window_replay_dict([car], synthetic.SESSION_META, WINDOW)
+    emitted = built["cars"][0]
+    assert "dropouts" in emitted and len(emitted["dropouts"]) == 1
+    drop = emitted["dropouts"][0]
+    assert 0.0 <= drop["fromT"] < drop["toT"] <= built["meta"]["duration"]
+    # No emitted sample shows the impossible throttle-and-brake pair.
+    assert not any(s["throttle"] > 0 and s["brake"] == 1 for s in emitted["samples"])
+
+
+def test_window_builder_omits_dropouts_for_a_clean_field():
+    start, end = WINDOW
+    tel = synthetic.session_telemetry(start, end)
+    built = build_window_replay_dict(
+        [synthetic.window_car("AAA", tel)], synthetic.SESSION_META, WINDOW
+    )
+    assert "dropouts" not in built["cars"][0]

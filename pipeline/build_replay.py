@@ -83,6 +83,9 @@ from replay_transform import (
     count_out_of_range_gears,
     dead_feed_report,
     detect_dead_feed,
+    stuck_channel_report,
+    detect_stuck_channels,
+    bridge_stuck_channels,
     dump_json,
     gear_anomaly_warning,
     parse_lap_range,
@@ -465,6 +468,22 @@ def build_race_replay(year, gp, session_id, drivers, laps, cache_dir=".f1cache")
                 t0,
             )
         )
+        # The stuck-channel screen (Slice 9m), same silent-never posture. Detected on
+        # the source rows exactly as the builder does before bridging them.
+        print(
+            stuck_channel_report(
+                driver,
+                detect_stuck_channels(
+                    car.telemetry["Time"],
+                    car.telemetry["Speed"],
+                    car.telemetry["Throttle"],
+                    car.telemetry["Brake"],
+                    car.telemetry["X"],
+                    car.telemetry["Y"],
+                ),
+                t0,
+            )
+        )
 
     circuit = session.get_circuit_info()
     meta = SessionMeta(
@@ -568,33 +587,37 @@ def report_window(replay, window, cars, coverage, compact: bool = False) -> None
     print("  position screening:")
     worst_share = 0.0
     for car in cars:
-        repair = repair_frame_displacements(
-            car.telemetry["Time"], car.telemetry["X"],
-            car.telemetry["Y"], car.telemetry["Speed"],
+        # Bridge the stuck-channel dropouts FIRST, exactly as the builder does, so every
+        # screen below sees the same telemetry the builder screened and the log cannot
+        # disagree with the file (Slice 9m). A car with no dropout is bridged to itself.
+        stuck = detect_stuck_channels(
+            car.telemetry["Time"], car.telemetry["Speed"], car.telemetry["Throttle"],
+            car.telemetry["Brake"], car.telemetry["X"], car.telemetry["Y"],
         )
+        bridged, stuck_anchors = bridge_stuck_channels(car.telemetry, stuck)
+        b_t, b_x, b_y, b_v = (
+            bridged["Time"], bridged["X"], bridged["Y"], bridged["Speed"],
+        )
+        repair = repair_frame_displacements(b_t, b_x, b_y, b_v)
         print(frame_repair_report(str(car.driver), repair, offset=window[0]))
-        r = reject_impossible_fixes(
-            car.telemetry["Time"], repair.x, repair.y, car.telemetry["Speed"],
-        )
+        r = reject_impossible_fixes(b_t, repair.x, repair.y, b_v)
         # Rebased onto the WINDOW so the times line up with the app's transport clock.
         # Session seconds are what the transform works in and are useless to anyone
         # comparing against a screenshot.
         print(fix_rejection_report(str(car.driver), r, offset=window[0]))
-        worst_share = max(worst_share, r.n_rejected / max(len(car.telemetry["Time"]), 1))
+        worst_share = max(worst_share, r.n_rejected / max(len(b_t), 1))
         plan_declined = bool(repair.jump_times) and not repair.repaired
         print(reversal_report(
             str(car.driver),
-            None if plan_declined else reject_reversals(
-                car.telemetry["Time"], repair.x, repair.y, car.telemetry["Speed"]
-            ),
+            None if plan_declined else reject_reversals(b_t, repair.x, repair.y, b_v),
             offset=window[0],
         ))
-        # The anchor plan (Slice 9i), recomputed from the same pure function the
+        # The anchor plan (Slice 9i/9m), recomputed from the same pure function the
         # builder used on the same inputs, so the file and the log cannot disagree.
         print(anchor_report(
             str(car.driver),
             window_anchor_plan(
-                car.telemetry["Time"], car.telemetry["Speed"], repair, car, window[0]
+                b_t, b_v, repair, car, window[0], stuck_anchors=stuck_anchors,
             ),
         ))
     if worst_share > REJECTED_FIX_WARN_SHARE:

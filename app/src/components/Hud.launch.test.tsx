@@ -121,12 +121,20 @@ describe("the rendered tower through a real standing start", () => {
     }
   });
 
-  it("shows the launch as the data tells it: COL to P2 in the scrum, never P1", () => {
-    // The measured story, pinned for legibility beside the invariant above: the
-    // asset's raw positions (cross-checked projection-free in the slice record)
-    // put COL second-furthest along through the T1 braking scrum and never first.
-    // A future change that resurrects a phantom P1 — any car surging past RUS
-    // without the positions saying so — fails here.
+  it("shows the launch as the data tells it: the front two lead, COL to P2, never P1", () => {
+    // The measured story, pinned for legibility beside the invariant above. Two
+    // facts, both from the asset's raw positions:
+    //   * The leader is always one of the two cars genuinely at the front — RUS off
+    //     pole, or GAS, who launches from grid P2 and noses ahead of RUS by ~1.7 m
+    //     into the T1 braking scrum before RUS reasserts (confirmed in the source
+    //     pos_data, PLAN Slice 9m: raw arc gap +0.2 m at t=83.8, +1.7 m at t=84.2).
+    //     After Slice 9m removed the stuck-channel phantoms the placement renders
+    //     that real nose-ahead faithfully (+2.3 m) instead of compressing it under
+    //     the hysteresis band, so the continuous tower briefly shows GAS on top —
+    //     the same mid-scrum-vs-timing-line reframe Slice 19 established.
+    //   * COL is second-furthest through the scrum and never first. A future change
+    //     that resurrects a phantom P1 — any car surging to the front without the
+    //     positions saying so, COL above all — fails here.
     const { container } = render(<Hud replay={replay} />);
     const focus = replay.cars.findIndex((c) => c.driver === "ANT");
     useTransport.setState({ focusedCarIndex: focus });
@@ -139,9 +147,59 @@ describe("the rendered tower through a real standing start", () => {
       const rows = [
         ...container.querySelectorAll('ul[aria-label="Running order"] > li'),
       ].map((li) => (li.textContent ?? "").slice(0, 3));
-      expect(rows[0], `t=${clock.toFixed(1)}`).toBe("RUS");
+      // The leader is one of the genuine front-runners, never COL or a car behind.
+      expect(["RUS", "GAS"], `t=${clock.toFixed(1)}`).toContain(rows[0]);
       colBest = Math.min(colBest, rows.indexOf("COL"));
     }
     expect(colBest).toBe(1);
+  });
+
+  it("della Roggia at 1:52: after the Slice 9m bridge, no phantom P1 and no order bounce", () => {
+    // The re-watch FAIL: COL flashed to the front into della Roggia at 1:52 (~112 s),
+    // and the tower bounced. The stuck-channel bridge follows the racing line at the
+    // real (bridged) pace, so over 100-130 s COL never reaches the front and the
+    // rendered order tracks true progress within the dead band — the same seam
+    // invariant as the launch sweep, on the corner the re-watch named. Pinned so a
+    // regression to the chord (which cut the corner) or to the raw phantom fails here.
+    const { container } = render(<Hud replay={replay} />);
+    const focus = replay.cars.findIndex((c) => c.driver === "ANT");
+    useTransport.setState({ focusedCarIndex: focus });
+
+    const drivers = replay.cars.map((c) => c.driver);
+    const byDriver = new Map(drivers.map((d, i) => [d, i]));
+
+    let nowMs = 5000;
+    for (let clock = 100; clock <= 130; clock += 0.1) {
+      nowMs += 40;
+      act(() => telemetry.publish(nowMs, clock, snapshots));
+      const rows = [
+        ...container.querySelectorAll('ul[aria-label="Running order"] > li'),
+      ].map((li) => (li.textContent ?? "").slice(0, 3));
+
+      // COL (genuinely ~P15) never leads; the front is RUS or GAS, the two the raw
+      // positions actually put there. A resurrected phantom P1 fails here.
+      expect(rows.indexOf("COL"), `t=${clock.toFixed(1)}`).toBeGreaterThan(0);
+      expect(["RUS", "GAS"], `t=${clock.toFixed(1)}`).toContain(rows[0]);
+
+      // And the seam invariant: rendered order == true progress within the dead band.
+      const rendered = rows.map((d) => byDriver.get(d) as number);
+      const truth = truthAt(clock);
+      if (rendered.join() === truth.join()) continue;
+      const truthRank = new Map(truth.map((i, r) => [i, r]));
+      for (let r = 0; r + 1 < rendered.length; r++) {
+        const above = rendered[r];
+        const below = rendered[r + 1];
+        if (
+          (truthRank.get(above) as number) > (truthRank.get(below) as number)
+        ) {
+          const ka = progressKeyAt(progress, focus, above, clock) as number;
+          const kb = progressKeyAt(progress, focus, below, clock) as number;
+          expect(
+            Math.abs(ka - kb),
+            `t=${clock.toFixed(1)}: ${drivers[above]} above ${drivers[below]} outside the band`,
+          ).toBeLessThanOrEqual(ORDER_HYSTERESIS_S + 1e-9);
+        }
+      }
+    }
   });
 });

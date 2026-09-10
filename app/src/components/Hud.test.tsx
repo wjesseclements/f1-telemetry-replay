@@ -12,7 +12,7 @@ import sampleLap from "../engine/__fixtures__/sample-lap.json";
 import { parseReplay } from "../engine/load";
 import type { CarSnapshot } from "../engine/interpolate";
 import type { Replay } from "../engine/schema";
-import { GAP_DNF, GAP_PIT, NO_VALUE } from "../engine/format";
+import { GAP_DNF, GAP_NO_SIGNAL, GAP_PIT, NO_VALUE } from "../engine/format";
 import { SWATCH_MIN_LUMINANCE, floorLuminance } from "../engine/color";
 import {
   COMPARISON_MIN_LUMINANCE,
@@ -955,6 +955,7 @@ describe("Hud tower states (Slice 19)", () => {
     driver: string;
     samples: ReturnType<typeof ringSamples>;
     retiredAt?: number;
+    dropouts?: { fromT: number; toT: number }[];
   };
 
   function stateReplay(...cars: RawCar[]): Replay {
@@ -978,6 +979,7 @@ describe("Hud tower states (Slice 19)", () => {
           color: "#888888",
           laps: [],
           stints: [],
+          dropouts: [],
           ...car,
         })),
         trackStatus: [],
@@ -1096,6 +1098,61 @@ describe("Hud tower states (Slice 19)", () => {
     expect(later[0]).toMatch(/BOX/);
     expect(later[0]).toContain(GAP_PIT);
     expect(later[0]).not.toMatch(/[+-]\d/);
+  });
+
+  it("shows NO SIGNAL — not a fabricated readout — for a focused car inside a dropout (Slice 9m)", () => {
+    // FOC carries a bridged dropout over [4, 8). At t=6 its speed/pedals are
+    // fabricated coasts, so the readout must say NO SIGNAL, not 243.6 km/h. The row's
+    // gap column says NO SIGNAL too. Before and after the span the numbers are real.
+    const replay = stateReplay(
+      {
+        driver: "FOC",
+        samples: ringSamples(),
+        dropouts: [{ fromT: 4, toT: 8 }],
+      },
+      { driver: "RUN", samples: ringSamples(-10) },
+    );
+    renderStates(replay, 6);
+    // The 5xl speed readout is gone; NO SIGNAL stands in its place (readout + gap col).
+    // The published snapshot's 243.6 km/h rounds to 244, which must NOT appear.
+    expect(screen.queryByText("244")).toBeNull();
+    expect(screen.getAllByText(GAP_NO_SIGNAL).length).toBeGreaterThanOrEqual(1);
+    // The focused car quotes no gap to anyone while its own feed is out.
+    expect(screen.queryByText(/^[+-]\d/)).toBeNull();
+
+    // Rewind before the dropout: the real readout is back.
+    cleanup();
+    telemetry.reset();
+    renderStates(replay, 2);
+    expect(screen.queryByText(GAP_NO_SIGNAL)).toBeNull();
+    expect(screen.getByText("244")).toBeInTheDocument();
+  });
+
+  it("labels a dropout NO SIGNAL, never PIT, even when the car is also off the line — 2a precedence", () => {
+    // OFF rides 15 m off the reference line (off-line by residual) AND carries a
+    // dropout over [4, 8). The pipeline-flagged dropout must win: NO SIGNAL, not the
+    // PIT inference. FOC is focused so OFF renders its unfocused row label.
+    const replay = stateReplay(
+      { driver: "FOC", samples: ringSamples() },
+      {
+        driver: "OFF",
+        samples: ringSamples(20, 15), // 15 m off the line, past the 10 m gate
+        dropouts: [{ fromT: 4, toT: 8 }],
+      },
+    );
+    renderStates(replay, 6);
+    const offRow = rows().find((b) => /^OFF/.test(b.textContent ?? ""));
+    expect(offRow?.textContent).toContain(GAP_NO_SIGNAL);
+    expect(offRow?.textContent).not.toContain(GAP_PIT);
+
+    // Outside the dropout the same offset reads PIT again — the label is state, not a
+    // property of the car.
+    cleanup();
+    telemetry.reset();
+    renderStates(replay, 12);
+    const later = rows().find((b) => /^OFF/.test(b.textContent ?? ""));
+    expect(later?.textContent).toContain(GAP_PIT);
+    expect(later?.textContent).not.toContain(GAP_NO_SIGNAL);
   });
 
   it("shows a standing field as order without numbers until launch, then numbers — exhibit 3", () => {

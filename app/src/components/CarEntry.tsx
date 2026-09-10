@@ -70,7 +70,9 @@ import { SWATCH_MIN_LUMINANCE, floorLuminance } from "../engine/color";
 import { carHasDrs, isDrsOpen } from "../engine/drs";
 import {
   GAP_DNF,
+  GAP_NO_SIGNAL,
   GAP_PIT,
+  NO_VALUE,
   formatGap,
   formatGapMetres,
   formatGear,
@@ -128,6 +130,13 @@ export interface CarEntryProps {
    * and the caveat for the rare off-track excursion is recorded at `GAP_PIT`.
    */
   offline: boolean;
+  /**
+   * Inside a bridged feed dropout (Slice 9m): the gap column says NO SIGNAL and the
+   * focused readout greys, because nothing the car reports across the span is real.
+   * Precedence: DNF (retired) over NO SIGNAL (dropout) over PIT (off-line) — a dropped
+   * feed is a pipeline-flagged fact, so it outranks the off-line inference.
+   */
+  dropout: boolean;
   focused: boolean;
   /**
    * The focused car's speed trace, rendered under the readout block (Slice 19 watch,
@@ -151,6 +160,7 @@ export function CarEntry({
   tyre,
   retired,
   offline,
+  dropout,
   focused,
   compared,
   onFocus,
@@ -217,12 +227,17 @@ export function CarEntry({
               <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-dim">
                 {car.team}
               </span>
-              {/* DNF/PIT on the focused row too: the state must survive focusing
-                  the car, or the one row a viewer is reading loses the one fact the
-                  tower is stating about it. */}
+              {/* DNF/NO SIGNAL/PIT on the focused row too: the state must survive
+                  focusing the car, or the one row a viewer is reading loses the one
+                  fact the tower is stating about it. Precedence retired > dropout >
+                  offline, matching the gap column below. */}
               {retired ? (
                 <span className="font-mono text-sm font-bold tracking-wider text-dim">
                   {GAP_DNF}
+                </span>
+              ) : dropout ? (
+                <span className="font-mono text-sm font-bold tracking-wider text-dim">
+                  {GAP_NO_SIGNAL}
                 </span>
               ) : (
                 offline && (
@@ -235,12 +250,14 @@ export function CarEntry({
                 Focus
               </span>
             </>
-          ) : retired || offline ? (
+          ) : retired || dropout || offline ? (
             /* The broadcast spelling, in the gap column's place: a word, not a
-               number — DNF for a car out of the race, PIT for one off the racing
-               line (Slice 19; copy ruled at the second re-watch). */
+               number — DNF for a car out of the race, NO SIGNAL for one inside a
+               feed dropout (Slice 9m), PIT for one off the racing line (Slice 19).
+               Precedence retired > dropout > offline: a dropped feed is a flagged
+               fact, a PIT is an inference from the residual. */
             <span className="ml-auto font-mono text-sm font-bold tracking-wider text-dim">
-              {retired ? GAP_DNF : GAP_PIT}
+              {retired ? GAP_DNF : dropout ? GAP_NO_SIGNAL : GAP_PIT}
             </span>
           ) : (
             /*
@@ -290,7 +307,14 @@ export function CarEntry({
         )}
       </div>
 
-      {focused && <CarReadout car={car} snapshot={snapshot} tyre={tyre} />}
+      {focused && (
+        <CarReadout
+          car={car}
+          snapshot={snapshot}
+          tyre={tyre}
+          dropout={dropout}
+        />
+      )}
       {/* `w-full` so the trace takes its own row in the sub-`md` strip, where the
           readout wraps horizontally; in the sidebar it fills the column. */}
       {focused && trace !== undefined && (
@@ -300,15 +324,24 @@ export function CarEntry({
   );
 }
 
-/** The focused car's numbers — unchanged from when there was only ever one car. */
+/**
+ * The focused car's numbers. During a feed dropout (Slice 9m) the dynamic channels —
+ * speed, gear, throttle, brake — are fabricated by the bridge, so they show NO SIGNAL
+ * rather than a plausible-looking coast: the readout must not state a value the data
+ * does not have. The marker still moves (the bridged position is on the racing line),
+ * but the numbers say, honestly, that the feed is out. DRS and tyres are season/stint
+ * facts the dropout does not touch, so they render as usual.
+ */
 function CarReadout({
   car,
   snapshot,
   tyre,
+  dropout,
 }: {
   car: Car;
   snapshot: CarSnapshot;
   tyre: TyreState | null;
+  dropout: boolean;
 }) {
   return (
     <dl className="m-0 mt-2 flex flex-1 flex-row flex-wrap items-center gap-x-5 gap-y-3 md:flex-col md:flex-nowrap md:items-stretch md:gap-3">
@@ -318,12 +351,18 @@ function CarReadout({
           Slice 7). It also reads better: the value is "192 km/h", not "192". */}
       <div className="flex items-baseline gap-2">
         <dt className="sr-only">Speed</dt>
-        <dd className="m-0 flex items-baseline gap-2 font-mono text-5xl font-bold leading-none tabular-nums tracking-tighter text-txt">
-          {formatSpeed(snapshot.speed)}
-          <span className="text-xs font-normal tracking-normal text-dim">
-            km/h
-          </span>
-        </dd>
+        {dropout ? (
+          <dd className="m-0 font-mono text-2xl font-bold leading-none tracking-widest text-dim">
+            {GAP_NO_SIGNAL}
+          </dd>
+        ) : (
+          <dd className="m-0 flex items-baseline gap-2 font-mono text-5xl font-bold leading-none tabular-nums tracking-tighter text-txt">
+            {formatSpeed(snapshot.speed)}
+            <span className="text-xs font-normal tracking-normal text-dim">
+              km/h
+            </span>
+          </dd>
+        )}
       </div>
 
       <div className="flex items-baseline gap-2">
@@ -331,17 +370,21 @@ function CarReadout({
           Gear
         </dt>
         <dd className="m-0 font-mono text-2xl font-bold leading-none tabular-nums text-txt">
-          {formatGear(snapshot.gear)}
+          {dropout ? NO_VALUE : formatGear(snapshot.gear)}
         </dd>
       </div>
 
       <Pedal
         label="Throttle"
-        fraction={pedalFraction(snapshot.throttle)}
+        fraction={dropout ? null : pedalFraction(snapshot.throttle)}
         tone="throttle"
       />
       {/* Brake is a 0/1 channel (schema), so it reads as fully on or fully off. */}
-      <Pedal label="Brake" fraction={snapshot.brake} tone="brake" />
+      <Pedal
+        label="Brake"
+        fraction={dropout ? null : snapshot.brake}
+        tone="brake"
+      />
 
       {/*
         Rule 8: the indicator exists only when the DATA carries a DRS channel. No year
@@ -383,10 +426,12 @@ function Pedal({
   tone,
 }: {
   label: string;
-  fraction: number;
+  /** `null` during a feed dropout (Slice 9m): the pedal is fabricated, so show no
+   *  signal rather than a coast the data does not have. */
+  fraction: number | null;
   tone: "throttle" | "brake";
 }) {
-  const percent = Math.round(fraction * 100);
+  const percent = fraction === null ? 0 : Math.round(fraction * 100);
   return (
     // A bar needs width to mean anything, so it claims a minimum and grows into what
     // is left. In the stacked sidebar `md:w-full` puts it back to full width.
@@ -394,26 +439,34 @@ function Pedal({
       <dt className="mb-1 font-mono text-[10px] uppercase tracking-widest text-dim">
         {label}
       </dt>
-      {/* `role="meter"` sits on an inner element, not on the `<dd>`. Overriding a
-          `<dd>`'s role makes it stop counting as a `<dd>`, which is invalid ARIA on
-          that element AND breaks the enclosing `<dl>` (Lighthouse `aria-allowed-role`
-          + `definition-list`, Slice 7). The `<dd>` stays a `<dd>`; the bar inside it
-          is the meter. */}
-      <dd className="m-0">
-        <div
-          className="h-1.5 w-full overflow-hidden rounded-full bg-line"
-          role="meter"
-          aria-label={label}
-          aria-valuenow={percent}
-          aria-valuemin={0}
-          aria-valuemax={100}
-        >
+      {fraction === null ? (
+        // No signal: an empty track carrying the words, so the block reads as "out"
+        // rather than as an idle pedal (a 0 % bar would say the driver is coasting).
+        <dd className="m-0 font-mono text-[10px] uppercase tracking-widest text-dim">
+          {GAP_NO_SIGNAL}
+        </dd>
+      ) : (
+        /* `role="meter"` sits on an inner element, not on the `<dd>`. Overriding a
+            `<dd>`'s role makes it stop counting as a `<dd>`, which is invalid ARIA on
+            that element AND breaks the enclosing `<dl>` (Lighthouse `aria-allowed-role`
+            + `definition-list`, Slice 7). The `<dd>` stays a `<dd>`; the bar inside it
+            is the meter. */
+        <dd className="m-0">
           <div
-            className={`h-full ${tone === "throttle" ? "bg-throttle" : "bg-brake"}`}
-            style={{ width: `${percent}%` }}
-          />
-        </div>
-      </dd>
+            className="h-1.5 w-full overflow-hidden rounded-full bg-line"
+            role="meter"
+            aria-label={label}
+            aria-valuenow={percent}
+            aria-valuemin={0}
+            aria-valuemax={100}
+          >
+            <div
+              className={`h-full ${tone === "throttle" ? "bg-throttle" : "bg-brake"}`}
+              style={{ width: `${percent}%` }}
+            />
+          </div>
+        </dd>
+      )}
     </div>
   );
 }
