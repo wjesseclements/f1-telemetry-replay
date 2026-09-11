@@ -165,3 +165,56 @@ describe("buildScenePaths startFinish", () => {
     // blind to the very property a test is aiming at. The ratio survives it.
   });
 });
+
+describe("buildScenePaths pitLane (Slice 16)", () => {
+  it("retains one path for the lane, and null when the replay carries none", () => {
+    const withLane = buildScenePaths(scene, fit);
+    expect(withLane.pitLane).not.toBeNull();
+
+    const bare = structuredClone(replay);
+    bare.track.pitLane = [];
+    const noLane = buildScenePaths(buildScene(bare), fit);
+    expect(noLane.pitLane).toBeNull();
+  });
+
+  it("rotates and fits the lane exactly as the ribbon's points are", () => {
+    // The first lane point must land where the same world point lands through
+    // the scene's own transform chain — rotation then fit (the 9f mirror class:
+    // a lane rotated differently from the track it serves would sit skew).
+    const scenePoint = scene.pitLanes[0][0];
+    const want = applyTransform(scenePoint, fit);
+    const world = replay.track.pitLane[0][0];
+    const through = applyTransform(
+      toScreenPoint({ x: world.x, y: world.y }, replay.meta.rotation),
+      fit,
+    );
+    expect(through.x).toBeCloseTo(want.x, 9);
+    expect(through.y).toBeCloseTo(want.y, 9);
+  });
+
+  it("stretches the scene bounds to cover a lane beyond every car's path", () => {
+    // Today's lanes are car samples, so this is the hand-made-file guarantee:
+    // geometry outside the cars' envelope must not be fitted out of frame.
+    const far = structuredClone(replay);
+    far.track.pitLane = [
+      [
+        { x: 5000, y: 5000 },
+        { x: 5100, y: 5100 },
+      ],
+    ];
+    const stretched = buildScene(far);
+    const inside = stretched.pitLanes[0].every(
+      (p) =>
+        p.x >= stretched.bounds.minX &&
+        p.x <= stretched.bounds.maxX &&
+        p.y >= stretched.bounds.minY &&
+        p.y <= stretched.bounds.maxY,
+    );
+    expect(inside).toBe(true);
+    // ...and it genuinely grew: the fixture's own bounds do not contain it.
+    expect(
+      stretched.bounds.maxX > scene.bounds.maxX ||
+        stretched.bounds.maxY > scene.bounds.maxY,
+    ).toBe(true);
+  });
+});

@@ -3649,3 +3649,419 @@ def test_window_builder_omits_dropouts_for_a_clean_field():
         [synthetic.window_car("AAA", tel)], synthetic.SESSION_META, WINDOW
     )
     assert "dropouts" not in built["cars"][0]
+
+
+# --- the pit lane (Slice 16) --------------------------------------------------------
+# The rule is corpus-calibrated (PLAN 16): every true traversal in the five gallery
+# windows runs 12.6-28.5 s off-line with a 3.1-7.8 s stop and spans 150-567 m, while
+# every false candidate (at-speed off-tracks, a displaced pit-entry branch, dead-
+# reckon residue) is <= 1.9 s with 0.0 s of stop, and a parked car's jitter cluster
+# spans ~8 m. These tests pin the rule's mechanics on synthetic shapes with empty
+# bands around every threshold; the corpus is the calibration evidence.
+
+from replay_transform import (  # noqa: E402  (section-local, matching the file's style)
+    NO_PIT_LANE,
+    PIT_JOIN_MAX_S,
+    PIT_LANE_REDUNDANT_M,
+    PIT_MIN_EXTENT_M,
+    PIT_OFFLINE_M,
+    PIT_ONLINE_RESIDUAL_M,
+    PIT_STOP_MAX_KMH,
+    PIT_STOP_MIN_S,
+    PitTraversal,
+    clean_line,
+    detect_pit_lane,
+    detect_traversals,
+    pit_lane_report,
+    polyline_distance,
+    units_per_metre,
+)
+
+
+def test_units_per_metre_recovers_the_synthetic_scale():
+    # A full nominal lap of the circle at the mean speed: path/metres must equal
+    # the module's own closed-form constant, not a hard-coded 10.
+    t = np.arange(0.0, synthetic.SESSION_LAP_S, 0.1)
+    x, y = synthetic.session_position(t)
+    v = synthetic.session_speed(t)
+    upm = units_per_metre(x, y, v, 10.0)
+    assert upm == pytest.approx(synthetic.SESSION_UNITS_PER_M, rel=0.01)
+
+
+def test_units_per_metre_degenerates_to_zero():
+    assert units_per_metre([1.0], [2.0], [100.0], 10.0) == 0.0
+    assert units_per_metre([0.0, 1.0], [0.0, 0.0], [0.0, 0.0], 10.0) == 0.0
+
+
+def test_clean_line_excludes_the_lap_containing_a_stop():
+    # Two "laps" of 10 samples at 10 Hz; the second contains one sub-15 sample.
+    x = np.arange(20.0)
+    y = np.zeros(20)
+    v = np.full(20, 200.0)
+    v[15] = 5.0
+    lx, ly = clean_line(x, y, v, [0.0, 1.0], 10.0)
+    assert list(lx) == list(np.arange(10.0))
+    assert len(ly) == 10
+
+
+def test_clean_line_clamps_a_negative_first_lap_start():
+    # The first kept lap commonly starts before the window (negative startT).
+    x = np.arange(10.0)
+    v = np.full(10, 200.0)
+    lx, _ = clean_line(x, np.zeros(10), v, [-0.5], 10.0)
+    assert len(lx) == 10
+
+
+def test_clean_line_falls_back_to_at_speed_samples_when_no_lap_is_clean():
+    # Every lap dirty -> the fallback keeps at-speed samples only; a line that
+    # may contain the reference's own pit lane UNDER-detects, never fabricates.
+    x = np.arange(10.0)
+    v = np.full(10, 200.0)
+    v[2] = 0.0
+    v[7] = 0.0
+    lx, _ = clean_line(x, np.zeros(10), v, [0.0], 10.0)
+    assert len(lx) == 8
+    assert 2.0 not in lx and 7.0 not in lx
+
+
+def test_polyline_distance_is_exact_against_a_known_segment():
+    d = polyline_distance([5.0, -3.0, 13.0], [4.0, 4.0, 0.0], [0.0, 10.0], [0.0, 0.0])
+    # Interior projection; beyond the start endpoint; beyond the end endpoint.
+    assert d[0] == pytest.approx(4.0)
+    assert d[1] == pytest.approx(5.0)
+    assert d[2] == pytest.approx(3.0)
+
+
+def test_polyline_distance_degenerate_lines():
+    assert polyline_distance([1.0], [1.0], [], [])[0] == np.inf
+    assert polyline_distance([3.0], [4.0], [0.0], [0.0])[0] == pytest.approx(5.0)
+    # A zero-length segment behaves as its point, not a NaN.
+    assert polyline_distance([3.0], [4.0], [0.0, 0.0], [0.0, 0.0])[0] == pytest.approx(5.0)
+
+
+def _straight_line_car(n=400, dip=(150, 250), dip_m=50.0, stop=(190, 215), v_fast=36.0):
+    """A car on the line y=0 advancing one unit per 10 Hz sample — 36 km/h, so
+    `units_per_metre` measures exactly 1 — dipping to y=dip_m over `dip` and
+    STOPPED (speed 0, position held) over `stop`."""
+    x = np.arange(float(n))
+    y = np.zeros(n)
+    y[dip[0] : dip[1]] = dip_m
+    v = np.full(n, v_fast)
+    v[stop[0] : stop[1]] = 0.0
+    if stop[1] > stop[0]:
+        x[stop[0] : stop[1]] = x[stop[0]]
+    return x, y, v
+
+
+def test_detect_traversals_finds_the_span_and_extends_it_onto_the_line():
+    x, y, v = _straight_line_car()
+    line_x = np.arange(400.0)
+    line_y = np.zeros(400)
+    found = detect_traversals("XXX", x, y, v, line_x, line_y, 1.0, 10.0)
+    assert len(found) == 1
+    t = found[0]
+    # The off-line core is [150, 249]; on this step-shaped fixture the sample
+    # either side is already inside the on-line envelope, so the envelope walk
+    # joins there.
+    assert (t.start_i, t.end_i) == (149, 250)
+    assert not t.clipped_start and not t.clipped_end
+    assert t.stop_s == pytest.approx(2.5)
+    assert t.max_res_m == pytest.approx(50.0)
+
+
+def test_detect_traversals_rejects_a_stop_free_excursion():
+    # ALO's class: off-line at speed, no stop -> not a traversal.
+    x, y, v = _straight_line_car(stop=(0, 0))
+    found = detect_traversals("ALO", x, y, v, np.arange(400.0), np.zeros(400), 1.0, 10.0)
+    assert found == []
+
+
+def test_detect_traversals_rejects_a_parked_cluster():
+    # A stop with no extent is a parked car: 8 m of jitter, hours of "stop".
+    n = 400
+    x = np.arange(float(n))
+    y = np.zeros(n)
+    v = np.full(n, 200.0)
+    x[150:250] = 150.0 + 4.0 * np.sin(np.arange(100))
+    y[150:250] = 30.0 + 4.0 * np.cos(np.arange(100))
+    v[150:250] = 0.0
+    found = detect_traversals("PRK", x, y, v, np.arange(400.0), np.zeros(400), 1.0, 10.0)
+    assert found == []
+
+
+def test_detect_traversals_joins_ramped_ends_at_the_online_envelope():
+    # The watch's finding, as a fixture: residual RAMPS off the line the way a
+    # real pit entry does (0,1,2,...) instead of stepping. The drawn end must
+    # reach the departure/rejoin points (first sample inside the envelope), not
+    # stop at the 10 m detection gate — that gate cut Monza's exit ~10 m short
+    # of the track and left the 0-8 m departure curve undrawn at entry.
+    n = 400
+    x = np.arange(float(n))
+    y = np.zeros(n)
+    v = np.full(n, 36.0)
+    # entry ramp over [140, 160): 2.5 m per sample; core plateau 50 m; exit
+    # ramp down over [250, 270).
+    for k in range(20):
+        y[140 + k] = 2.5 * (k + 1)
+        y[269 - k] = 2.5 * (k + 1)
+    y[160:250] = 50.0
+    v[190:215] = 0.0
+    x[190:215] = x[190]
+    found = detect_traversals("XXX", x, y, v, np.arange(400.0), np.zeros(400), 1.0, 10.0)
+    assert len(found) == 1
+    t = found[0]
+    # First samples inside the 2 m envelope: y[140]=2.5 exceeds it, so the join
+    # is the flat sample before the ramp (139) and after it (270) — residual 0.
+    assert (t.start_i, t.end_i) == (139, 270)
+
+
+def test_detect_traversals_falls_back_to_closest_approach_when_the_envelope_is_out_of_reach():
+    # A car that leaves the pit but then hovers 5 m off-line for longer than
+    # the join cap: the envelope is never reached, and the drawn end joins at
+    # the walked stretch's closest approach — never at the raw 10 m gate.
+    n = 400
+    x = np.arange(float(n))
+    y = np.full(n, 5.0)  # hovering 5 m off-line everywhere...
+    y[150:250] = 50.0  # ...except the traversal core
+    y[120] = 3.0  # the closest approach on the entry side, inside the cap
+    v = np.full(n, 36.0)
+    v[190:215] = 0.0
+    x[190:215] = x[190]
+    found = detect_traversals("XXX", x, y, v, np.arange(400.0), np.zeros(400), 1.0, 10.0)
+    assert len(found) == 1
+    t = found[0]
+    cap = int(PIT_JOIN_MAX_S * 10.0)
+    # Entry: the walk spans [149-cap, 149] and its minimum residual is at 120.
+    assert t.start_i == 120
+    # Exit: the walk's residuals are a flat 5 m, so the closest approach is the
+    # first walked sample — one past the core, exactly where the old rule
+    # stopped, because here the data genuinely never comes closer.
+    assert t.end_i == 250
+    assert 149 - cap <= t.start_i
+
+
+def test_detect_traversals_marks_window_clipped_spans_and_does_not_extend_them():
+    # A pit-lane start: off-line from the first sample, stop inside.
+    x, y, v = _straight_line_car(dip=(0, 250), stop=(0, 40))
+    found = detect_traversals("LAW", x, y, v, np.arange(400.0), np.zeros(400), 1.0, 10.0)
+    assert len(found) == 1
+    t = found[0]
+    assert t.clipped_start and not t.clipped_end
+    assert t.start_i == 0 and t.end_i == 250
+
+
+def test_detect_traversals_degenerates_quietly():
+    x, y, v = _straight_line_car()
+    assert detect_traversals("XXX", x, y, v, np.arange(400.0), np.zeros(400), 0.0, 10.0) == []
+    assert detect_traversals("XXX", [1.0], [1.0], [0.0], np.arange(400.0), np.zeros(400), 1.0, 10.0) == []
+    assert detect_traversals("XXX", x, y, v, np.array([1.0]), np.array([0.0]), 1.0, 10.0) == []
+
+
+def _lane_cars(second_driver="BBB", second_dip_m=52.0, declined=False, shift=0):
+    """Reference AAA on y=0 with clean laps, plus a traversing second car; the
+    second car's dip can be moved (`shift`) to be a different lane entirely."""
+    n = 400
+    ref_x = np.arange(float(n))
+    ref_y = np.zeros(n)
+    ref_v = np.full(n, 36.0)
+    x, y, v = _straight_line_car(dip=(150 + shift, 250 + shift), dip_m=second_dip_m,
+                                 stop=(190 + shift, 215 + shift))
+    return [
+        ("AAA", ref_x, ref_y, ref_v, False),
+        (second_driver, x, y, v, declined),
+    ]
+
+
+def test_detect_pit_lane_emits_the_driven_polyline_rounded_and_deduped():
+    cars = _lane_cars()
+    result = detect_pit_lane(cars, [0.0], 10.0)
+    assert [t.driver for t in result.lane] == ["BBB"]
+    assert len(result.polylines) == 1
+    poly = result.polylines[0]
+    # Every point is a sample the car drove, rounded exactly as samples are...
+    assert poly[0] == {"x": 149.0, "y": 0.0}
+    assert poly[-1] == {"x": 250.0, "y": 0.0}
+    assert {"x": 190.0, "y": 52.0} in poly
+    # ...and the stop's identical fixes collapse to one point: the off-line core
+    # is 100 samples plus 2 extensions, and the 25-sample stop keeps one point.
+    assert all(a != b for a, b in zip(poly, poly[1:]))
+    assert len(poly) == 78
+
+
+def test_detect_pit_lane_excludes_a_declined_car_and_reports_it():
+    result = detect_pit_lane(_lane_cars(declined=True), [0.0], 10.0)
+    assert result.excluded == ("BBB",)
+    assert len(result.traversals) == 1  # detected and reported...
+    assert result.polylines == ()  # ...but never geometry.
+
+
+def test_detect_pit_lane_merges_same_lane_traversals_to_one_polyline():
+    # Two cars through the same lane 2 units apart (< PIT_LANE_REDUNDANT_M):
+    # the longer driven path is elected, the other is redundant.
+    cars = _lane_cars()
+    x, y, v = _straight_line_car(dip=(148, 252), dip_m=54.0, stop=(190, 215))
+    cars.append(("CCC", x, y, v, False))
+    result = detect_pit_lane(cars, [0.0], 10.0)
+    assert len(result.polylines) == 1
+    assert [t.driver for t in result.lane] == ["CCC"]  # longer driven path wins
+    assert {t.driver for t in result.traversals} == {"BBB", "CCC"}
+
+
+def test_detect_pit_lane_unions_genuinely_disjoint_coverage():
+    # A second traversal on the OTHER side of the line, far beyond
+    # PIT_LANE_REDUNDANT_M from the first: both are real driven geometry.
+    cars = _lane_cars()
+    x, y, v = _straight_line_car(dip=(150, 250), dip_m=-60.0, stop=(190, 215))
+    cars.append(("DDD", x, y, v, False))
+    result = detect_pit_lane(cars, [0.0], 10.0)
+    assert len(result.polylines) == 2
+    assert {t.driver for t in result.lane} == {"BBB", "DDD"}
+
+
+def test_detect_pit_lane_no_cars_and_no_traversals():
+    assert detect_pit_lane([], [0.0], 10.0) is NO_PIT_LANE
+    n = 100
+    cars = [("AAA", np.arange(float(n)), np.zeros(n), np.full(n, 200.0), False)]
+    result = detect_pit_lane(cars, [0.0], 10.0)
+    assert result.traversals == () and result.polylines == ()
+
+
+def test_window_builder_emits_the_pit_lane_and_the_lap_builder_stays_silent():
+    start, end = synthetic.PIT_WINDOW
+    built = build_window_replay_dict(
+        [
+            synthetic.window_car(
+                "AAA",
+                synthetic.session_telemetry(start, end),
+                *lap_context(*synthetic.PIT_LAP_TABLE_REF, synthetic.PIT_WINDOW),
+            ),
+            synthetic.window_car("BBB", synthetic.pit_session_telemetry(start, end)),
+        ],
+        synthetic.SESSION_META,
+        synthetic.PIT_WINDOW,
+    )
+    lane = built["track"]["pitLane"]
+    assert len(lane) == 1 and len(lane[0]) >= 2
+    # Every lane point is one of BBB's own emitted fixes — driven, not fitted.
+    bbb_points = {(s["x"], s["y"]) for s in built["cars"][1]["samples"]}
+    assert all((p["x"], p["y"]) in bbb_points for p in lane[0])
+    # The ends sit ON the racing line (within the off-line bound of AAA's lap).
+    ref = built["cars"][0]["samples"]
+    upm = units_per_metre(
+        [s["x"] for s in ref], [s["y"] for s in ref], [s["speed"] for s in ref], 10.0
+    )
+    ends = polyline_distance(
+        [lane[0][0]["x"], lane[0][-1]["x"]],
+        [lane[0][0]["y"], lane[0][-1]["y"]],
+        [s["x"] for s in ref],
+        [s["y"] for s in ref],
+    )
+    assert (ends / upm <= PIT_OFFLINE_M).all()
+
+    # A single closed lap has no stop: the lap builder emits NO pitLane key —
+    # absence, not an empty list (the dropouts doctrine).
+    lap = build_replay_dict(synthetic.telemetry(), synthetic.META)
+    assert "pitLane" not in lap["track"]
+
+
+def test_window_builder_omits_the_key_when_no_car_pits():
+    start, end = synthetic.PIT_WINDOW
+    built = build_window_replay_dict(
+        [synthetic.window_car("AAA", synthetic.session_telemetry(start, end))],
+        synthetic.SESSION_META,
+        synthetic.PIT_WINDOW,
+    )
+    assert "pitLane" not in built["track"]
+
+
+def test_pit_lane_report_names_every_traversal_and_confirms_the_file():
+    start, end = synthetic.PIT_WINDOW
+    built = build_window_replay_dict(
+        [
+            synthetic.window_car(
+                "AAA",
+                synthetic.session_telemetry(start, end),
+                *lap_context(*synthetic.PIT_LAP_TABLE_REF, synthetic.PIT_WINDOW),
+            ),
+            synthetic.window_car("BBB", synthetic.pit_session_telemetry(start, end)),
+        ],
+        synthetic.SESSION_META,
+        synthetic.PIT_WINDOW,
+    )
+    report = pit_lane_report(built, [])
+    assert "BBB: traversal" in report and "elected" in report
+    assert "matches this recomputation" in report
+    assert "MISMATCH" not in report
+
+
+def test_pit_lane_report_says_none_for_a_clean_window():
+    start, end = synthetic.PIT_WINDOW
+    built = build_window_replay_dict(
+        [synthetic.window_car("AAA", synthetic.session_telemetry(start, end))],
+        synthetic.SESSION_META,
+        synthetic.PIT_WINDOW,
+    )
+    assert "none - no off-line span containing a stop" in pit_lane_report(built, [])
+
+
+def test_pit_lane_report_screams_when_declined_facts_disagree():
+    # The report is handed a declined driver the builder did not know about:
+    # its recomputation drops the lane the file carries, and it says so rather
+    # than printing two truths quietly.
+    start, end = synthetic.PIT_WINDOW
+    built = build_window_replay_dict(
+        [
+            synthetic.window_car(
+                "AAA",
+                synthetic.session_telemetry(start, end),
+                *lap_context(*synthetic.PIT_LAP_TABLE_REF, synthetic.PIT_WINDOW),
+            ),
+            synthetic.window_car("BBB", synthetic.pit_session_telemetry(start, end)),
+        ],
+        synthetic.SESSION_META,
+        synthetic.PIT_WINDOW,
+    )
+    report = pit_lane_report(built, ["BBB"])
+    assert "MISMATCH" in report
+    assert "EXCLUDED" in report
+
+
+def test_pit_traversal_and_result_shapes_are_frozen():
+    t = PitTraversal("XXX", 1, 2, 1.0, 12.0, False, False)
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        t.driver = "YYY"
+
+
+def test_the_pit_thresholds_sit_inside_their_measured_bands():
+    # The corpus bands (PLAN 16). If someone tunes a constant out of its band,
+    # this is the assertion that asks them to re-measure first.
+    assert 0.0 < PIT_STOP_MIN_S <= 3.1  # stops measured 3.1-7.8 s; false: 0.0
+    assert 9.2 < PIT_OFFLINE_M <= 15.8  # on-line max 9.2 m; lanes 15.8+ m off
+    assert 8.4 < PIT_MIN_EXTENT_M <= 150.0  # parked ~8 m; narrowest lane 150 m
+    assert 1.0 < PIT_ONLINE_RESIDUAL_M < PIT_OFFLINE_M  # on-line noise <=1 m; gate 10
+    assert PIT_JOIN_MAX_S >= 2 * 4.3  # slowest measured convergence 4.3 s (Monza exit)
+    assert 3.8 < PIT_LANE_REDUNDANT_M <= 224.0  # same-lane <=3.8 m; other geometry 224+
+    assert PIT_STOP_MAX_KMH == 15.0  # the anchor family's walking-pace bound
+
+
+def test_pit_lane_report_marks_the_second_same_lane_traversal_redundant():
+    # Two cars through the SAME dogleg: one polyline in the file, and the report
+    # says which traversal it came from and why the other added nothing.
+    start, end = synthetic.PIT_WINDOW
+    built = build_window_replay_dict(
+        [
+            synthetic.window_car(
+                "AAA",
+                synthetic.session_telemetry(start, end),
+                *lap_context(*synthetic.PIT_LAP_TABLE_REF, synthetic.PIT_WINDOW),
+            ),
+            synthetic.window_car("BBB", synthetic.pit_session_telemetry(start, end)),
+            synthetic.window_car("CCC", synthetic.pit_session_telemetry(start, end)),
+        ],
+        synthetic.SESSION_META,
+        synthetic.PIT_WINDOW,
+    )
+    assert len(built["track"]["pitLane"]) == 1
+    report = pit_lane_report(built, [])
+    assert "redundant (same lane already covered)" in report
+    assert "elected" in report and "MISMATCH" not in report

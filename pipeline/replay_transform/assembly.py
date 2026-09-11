@@ -17,6 +17,7 @@ from typing import Any, Iterable, Mapping, Sequence
 import numpy as np
 
 from .dead_feed import detect_dead_feed, freeze_telemetry
+from .pit_lane import PitLaneResult, detect_pit_lane
 from .stuck_channel import (
     bridge_stuck_channels,
     detect_stuck_channels,
@@ -115,6 +116,17 @@ def build_samples(
             sample["drs"] = int(drs_values[i])
         samples.append(sample)
     return samples
+
+
+def _pit_lane_field(pit: "PitLaneResult") -> "dict[str, Any]":
+    """`{"pitLane": ...}` when the window carries one, `{}` when it does not —
+    the `retiredAt`/`dropouts` spread idiom, JSON-ready (lists, not tuples,
+    because the goldens compare against `json.loads`)."""
+    if not pit.polylines:
+        return {}
+    return {
+        "pitLane": [[dict(p) for p in poly] for poly in pit.polylines]
+    }
 
 
 def build_corners(rows: Iterable[Mapping[str, Any]]) -> "list[dict[str, Any]]":
@@ -226,6 +238,27 @@ def build_replay_dict(
     )
     n = len(samples)
 
+    # Pit-lane detection reads the EMITTED samples, not the pre-rounding grid
+    # arrays, so `reporting.pit_lane_report` can recompute it from the written
+    # file alone and agree with the builder by construction (the stint-report
+    # doctrine, applied to a detector). The 0.05-unit rounding perturbation is
+    # five orders of magnitude under the 10 m thresholds. A single closed lap
+    # cannot contain a stop, so this is expected to elect nothing — it runs
+    # anyway because the two builders must stay structurally identical.
+    pit = detect_pit_lane(
+        [
+            (
+                str(meta.driver),
+                [s["x"] for s in samples],
+                [s["y"] for s in samples],
+                [s["speed"] for s in samples],
+                False,
+            )
+        ],
+        [lap["startT"] for lap in laps] or [0.0],
+        rate,
+    )
+
     return {
         "meta": {
             "schemaVersion": SCHEMA_VERSION,
@@ -253,6 +286,13 @@ def build_replay_dict(
                 ),
             },
             "corners": build_corners(corners),
+            # `pitLane` is OPTIONAL against the `corners` always-emitted
+            # precedent, on the `dropouts` doctrine: absence means "no car in
+            # this file drove the pit lane", exactly what an empty list would
+            # mean — and conditional emission keeps every pit-less file
+            # byte-identical under regeneration, which is itself this slice's
+            # negative control (the finale must not change).
+            **_pit_lane_field(pit),
         },
         # Always an array: v1 emits one car, v2 emits twenty, and nothing on either
         # side of the contract branches on the count (CLAUDE.md rule 2).
@@ -469,6 +509,7 @@ def build_window_replay_dict(
 
     built = []
     rejections: "list[tuple[str, FixRejection]]" = []
+    declined_by_driver: "dict[str, bool]" = {}
     for car, t, ch in per_car:
         speed = car.telemetry["Speed"]
         # Repair before screening, and screen the repaired polyline — see the same
@@ -481,6 +522,7 @@ def build_window_replay_dict(
             t, speed, repair, car, window[0],
             stuck_anchors=stuck_anchors_by_driver.get(str(car.driver), ()),
         )
+        declined_by_driver[str(car.driver)] = plan.declined
         # The reversal screen (Slice 9j), under the same guard as the anchors: a car
         # with a DECLINED displacement is a known-corrupt region and gets no
         # surgical edits — its fixes ship exactly as the ratio screen left them.
@@ -517,6 +559,26 @@ def build_window_replay_dict(
 
     _, ref_x, ref_y, ref_samples = built[0]
 
+    # Detection over the EMITTED samples — see the same call in
+    # `build_replay_dict` for why (the report recomputes from the file alone).
+    # The reference car's clean laps supply the racing line; a car whose anchor
+    # plan was declined is excluded from the lane geometry (`pit_lane`'s
+    # module docstring carries the argument).
+    pit = detect_pit_lane(
+        [
+            (
+                str(car.driver),
+                [s["x"] for s in samples],
+                [s["y"] for s in samples],
+                [s["speed"] for s in samples],
+                declined_by_driver[str(car.driver)],
+            )
+            for car, _, _, samples in built
+        ],
+        [lap["startT"] for lap in built[0][0].laps] or [0.0],
+        rate,
+    )
+
     return {
         "meta": {
             "schemaVersion": SCHEMA_VERSION,
@@ -543,6 +605,9 @@ def build_window_replay_dict(
                 ),
             },
             "corners": build_corners(corners),
+            # Same doctrine as the lap builder's: optional, absent when no car
+            # drove the lane, so pit-less windows regenerate byte-identical.
+            **_pit_lane_field(pit),
         },
         "cars": [
             {

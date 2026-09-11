@@ -35,9 +35,10 @@ function readGolden(name: string): unknown {
 const WITH_DRS = "lap-drs.golden.json";
 const WITHOUT_DRS = "lap-nodrs.golden.json";
 const RACE = "race-window.golden.json";
+const RACE_PIT = "race-window-pit.golden.json";
 
 describe("pipeline output against the schema", () => {
-  it.each([WITH_DRS, WITHOUT_DRS, RACE])(
+  it.each([WITH_DRS, WITHOUT_DRS, RACE, RACE_PIT])(
     "%s validates through parseReplay",
     (name) => {
       // Not a smoke test: `parseReplay` is the same function `main.tsx` boots with,
@@ -175,6 +176,29 @@ describe("pipeline output against the schema", () => {
     ]);
     const unknown = parseReplay(readGolden(WITHOUT_DRS), WITHOUT_DRS).cars[0];
     expect(unknown.stints[0].compound).toBe("UNKNOWN");
+  });
+
+  it("carries the pit lane cross-language, driven and absent alike (Slice 16)", () => {
+    // The pit golden's lane is BBB's own driven dogleg: every emitted point must
+    // be one of BBB's samples verbatim — the pipeline emits geometry a car
+    // actually drove, never a fit — and the pit-less goldens must carry NO key,
+    // parsing to [] through the default (the dropouts idiom, which is what lets
+    // a pit-less file regenerate byte-identical).
+    const pit = parseReplay(readGolden(RACE_PIT), RACE_PIT);
+    expect(pit.track.pitLane.length).toBe(1);
+    const lane = pit.track.pitLane[0];
+    expect(lane.length).toBeGreaterThanOrEqual(2);
+    const bbb = new Set(pit.cars[1].samples.map((s) => `${s.x},${s.y}`));
+    for (const p of lane)
+      expect(bbb.has(`${p.x},${p.y}`), `${p.x},${p.y}`).toBe(true);
+
+    expect((readGolden(RACE) as { track: object }).track).not.toHaveProperty(
+      "pitLane",
+    );
+    expect(parseReplay(readGolden(RACE), RACE).track.pitLane).toEqual([]);
+    expect(
+      (readGolden(WITH_DRS) as { track: object }).track,
+    ).not.toHaveProperty("pitLane");
   });
 
   it("computes a real start/finish angle rather than a hard-coded zero", () => {

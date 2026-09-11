@@ -48,7 +48,12 @@ import {
   type RecordingContext,
 } from "../test/canvas";
 import { TAIL_BANDS, TAIL_WIDTH, TRAIL_WIDTH } from "./trail";
-import { CORNER_BADGE_RADIUS, TRACK_EDGE_WIDTH, buildScene } from "./scene";
+import {
+  CORNER_BADGE_RADIUS,
+  PIT_EDGE_WIDTH,
+  TRACK_EDGE_WIDTH,
+  buildScene,
+} from "./scene";
 import { PAD_PX, TrackCanvas } from "./TrackCanvas";
 
 const WIDTH = 800;
@@ -197,6 +202,28 @@ describe("TrackCanvas", () => {
     const start = expectedMarker(0);
     expect(drawn[0].x).toBeCloseTo(start.x, 6);
     expect(drawn[0].y).toBeCloseTo(start.y, 6);
+  });
+
+  it("draws the pit lane UNDER the ribbon, open-ended, at the narrow gauge (Slice 16)", () => {
+    render(<TrackCanvas replay={replay} />);
+    raf.tick();
+
+    const frame = lastFrame(recording);
+    const strokes = frame.filter((c) => c.method === "stroke");
+    const pitAt = strokes.findIndex((c) => c.lineWidth === PIT_EDGE_WIDTH);
+    const ribbonAt = strokes.findIndex((c) => c.lineWidth === TRACK_EDGE_WIDTH);
+    expect(pitAt).toBeGreaterThanOrEqual(0);
+    // Under: the lane's strokes land before the circuit ribbon's, so the ribbon
+    // covers the entry/exit joins.
+    expect(pitAt).toBeLessThan(ribbonAt);
+
+    // The retained path is the fixture's 5-point polyline, and it is OPEN — a
+    // lane has an entry and an exit; closing it would stroke a phantom chord.
+    const pit = strokes[pitAt].path;
+    expect(pit?.ops.filter((op) => op.method === "lineTo")).toHaveLength(
+      replay.track.pitLane[0].length - 1,
+    );
+    expect(pit?.ops.some((op) => op.method === "closePath")).toBe(false);
   });
 
   it("advances the clock by dt * speedMult while playing", () => {
@@ -414,8 +441,9 @@ describe("TrackCanvas", () => {
  * that only looked at the totals after a run would miss churn inside it.
  */
 describe("TrackCanvas trail", () => {
-  /** Cost of one `buildScenePaths`: the ribbon, plus a bucket path per car. */
-  const PATHS_PER_BUILD = 1 + replay.cars.length * SPEED_BUCKETS;
+  /** Cost of one `buildScenePaths`: the ribbon and the pit lane (the fixture
+   *  carries one since Slice 16), plus a bucket path per car. */
+  const PATHS_PER_BUILD = 2 + replay.cars.length * SPEED_BUCKETS;
   /** Cost of one trail reset: bucket paths only, no ribbon. */
   const PATHS_PER_RESET = replay.cars.length * SPEED_BUCKETS;
 

@@ -38,6 +38,15 @@ function summarise(
     `    ${meta.event} · ${meta.session} · ${meta.track} (${meta.year})`,
     `    ${cars.length} car(s) · ${samples} samples · ${meta.duration}s @ ${meta.sampleRateHz} Hz`,
     `    drs ${drs} · ${track.corners.length} corners · rotation ${meta.rotation}°`,
+    // Absence and presence both print (silent-never): "none" is the expected
+    // reading for a pit-less window, not a blank line someone has to interpret.
+    `    pit lane ${
+      track.pitLane.length === 0
+        ? "none"
+        : `${track.pitLane.length} polyline(s), ${track.pitLane
+            .map((p) => p.length)
+            .join("+")} points`
+    }`,
   ].join("\n");
 }
 

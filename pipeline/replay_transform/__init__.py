@@ -9,6 +9,7 @@ here, so `from replay_transform import X` is unchanged for every caller and test
 * `placement`   — arc-length reparameterization: path, travel, anchors
 * `repair`      — the two screens: frame displacements, impossible fixes
 * `lap_context` — laps and stints (Slice 14)
+* `pit_lane`    — pit-lane traversal detection and lane geometry (Slice 16)
 * `assembly`    — the lap and window builders
 * `reporting`   — per-run report lines, quality metrics, serialisation
 
@@ -185,8 +186,27 @@ from .stuck_channel import (
     detect_stuck_channels,
     dropout_intervals,
 )
+from .pit_lane import (
+    NO_PIT_LANE,
+    PIT_JOIN_MAX_S,
+    PIT_LANE_NEW_FRAC,
+    PIT_LANE_REDUNDANT_M,
+    PIT_MIN_EXTENT_M,
+    PIT_OFFLINE_M,
+    PIT_ONLINE_RESIDUAL_M,
+    PIT_STOP_MAX_KMH,
+    PIT_STOP_MIN_S,
+    PitLaneResult,
+    PitTraversal,
+    clean_line,
+    detect_pit_lane,
+    detect_traversals,
+    polyline_distance,
+    units_per_metre,
+)
 from .reporting import (
     anchor_report,
+    pit_lane_report,
     dead_feed_report,
     stuck_channel_report,
     dump_json,

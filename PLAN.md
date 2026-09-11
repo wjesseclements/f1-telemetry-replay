@@ -3500,21 +3500,248 @@ smooth, with VER's 97% as the target**. Instrument-first, as always:
   thresholds (9i's rule stands: neither detector is what is wrong here).
 
 
-### [ ] Slice 16 — draw the pit lane any car in the file uses
+### [x] Slice 16 — draw the pit lane any car in the file uses (done 2026-09-10, ACCEPTED 2026-09-11)
 
-**Filed by Slice 9i's browser pass.** The track ribbon is traced from `cars[0]`'s
-path, so the pit lane is drawn only when the REFERENCE car pits — the Monza pit
-cycle shows LEC and NOR driving through an undrawn pit lane. Decouple the ribbon
-from `cars[0]`: draw the pit lane whenever any car in the file uses it.
+**Filed by Slice 9i's browser pass; built in the 9-series method (measure →
+pre-register → build → verify).** The track ribbon is traced from `cars[0]`'s
+path, so the pit lane was drawn only when the REFERENCE car pits — the Monza pit
+cycle showed LEC and NOR driving through an undrawn lane, and the red-flag
+scenario's pit-lane starters launched out of nothing. The lane is now a
+TRACK-LEVEL element derived by the pipeline from the cars that actually drove it.
 
-- **Scope sketch (app-side, render):** the ribbon's source stays the reference lap
-  for the CIRCUIT; the pit lane is an additional path, derived from the cars that
-  actually traverse it (their below-speed spans bound it, and their emitted samples
-  through it are its geometry). No schema change expected — the data is already in
-  every car's samples — but argue it before assuming it.
-- **Verify:** Monza pit cycle shows the lane under LEC and NOR; rain unchanged
-  (HAM's lane already draws — cars[0] pits there); drawcall capture re-baselined
-  deliberately (this slice DOES change the canvas, the first since 9e's family).
+**Phase 1 — measured (2026-09-10, read-only over the five committed assets;
+ref clean-lap racing line, residuals in metres via the per-file metre bridge):**
+- **True traversals separate from everything else on two empty bands.** All
+  seven true traversals (pit cycle LEC/NOR; rain VER/HAM/NOR; red-flag LAW/ALO,
+  clipped at the window start) run 12.6–28.5 s off-line (median residual
+  16–25 m) and each contains a 3.1–7.8 s stop below 15 km/h; every false
+  candidate — ALO's three at-speed restart excursions (219–274 km/h), NOR's
+  displaced rain pit-entry branch, PIA's dead-reckon residue — is ≤ 1.9 s with
+  0.0 s of stop. Bands: stop time 0.0 → 3.1 s, span length 1.9 → 12.6 s.
+- **A third discriminator was found by the golden, not by design:** the
+  synthetic race window's PARKED car (Slice 8's legitimate case) contains a
+  stop but jitters ~8 m of extent while accumulating hundreds of phantom path
+  metres — so the rule gained a spatial-extent bound. True traversals span
+  150–567 m; the parked cluster ~8 m. Band: 8 → 150 m.
+- **The red-flag field NEVER leaves the racing line before the window ends**
+  (every car's last-8 s residual ≤ 0.3 m at 59–196 km/h). FLAGGED against the
+  brief's "the field files into a drawn lane", not smoothed: the drawn lane
+  there comes from LAW/ALO's pit-start traversals, and the field visibly files
+  TOWARD it, but the data cannot honestly place them IN it — the window closes
+  first.
+- **Union geometry:** same-lane traversals sit 0–3.8 m apart (different pit
+  boxes included); geometry that is genuinely elsewhere sits 224–451 m from the
+  lane. LAW's and ALO's pit-start paths are 0.1 m apart — both queue at the
+  pit exit.
+
+**The rule, built exactly as measured (`replay_transform/pit_lane.py`, pure):**
+a traversal is a maximal off-the-racing-line span (> `PIT_OFFLINE_M` = 10 m,
+the app's Slice 19 bound re-measured at the grid) containing ≥ `PIT_STOP_MIN_S`
+= 1 s below `PIT_STOP_MAX_KMH` = 15 km/h and spanning ≥ `PIT_MIN_EXTENT_M` =
+50 m of bounding-box diagonal. The racing line is the reference car's CLEAN
+laps (no sub-15 km/h sample), so a reference that pits (rain: HAM) still
+yields a pit-free line and its own traversal detects like anyone else's; no
+clean lap degrades to the at-speed fallback, which under-detects rather than
+fabricates.
+
+- **Emission is the union of REAL driven polylines, argued against averaging
+  and against first-traversal:** averaging blends different pit boxes into
+  geometry nobody drove; the first traversal ignores clipped complements. The
+  union is greedy — longest driven path elected first, another polyline joins
+  only when > 25 % of its points lie beyond `PIT_LANE_REDUNDANT_M` = 10 m from
+  everything accepted (measured populations: 0 % for every same-lane pair,
+  100 % for disjoint geometry) — so every emitted point is a sample some car
+  drove, rounded exactly as that car's `samples` are, consecutive stop
+  duplicates collapsed, ends extended one on-line sample so the lane meets the
+  ribbon (a window-clipped side honestly ends where the data does). Today every
+  window elects exactly ONE polyline; the multi-polyline shape exists for a
+  lane covered piecewise (one car's entry, another's exit).
+- **A DECLINED car's traversal is detected, reported, and EXCLUDED from
+  geometry:** its corruption is at pit entry — exactly what this element draws
+  — and Slice 9k will adjudicate that car AGAINST this geometry, which only
+  works if the car never helped build it. Consequence, measured: rain's lane
+  is VER's traversal (longest admissible; NOR excluded, HAM redundant at
+  0.2 m); the red-flag lane is LAW's (ALO turned out to carry a declined
+  displacement in that window too — the exclusion rule's second real firing,
+  0.1 m from LAW's geometry so the drawn lane is unchanged by it).
+- **Schema: `track.pitLane`, additive, argued against the `corners`
+  precedent.** An array of ≥2-point `{x, y}` polylines with `.default([])` (the
+  `laps` doctrine — empty means exactly what absence means), but EMITTED like
+  `dropouts`, only when non-empty: conditional emission is what lets a pit-less
+  file regenerate byte-identical, and that byte-identity is itself the slice's
+  negative control. `corners`' always-emitted contract predates regeneration
+  stability mattering; adopting it here would have forced every asset and
+  golden to change for a feature that touches none of them.
+- **Builder and report cannot disagree, by construction:** the builder detects
+  over the EMITTED samples (rounding perturbation 5 mm against 10 m
+  thresholds), so `reporting.pit_lane_report` recomputes the whole detection
+  from the written file alone — per-car traversal verdicts
+  (elected/redundant/EXCLUDED), silent-never "none" line — and CHECKS the
+  file's `pitLane` against its own recomputation, printing a MISMATCH line if
+  the declined-driver facts ever diverge.
+- **Render: the circuit ribbon in miniature, under the ribbon, one retained
+  `Path2D`.** Same two colour tokens (`line`/`trackFill` — a service road is
+  the same tarmac, narrower) at gauge 7/4 against the ribbon's 13/9, so no new
+  palette token and the by-width test selection stays unambiguous. Drawn UNDER
+  the circuit ribbon so the ribbon covers the entry/exit joins and the lane
+  merges from beneath the track; open subpaths (no `closePath` — a lane is not
+  a loop); one `Path2D` holds every polyline, so the cost is +2 strokes per
+  frame, CONSTANT, independent of car count. `Scene.bounds` now unions the
+  lane's points so hand-made geometry beyond the cars cannot be fitted out of
+  frame. Marker/tail behaviour untouched.
+- **Consumer #3 lands here (the honest-PIT upgrade both `GAP_PIT` and
+  `carState`'s header promised), NOT with 9k:** `CarState` gains `pit` — off-line
+  AND (no lane geometry in the file, OR within `PIT_NEAR_M` = 25 m of it,
+  measured band 3.8 → 224 m). Files without geometry keep the blanket PIT
+  spelling byte-for-byte (the 9m watch's ratified rendering); files WITH
+  geometry now show the em dash for a genuine off-track moment — NOR's
+  displaced rain branch and PIA's red-flag blip stop wearing a label they never
+  earned. ALO's restart excursions still read PIT (the restart window emits no
+  lane to check against); the `GAP_PIT` caveat narrows to pit-less files and
+  is recorded there. A dropout still clears `pit` with `offline` (NO SIGNAL
+  outranks PIT), and a degenerate metre bridge never claims PIT — the dash
+  cannot lie. 9k's structural adjudication of NOR stays OUT, sequenced after
+  this merges, consuming this geometry.
+- **The canvas-flooring rider stays out, by the brief's own pin:** its pairing
+  with this re-baseline was offered "if the human wants it", and this brief
+  fixed marker behaviour unchanged — so the rider remains filed (Slice 17's
+  entry / Slice 20).
+
+**Assets regenerated (home network, from the FastF1 cache):**
+- **pit cycle** + `pitLane` (NOR's 261-point traversal; LEC redundant) and
+  **rain** + `pitLane` (VER's 251 points; NOR EXCLUDED, HAM redundant) — each
+  differs from its committed bytes ONLY by `track.pitLane` and `trackStatus`
+  (structural diff), the latter being the PRE-EXISTING backlog drift (2024
+  assets predate Slice 17's emission; 9m proved it old-code/new-code
+  byte-identical) closed in passing because these files had to be re-recorded
+  anyway.
+- **red flag** + `pitLane` (LAW's 58 points) — differs ONLY by `track.pitLane`.
+- **restart regenerated BYTE-IDENTICAL** (no traversal — PIA's 0.8 s slow
+  off-line residue correctly earns nothing) and **finale's fresh build differs
+  ONLY by the known `trackStatus` drift** — REVERTED to its committed bytes so
+  this slice's diff carries zero unforced changes; Slice 16's own contribution
+  to both files is zero bytes, which is the negative control holding. The
+  finale's `trackStatus` housekeeping stays with its filed backlog item.
+- Goldens: the three existing regenerate byte-identical; a fourth case
+  (`race-window-pit`) carries a synthetic traversal — an asymmetric two-leg
+  dogleg (unequal legs, off-centre elbow, no self-mapping symmetry — the
+  fixture-asymmetry lesson) driven with real braking ramps (peak 1.8 g),
+  because the first draft's instant 210→80 step read as a 25 g resume snap and
+  rightly tripped 9m's stuck-channel screen — the fixture had to be PHYSICAL
+  before the screens would pass it, which is those screens working.
+  `pipelineContract.test.ts` pins the lane cross-language: every golden lane
+  point is verbatim one of the traversing car's samples, and the pit-less
+  goldens carry NO key, parsing to `[]` through the default.
+- The committed app fixture (`sample-lap.json`) gains a 5-point synthetic
+  dogleg lane (same asymmetry rules), so the drawcall digests and the render
+  tests exercise the drawn lane on a committed file.
+
+**Verified (2026-09-10):**
+- `npm run check` green: typecheck, lint, format, **821 tests** (799 → 821),
+  engine coverage 100 % lines/branches/functions/statements (`pitLane.ts`
+  included), build. Full-log warning grep (`grep -ciE 'warn|error'`): **0**.
+- `pytest` green: **320 tests** (293 → 320), **100 % lines + branches on every
+  module**, `pit_lane.py` included.
+- **Drawcall md5s re-baselined DELIBERATELY** (the first canvas change since
+  the 9e family), captured BEFORE the first edit and after the last, and the
+  delta is exactly the prediction — **+1,402 calls = 2 pit strokes × 701
+  frames, +1 Path2D, in every capture, independent of car count**:
+  | capture | before | after |
+  |---|---|---|
+  | closed (fixture) | 79,213 calls / 19 Path2D / `04506b72…` | 80,615 / 20 / `cb43a0f8f3a91e99718acf9cf7a05e71` |
+  | open (fixture) | 111,986 / 1 / `0aea33a3…` | 113,388 / 2 / `e30b5b6e59fa23d56cf65244ae76431c` |
+  | auto red-flag (22 cars) | 534,722 (762.80/frame) | 536,124 (764.80/frame) |
+  | auto rain (3 cars) | 205,493 (293.14/frame) | 206,895 (295.14/frame) |
+  The BEFORE fixture md5s reproduced the ledger baselines bit-for-bit; the
+  capture header's known-good block now records the new pair (and corrects its
+  stale pre-9c open-call count, which had never been updated — the md5s were
+  always the baseline of record).
+- **hud-tick** (red flag, 22 cars, focus RUS): 186.63 pts/tick, mean 19.367 µs
+  (before: 19.019) — within noise; the trace path does not touch the
+  classifier. **Tower derivation re-measured on the shipped engine with the
+  pit path live** (states + gaps + keys per car per 30 Hz tick, 22 cars):
+  **5.0 µs mean, p99 13.5 µs = 0.015 % of a tick** (Slice 19 recorded 6.0);
+  the lane-distance check runs only for off-line cars and is invisible in the
+  budget. Rule 1 untouched: no new subscriptions, no per-frame reads,
+  `displaySignature` gains nothing (the clock term already forces the emit).
+- **fps-probe** (visible tab, production build, 22-car red flag at 2×):
+  **120 fps, 0 frames over 20 ms, 0 over 33 ms, callback p95 4.10 ms / p99
+  4.80 ms / max 5.5 ms** — matches the Slice 21 ledger baseline (p95 4.2 ms,
+  0 over 20 ms). No regression.
+- **Browser pass over `vite preview`, before/after screenshots in
+  `docs/screenshots/slice-16-*`:** pit cycle — NOR mid-traversal IN the drawn
+  lane (tower: PIT) and LEC at his box in it (1 km/h, fresh hards), against
+  the production BEFORE at the same clock showing NOR floating on nothing;
+  rain — VER's stop and HAM+NOR's double stop each in the drawn Silverstone
+  lane, BEFORE showing both parked in an undrawn void; red flag — LAW/ALO
+  launch out of the drawn lane at t≈4 s, and at 4:53 the field files toward it
+  (per the Phase 1 flag, never IN it in-window); finale and restart —
+  unchanged, no lane drawn, assets untouched on disk.
+
+**Pre-registered browser acceptance (human, the merge gate):**
+- **Monza pit cycle, LEC focused:** at ≈2:45–3:10 NOR drives a visibly drawn
+  lane (thin, dim, branching after the turn-1/2 complex, rejoining past S/F)
+  with PIT in his row; at ≈4:10–4:37 LEC does the same, stopping at his box
+  IN the lane. The lane is dimmer and narrower than the circuit and merges
+  under it at both ends.
+- **Rain, HAM focused:** VER's stop ≈4:57–5:24 and HAM+NOR's ≈6:31–7:00 all
+  happen in a drawn lane inside the pit straight; everywhere else identical to
+  today.
+- **Red flag:** LAW and ALO launch from a short drawn lane at the pit exit in
+  the opening seconds; in the final seconds the field brakes toward that lane
+  but — pre-registered from measurement, not a defect — the window ends before
+  any car's data leaves the racing line, so no car is drawn INSIDE it.
+- **Restart and finale: pixel-identical to today** (assets byte-identical on
+  disk; the only render change triggers on a field neither file carries).
+- **Tower honesty check:** in the rain window around ≈6:19–6:21 NOR's
+  displaced pit-entry blip now shows an em dash instead of PIT (geometry says
+  his recorded branch is 224+ m from the lane); his actual stop still says
+  PIT.
+
+**Watch (2026-09-10, human): merge held on two findings — the lane's body
+right, both ENDS wrong. The record:**
+
+1. **Diagnosis first, and it was neither offered hypothesis.** Not a union
+   artifact (no merging exists at either track — each file's lane is one car's
+   own samples end to end) and not the 25 m PIT gate (that only gates the
+   tower label). It was the **10 m DETECTION bound doing double duty as the
+   drawing bound**: the polyline started/ended at the first/last sample beyond
+   ~10 m of residual (±one grid sample). Measured on the emitted lanes: the
+   Monza lane ended at 9.9 m residual while the elected car takes another
+   **4.3 s (12 → 0 m over ~43 samples at 217 km/h)** to converge — the exit
+   gap; and the entry's first drawn point was already 8 m off-line with the
+   0–8 m departure curve undrawn, so the lane's round end cap butted against
+   the ribbon at an unrelated heading — the hook. Entry multi-crossing of the
+   gate: ZERO at all three tracks.
+2. **The fix, as the watch prescribed: each unclipped end extends to the
+   ON-LINE ENVELOPE, not the detection gate.** New `PIT_ONLINE_RESIDUAL_M` =
+   2.0 (on-line running reads 0–1 m in every end profile; the exit
+   convergence tails pass through 2 on their way to 0; 2 m lands inside the
+   drawn ribbon's own width, so the joint is seamless) with the walk capped at
+   `PIT_JOIN_MAX_S` = 10 s (over 2× the slowest measured convergence) and a
+   closest-approach fallback when the envelope is out of reach — never the
+   raw gate. Window-clipped ends unchanged (the red-flag lane still starts at
+   LAW's box, 19 m off, honestly).
+3. **Verified:** lane ends re-measured on the regenerated assets — Monza
+   START 0.56 m / END 1.82 m, rain 0.33 / 1.39, red-flag END 0.42 (START
+   19.0, clipped, as it must be). Lanes widened to 298 / 262 / 93 points;
+   election/exclusion verdicts unchanged. Both suites green — **821 vitest**
+   (unchanged; the fix is data-side) and **322 pytest** (320 → 322: the
+   ramped-envelope join and the closest-approach fallback, each with exact
+   indices), 100 % both languages' bars; the pit golden re-recorded (the
+   three pit-less goldens byte-identical again); **drawcall md5s unchanged
+   from the recorded Slice 16 baseline** (`cb43a0f8…`/`e30b5b6e…` — the
+   canvas code is untouched by this fix). Close-ups in
+   `docs/screenshots/slice-16b-*`: Monza and Silverstone entry and exit each
+   flowing off and back onto the ribbon — the Silverstone entry now visibly
+   peels off before turn 16 and the exit merges at turn 1, which is where the
+   real ones are.
+
+**Re-watch (2026-09-11, human): PASS** — lane entries taper off the track and
+exits rejoin seamlessly at Monza and Silverstone; all stops draw inside the
+lane; finale/restart unchanged. Auto-merge (squash) enabled on the human's
+instruction. The board advances: **9k → 18 → 20**, with 9k now unblocked and
+consuming this slice's geometry.
 
 **The trace learns to hold two cars.** A "vs" control on each tower row overlays a
 second car's speed on the focused car's scrolling trace — same 20 s window, same
@@ -4656,12 +4883,13 @@ gaining the one input it lacked.
   (PIA, ALO), noted in the 9m entry and owned by the DROPOUT state; cleaning it would
   need the field's racing line, not the per-car polyline, and waits for a case where
   it is visible rather than just measurable.
-- **Re-record the three 2024 gallery assets** — housekeeping surfaced by Slice 9m.
-  The committed 2024 assets predate Slice 17's `trackStatus` emission, so a fresh
-  rebuild adds a `trackStatus:[]` and differs by ~59 bytes each; 9m proved this is
-  NOT its own doing (byte-identical old-code vs new-code) and left them untouched.
-  A trivial regenerate-and-commit closes the drift; low priority, no behaviour
-  change (the schema defaults the missing field).
+- **Re-record the three 2024 gallery assets** — housekeeping surfaced by Slice 9m,
+  **two-thirds CLOSED by Slice 16**: the pit cycle and rain picked up their missing
+  `trackStatus` when 16 re-recorded them for `pitLane`. Only the FINALE still
+  carries the drift — its fresh rebuild differed by exactly that field and was
+  reverted so 16's diff carried no unforced change. A trivial
+  regenerate-and-commit of the finale closes the remainder; low priority, no
+  behaviour change (the schema defaults the missing field).
 - WebGL/3D escalation **only** if measured 20-car perf demands it (documented path).
 - Track-surface niceties: kerbs, sector coloring, mini-map.
 - Ghost/delta vs a reference lap; multi-lap stints.

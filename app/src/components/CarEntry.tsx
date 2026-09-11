@@ -126,11 +126,13 @@ export interface CarEntryProps {
    */
   retired: boolean;
   /**
-   * Off the racing line (Slice 19, second re-watch's copy ruling): the gap column
-   * says PIT instead of a dash — the pit lane is what off-line almost always means,
-   * and the caveat for the rare off-track excursion is recorded at `GAP_PIT`.
+   * The tower may say PIT about this car (Slice 19's copy ruling, gated by
+   * Slice 16's geometry — `carState`'s `pit` flag): the gap column says PIT
+   * instead of a dash. An off-line car this is FALSE for (off-track, far from a
+   * known pit lane) simply falls through to the gap columns, whose `null` gap
+   * renders the em dash — the honest non-claim.
    */
-  offline: boolean;
+  pit: boolean;
   /**
    * Inside a bridged feed dropout (Slice 9m): the gap column says NO SIGNAL and the
    * focused readout greys, because nothing the car reports across the span is real.
@@ -160,7 +162,7 @@ export function CarEntry({
   gap,
   tyre,
   retired,
-  offline,
+  pit,
   dropout,
   focused,
   compared,
@@ -231,7 +233,7 @@ export function CarEntry({
               {/* DNF/NO SIGNAL/PIT on the focused row too: the state must survive
                   focusing the car, or the one row a viewer is reading loses the one
                   fact the tower is stating about it. Precedence retired > dropout >
-                  offline, matching the gap column below. */}
+                  pit, matching the gap column below. */}
               {retired ? (
                 <span className="font-mono text-sm font-bold tracking-wider text-dim">
                   {GAP_DNF}
@@ -241,7 +243,7 @@ export function CarEntry({
                   <NoSignalWord />
                 </span>
               ) : (
-                offline && (
+                pit && (
                   <span className="font-mono text-sm font-bold tracking-wider text-dim">
                     {GAP_PIT}
                   </span>
@@ -251,12 +253,15 @@ export function CarEntry({
                 Focus
               </span>
             </>
-          ) : retired || dropout || offline ? (
+          ) : retired || dropout || pit ? (
             /* The broadcast spelling, in the gap column's place: a word, not a
                number — DNF for a car out of the race, NO SIGNAL for one inside a
-               feed dropout (Slice 9m), PIT for one off the racing line (Slice 19).
-               Precedence retired > dropout > offline: a dropped feed is a flagged
-               fact, a PIT is an inference from the residual. */
+               feed dropout (Slice 9m), PIT for one off the racing line near the
+               pit lane (Slice 19, gated by Slice 16's geometry). Precedence
+               retired > dropout > pit: a dropped feed is a flagged fact, a PIT
+               is an inference from residual and lane distance. An off-line car
+               that earns none of the words falls through to the columns below,
+               where its nulled gap renders the em dash. */
             <span className="ml-auto font-mono text-sm font-bold tracking-wider text-dim">
               {retired ? GAP_DNF : dropout ? <NoSignalWord /> : GAP_PIT}
             </span>

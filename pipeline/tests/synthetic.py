@@ -292,6 +292,192 @@ SESSION_STATUS = (
     ["1", "2", "6", "7", "5", "1"],
 )
 
+# --- a synthetic PIT TRAVERSAL (Slice 16) -----------------------------------------
+#
+# One car leaves the circle onto an interior DOGLEG — two straight legs of unequal
+# length meeting at an off-centre elbow, where the car stops — and rejoins the circle
+# further round. The dogleg is deliberately asymmetric (the fixture-asymmetry
+# lesson): its legs differ in length and heading, its elbow is not the chord
+# midpoint, and no mirror or rotation maps it onto itself, so handedness and
+# orientation bugs in anything consuming the geometry can actually fail.
+#
+# The car is PHYSICAL as well as closed-form: the speed profile is piecewise
+# linear with real braking ramps (peak 1.8 g — an instant 210->80 step reads as
+# a 25 g "resume snap" and rightly trips the 9m stuck-channel screen's exit
+# signature, which is how the first draft of this fixture was caught), and the
+# position is the exact integral of that profile laid along the path, so the
+# car is genuinely where its own speed says it is and no screen fires on it.
+
+#: The window the pit golden uses: one nominal lap of the circle — the golden
+#: stays diffable (test_golden's own size rule) and one clean reference lap is
+#: all the racing line needs.
+PIT_WINDOW = (SESSION_T0, SESSION_T0 + 20.0)
+#: The traversing car's speed profile over the window: (duration_s, from_kmh,
+#: to_kmh) segments. Milestones the geometry hangs off: the car LEAVES the
+#: circle when the entry brake ramp ends (t=6), STOPS over the whole zero
+#: segment (the elbow), and REJOINS the circle when the exit ramp tops out
+#: (t=19). Peak decel (210-80)/2 s = 1.8 g; the corpus's clean maximum is 2.4 g
+#: and the 9m exit signature fires at 8 g.
+PIT_PROFILE = (
+    (4.0, 210.0, 210.0),  # circle at pace
+    (2.0, 210.0, 80.0),   # brake for the lane
+    (4.0, 80.0, 80.0),    # limiter down leg A
+    (1.5, 80.0, 0.0),     # into the box
+    (2.5, 0.0, 0.0),      # the stop (elbow)
+    (2.0, 0.0, 80.0),     # pull away
+    (1.0, 80.0, 80.0),    # limiter down leg B
+    (2.0, 80.0, 210.0),   # accelerate out
+    (1.0, 210.0, 210.0),  # circle again
+)
+#: Profile times (from window start) at which the car leaves the circle, stops,
+#: resumes, and rejoins — derived from PIT_PROFILE above, kept explicit so the
+#: tests can reference them without re-deriving the cumulative sums.
+PIT_DEPART_T = 6.0
+PIT_STOP_T = (11.5, 14.0)
+PIT_REJOIN_T = 19.0
+#: How sharply the car turns off the circle's tangent onto leg A, radians
+#: (rotated toward the circle's centre).
+PIT_TURN_IN_RAD = 25.0 * math.pi / 180.0
+
+#: Position units per metre at the synthetic scale: one nominal lap's
+#: circumference over the ground the mean speed covers in a lap.
+SESSION_UNITS_PER_M = (2.0 * math.pi * SESSION_RADIUS) / (
+    SESSION_SPEED_KMH / 3.6 * SESSION_LAP_S
+)
+
+#: The reference car's lap table for `PIT_WINDOW`: one whole, clean lap, so the
+#: detector's racing line is the full circle.
+PIT_LAP_TABLE_REF = ([21], [SESSION_T0], [20.0], ["HARD"], [10.0])
+
+
+def _pit_distance(rel_t: float) -> float:
+    """Cumulative distance in UNITS at `rel_t` seconds into PIT_PROFILE — the
+    exact trapezoidal integral of the piecewise-linear speed."""
+    s = 0.0
+    elapsed = 0.0
+    for dur, v0, v1 in PIT_PROFILE:
+        if rel_t <= elapsed:
+            break
+        dt = min(rel_t - elapsed, dur)
+        v_at = v0 + (v1 - v0) * dt / dur
+        s += (v0 + v_at) / 2.0 * dt
+        elapsed += dur
+    return s / 3.6 * SESSION_UNITS_PER_M
+
+
+def _pit_speed(rel_t: float) -> float:
+    """Speed in km/h at `rel_t` seconds into PIT_PROFILE (holds the last value)."""
+    elapsed = 0.0
+    for dur, v0, v1 in PIT_PROFILE:
+        if rel_t <= elapsed + dur:
+            return v0 + (v1 - v0) * max(rel_t - elapsed, 0.0) / dur
+        elapsed += dur
+    return PIT_PROFILE[-1][2]
+
+
+def pit_traversal_geometry(phi0: float = math.pi / 3.0) -> "dict[str, object]":
+    """
+    The dogleg's derived facts, shared by the generator and the tests.
+
+    P1 (leave the circle) sits where the distance integral has taken the car by
+    `PIT_DEPART_T`; leg A runs `PIT_TURN_IN_RAD` inside the tangent for exactly
+    the ground covered until the stop; P3 is the forward intersection of the
+    circle with the circle of radius leg-B around the elbow, so the rejoin is
+    seamless by construction.
+    """
+    s1 = _pit_distance(PIT_DEPART_T)
+    leg_a = _pit_distance(PIT_STOP_T[0]) - s1
+    leg_b = _pit_distance(PIT_REJOIN_T) - _pit_distance(PIT_STOP_T[1])
+    phi1 = phi0 + s1 / SESSION_RADIUS
+    p1 = np.array([SESSION_RADIUS * math.cos(phi1), SESSION_RADIUS * math.sin(phi1)])
+    tangent = np.array([-math.sin(phi1), math.cos(phi1)])
+    cos_r, sin_r = math.cos(PIT_TURN_IN_RAD), math.sin(PIT_TURN_IN_RAD)
+    dir_a = np.array(
+        [
+            cos_r * tangent[0] - sin_r * tangent[1],
+            sin_r * tangent[0] + cos_r * tangent[1],
+        ]
+    )
+    p2 = p1 + leg_a * dir_a
+    # Forward intersection of circle(0, R) with circle(p2, leg_b): standard
+    # two-circle intersection, choosing the candidate further round the track.
+    d = float(np.linalg.norm(p2))
+    a = (d * d + SESSION_RADIUS**2 - leg_b**2) / (2.0 * d)
+    h_sq = SESSION_RADIUS**2 - a * a
+    if h_sq < 0:
+        raise ValueError("pit dogleg cannot rejoin the circle; retune PIT_PROFILE")
+    h = math.sqrt(h_sq)
+    base = p2 * (a / d)
+    perp = np.array([-p2[1], p2[0]]) / d
+    cand = [base + h * perp, base - h * perp]
+    phi_cands = [math.atan2(c[1], c[0]) for c in cand]
+    # Unwrap ahead of phi1 and take the nearer-forward one.
+    phi_fwd = [p if p > phi1 else p + 2.0 * math.pi for p in phi_cands]
+    pick = int(np.argmin(phi_fwd))
+    p3, phi3 = cand[pick], phi_fwd[pick]
+    return {
+        "s1": s1,
+        "leg_a": leg_a,
+        "leg_b": leg_b,
+        "phi1": phi1,
+        "phi3": phi3,
+        "p1": p1,
+        "p2": p2,
+        "p3": p3,
+        "dir_a": dir_a,
+        "dir_b": (p3 - p2) / leg_b,
+    }
+
+
+def pit_session_telemetry(
+    start: float, end: float, phi0: float = math.pi / 3.0
+) -> "dict[str, np.ndarray]":
+    """
+    The traversing car: `PIT_PROFILE`'s speed, integrated exactly and laid along
+    circle -> leg A -> elbow stop -> leg B -> circle. Every emitted fix is where
+    the speed integral says the car is, including through both ramps.
+    """
+    g = pit_traversal_geometry(phi0)
+    n = int(round((end - start) * SOURCE_RATE_HZ)) + 1
+    t = start + np.arange(n, dtype=float) / SOURCE_RATE_HZ
+    x = np.empty(n)
+    y = np.empty(n)
+    speed = np.empty(n)
+    s_leg_a_end = g["s1"] + g["leg_a"]
+    s_leg_b_end = s_leg_a_end + g["leg_b"]
+    for i, ti in enumerate(t):
+        rel = ti - start
+        s = _pit_distance(rel)
+        speed[i] = _pit_speed(rel)
+        if s < g["s1"]:
+            phi = phi0 + s / SESSION_RADIUS
+            x[i], y[i] = (
+                SESSION_RADIUS * math.cos(phi),
+                SESSION_RADIUS * math.sin(phi),
+            )
+        elif s < s_leg_a_end:
+            x[i], y[i] = g["p1"] + (s - g["s1"]) * g["dir_a"]
+        elif s < s_leg_b_end:
+            x[i], y[i] = g["p2"] + (s - s_leg_a_end) * g["dir_b"]
+        else:
+            phi = g["phi3"] + (s - s_leg_b_end) / SESSION_RADIUS
+            x[i], y[i] = (
+                SESSION_RADIUS * math.cos(phi),
+                SESSION_RADIUS * math.sin(phi),
+            )
+    slow = speed < 15.0
+    return {
+        "Time": t,
+        "X": x,
+        "Y": y,
+        "Speed": speed,
+        "Throttle": np.where(slow, 0.0, 90.0),
+        "Brake": slow.astype(int),
+        "nGear": np.where(slow, 1, np.where(speed <= 80.0, 3, 7)).astype(int),
+        "DRS": np.zeros(n, dtype=int),
+    }
+
+
 #: The single-lap tables for the two v1 goldens, same column order. `lap-drs` is the
 #: plain path (a known compound, a known age); `lap-nodrs` carries a compound the
 #: pipeline cannot recognise plus a missing TyreLife, so the UNKNOWN mapping and the

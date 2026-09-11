@@ -141,10 +141,32 @@ const CornerSchema = z.object({
   y: z.number(),
 });
 
+const PitLanePointSchema = z.object({ x: z.number(), y: z.number() });
+
 const TrackSchema = z.object({
   /** `angle` is RADIANS, matching the `atan2` heading convention used by the engine. */
   startFinish: z.object({ x: z.number(), y: z.number(), angle: z.number() }),
   corners: z.array(CornerSchema),
+  /**
+   * The pit lane, as the polyline(s) real cars actually drove through it
+   * (Slice 16) — every point is one of some car's own emitted fixes, entry and
+   * exit touching the racing line where the window allowed. Usually one
+   * polyline; more when the lane was only covered piecewise (one car's entry,
+   * another's exit). ADDITIVE within schemaVersion 1 with `.default([])`, per
+   * the `laps` doctrine — empty means exactly what absence means, "no car in
+   * this file drove the pit lane" — and argued AGAINST the `corners`
+   * always-emitted precedent: the pipeline omits the key when there is no
+   * lane, so a pit-less file regenerates byte-identical, which is the negative
+   * control that proves the field additive. Consumers: the renderer draws a
+   * second dim ribbon; `carState` uses it to say PIT only where it is true.
+   */
+  pitLane: z
+    .array(
+      z.array(PitLanePointSchema).min(2, {
+        error: "a pit-lane polyline needs at least 2 points to draw a segment",
+      }),
+    )
+    .default([]),
 });
 
 const SampleSchema = z.object({
