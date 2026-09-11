@@ -419,6 +419,7 @@ def build_window_replay_dict(
     corners: Sequence[Mapping[str, Any]] = (),
     rate: int = SAMPLE_RATE_HZ,
     status: "Sequence[Mapping[str, Any]]" = (),
+    adjudicated: "Mapping[str, Sequence[float]] | None" = None,
 ) -> "dict[str, Any]":
     """
     Build a schema-conforming MULTI-CAR replay from one session-time window.
@@ -514,7 +515,17 @@ def build_window_replay_dict(
         speed = car.telemetry["Speed"]
         # Repair before screening, and screen the repaired polyline — see the same
         # note in `build_replay_dict` for why that order is load-bearing.
-        repair = repair_frame_displacements(t, car.telemetry["X"], car.telemetry["Y"], speed)
+        # Structural adjudications (Slice 9k) ride in per driver: a step time the
+        # geometry convicted joins the jump list, and the cancellation test still
+        # decides. Every un-adjudicated car takes the empty default and is
+        # bit-identical to the pre-9k build.
+        repair = repair_frame_displacements(
+            t,
+            car.telemetry["X"],
+            car.telemetry["Y"],
+            speed,
+            admit=tuple((adjudicated or {}).get(str(car.driver), ())),
+        )
         x, y = repair.x, repair.y
         rejection = reject_impossible_fixes(t, x, y, speed)
         rejections.append((str(car.driver), rejection))

@@ -2130,6 +2130,97 @@ def test_repair_declines_two_jumps_that_do_not_cancel():
     assert "DECLINED" in line and "does not cancel" in line
 
 
+def _hidden_out_run(back=4000.0):
+    """
+    NOR's rain shape in miniature: the OUT step rides a long sample interval so
+    its ratio sits under the gate (the real one read 1.96x at 255 km/h), and only
+    the RETURN is flagged — the single-uncancelled-jump decline, unless the out
+    step is structurally adjudicated in.
+    """
+    t, x, y, v = _clean_run()
+    y[30:45] += 4000.0
+    y[45:] += 4000.0 - back
+    t[30:] += 3.5  # out over dt 3.75 s: ~2.7x its allowance, under the 3.0 gate
+    return t, x, y, v
+
+
+def test_an_adjudicated_out_step_restores_the_cancellation_and_translates():
+    """
+    The Slice 9k mechanism end to end: unaided, the machinery sees one unmatched
+    jump and declines; with the out step admitted on structural evidence, the SAME
+    cancellation test passes and the standard translation runs.
+    """
+    t, x, y, v = _hidden_out_run()
+    clean_y = _clean_run()[2]
+
+    unaided = repair_frame_displacements(t, x, y, v)
+    assert not unaided.repaired and len(unaided.jump_times) == 1
+    assert unaided.admitted == ()
+
+    r = repair_frame_displacements(t, x, y, v, admit=(t[29],))
+    assert r.repaired
+    assert r.admitted == (t[29],)
+    assert len(r.jump_times) == 2 and r.jump_times[0] == t[29]
+    assert np.allclose(r.y, clean_y)
+    # Fixes outside the pair are the same floats — the surgical property survives
+    # adjudication because the admitted step goes through the unchanged mechanism.
+    first, last = r.anchors
+    assert np.array_equal(r.x[: first + 1], x[: first + 1])
+    assert np.array_equal(r.y[last:], y[last:])
+    line = frame_repair_report("NOR", r)
+    assert "translated back" in line and "STRUCTURALLY ADJUDICATED" in line
+
+
+def test_an_adjudication_the_cancellation_test_refuses_stays_declined():
+    """The guard outranks the ruling: an admitted step earns a hearing, not a repair."""
+    t, x, y, v = _hidden_out_run(back=2000.0)  # returns only half way
+    r = repair_frame_displacements(t, x, y, v, admit=(t[29],))
+
+    assert not r.repaired
+    assert r.admitted == (t[29],)
+    assert r.residual_m > r.allowed_m
+    assert np.array_equal(r.y, y)
+    line = frame_repair_report("NOR", r)
+    assert "DECLINED" in line and "STRUCTURALLY ADJUDICATED" in line
+
+
+def test_an_adjudicated_time_this_slice_does_not_contain_is_ignored():
+    """
+    The same session cut to a different window simply lacks the step: the ruling
+    must not snap to the nearest row and convict whatever it finds there.
+    """
+    t, x, y, v = _clean_run()
+    y[30:] += 4000.0  # a true relocation, no partner anywhere
+    r = repair_frame_displacements(t, x, y, v, admit=(t[-1] + 500.0,))
+
+    assert not r.repaired and r.admitted == ()
+    assert len(r.jump_times) == 1
+    assert "STRUCTURALLY ADJUDICATED" not in frame_repair_report("NOR", r)
+
+
+def test_an_adjudicated_step_below_the_measurability_floor_is_ignored():
+    """The floor holds whoever vouches for the step — noise proves nothing."""
+    t, x, y, v = _clean_run()
+    x[10] = x[9]  # a zero-length step: inside any channel's noise
+    y[30:] += 4000.0
+    r = repair_frame_displacements(t, x, y, v, admit=(t[9],))
+
+    assert not r.repaired and r.admitted == ()
+    assert len(r.jump_times) == 1
+
+
+def test_adjudicating_an_already_flagged_step_changes_nothing():
+    """A ruling the ratio gate already agrees with is recorded, not double-counted."""
+    t, x, y, v = _displaced_run()
+    base = repair_frame_displacements(t, x, y, v)
+    r = repair_frame_displacements(t, x, y, v, admit=(base.jump_times[0],))
+
+    assert r.repaired == base.repaired
+    assert r.jump_times == base.jump_times
+    assert r.admitted == (base.jump_times[0],)
+    assert np.array_equal(r.y, base.y)
+
+
 def test_repair_reports_the_two_sides_of_the_cancellation_test():
     """The threshold is an argument, so both of its terms are on the report."""
     t, x, y, v = _displaced_run(out=4000.0, back=3900.0)
@@ -2818,6 +2909,47 @@ def test_window_builder_moves_samples_for_an_anchored_car():
         (a["speed"], a["gear"], a["t"]) == (b["speed"], b["gear"], b["t"])
         for a, b in zip(with_laps, without)
     )
+
+
+def test_window_builder_applies_structural_adjudications_per_driver():
+    """
+    The Slice 9k wiring through the whole builder: `adjudicated` names one
+    driver's step times, that car's displaced span comes home, and the other car
+    is bit-identical — a ruling for NOR must be incapable of touching VER.
+    """
+    start, end = WINDOW
+    clean = synthetic.session_telemetry(start, end)
+    displaced = synthetic.session_telemetry(start, end)
+    # A frame displacement whose edge steps both sit UNDER the ratio gate (~2.7x
+    # allowance at the synthetic pace), so unaided the builder sees nothing and
+    # only the adjudication can name the pair. Wave phase puts both edges at the
+    # profile's mean speed.
+    lo, hi = 29, 57  # t = start + 4.0 s and start + 8.0 s at 7 Hz
+    displaced["Y"] = displaced["Y"].copy()
+    displaced["Y"][lo:hi] += 90.0
+    times = displaced["Time"]
+    cars = lambda tel: [  # noqa: E731 - two builds of the same two cars
+        synthetic.window_car("AAA", clean),
+        synthetic.window_car("BBB", tel),
+    ]
+    unaided = build_window_replay_dict(cars(displaced), synthetic.SESSION_META, WINDOW)
+    ruled = build_window_replay_dict(
+        cars(displaced), synthetic.SESSION_META, WINDOW,
+        adjudicated={"BBB": (times[lo - 1], times[hi - 1])},
+    )
+    truth = build_window_replay_dict(cars(clean), synthetic.SESSION_META, WINDOW)
+
+    assert ruled["cars"][0] == unaided["cars"][0] == truth["cars"][0]
+
+    def err(replay):
+        return max(
+            math.hypot(a["x"] - b["x"], a["y"] - b["y"])
+            for a, b in zip(replay["cars"][1]["samples"], truth["cars"][1]["samples"])
+        )
+
+    # The adjudicated build lands the displaced span back near the truth; the
+    # unaided build keeps the full displacement.
+    assert err(ruled) < 0.5 * err(unaided)
 
 
 def test_anchor_report_names_all_three_states():
@@ -3813,6 +3945,26 @@ def test_detect_traversals_joins_ramped_ends_at_the_online_envelope():
     # First samples inside the 2 m envelope: y[140]=2.5 exceeds it, so the join
     # is the flat sample before the ramp (139) and after it (270) — residual 0.
     assert (t.start_i, t.end_i) == (139, 270)
+
+
+def test_detect_traversals_join_walk_stops_honestly_at_the_window_edge():
+    # An UNCLIPPED core whose exit tail runs out of window before reaching the
+    # envelope: the walk must stop at the data's edge and join at the walked
+    # stretch's closest approach, not read past the array. (Slice 9k found this
+    # branch untested — Slice 16's ledger claimed 100% with line 314 uncovered.)
+    n = 400
+    x = np.arange(float(n))
+    y = np.zeros(n)
+    y[150:397] = 50.0  # core ends at 396: off-line, but not window-clipped...
+    y[397:] = 5.0  # ...and the 3 remaining samples never reach the envelope
+    v = np.full(n, 36.0)
+    v[190:215] = 0.0
+    x[190:215] = x[190]
+    found = detect_traversals("XXX", x, y, v, np.arange(400.0), np.zeros(400), 1.0, 10.0)
+    assert len(found) == 1
+    t = found[0]
+    assert not t.clipped_end
+    assert t.end_i == 397  # closest approach among the walked tail
 
 
 def test_detect_traversals_falls_back_to_closest_approach_when_the_envelope_is_out_of_reach():

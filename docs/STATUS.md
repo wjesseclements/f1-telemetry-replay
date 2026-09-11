@@ -26,32 +26,37 @@ regardless of car count; the tower's PIT label is now gated by that geometry
 where a file carries it, so a genuine off-track moment reads an em dash instead.
 The pipeline's pure half is the `replay_transform` package, one module per
 concern, screened by FOUR detectors plus the stuck-channel screen, per-car anchor
-plans, and the Slice 16 pit-lane detector.
-Quality state on the Slice 16 branch: `npm run check` green with 821 tests and 0
-warnings; 320 pytest with 100% lines + branches on every module; drawcall md5s
-re-baselined DELIBERATELY (the first canvas change since 9e — +1,402 calls =
-2 pit strokes × 701 frames, +1 Path2D, before-md5s reproduced the ledger
-bit-for-bit first); fps-probe over the 22-car red flag at 2× — 120 fps, 0 frames
-over 20 ms, callback p95 4.10 ms.
+plans, the Slice 16 pit-lane detector, and — new in Slice 9k — a STRUCTURAL
+ADJUDICATION input: a named, per-session ruling can hand the frame-displacement
+repair an out-jump the ratio gate cannot see, and the machinery's own unchanged
+cancellation test still decides.
+Quality state on the Slice 9k branch: `npm run check` green with 821 tests and 0
+warnings (zero app-code changes — the slice is pipeline + one asset); 329 pytest
+with 100% lines + branches on every module; drawcall baselines untouched (canvas
+and fixture untouched).
 
-**What is open, and what is blocked.** **Slice 16 is DONE and ACCEPTED**
-(2026-09-11, watch PASS after one fix round): pit-lane geometry end to end —
-detector, schema field, regenerated assets (pit cycle, rain, red flag gain
-`pitLane`; restart byte-identical and the finale untouched, the negative
-controls holding), the second ribbon, and the geometry-gated PIT label. The
-watch's one finding — the lane's ends stopping at the 10 m detection bound (an
-entry hook, an exit gap) — was diagnosed from the emitted residual profiles and
-fixed by extending each unclipped end to the on-line envelope
-(`PIT_ONLINE_RESIDUAL_M` = 2 m, capped walk, closest-approach fallback); the
-re-watch confirmed entries taper off the track and exits rejoin seamlessly, all
-stops draw inside the lane, finale/restart unchanged. **The board: 9k → 18 →
+**What is open, and what is blocked.** **Slice 9k is BUILT, awaiting the rain
+re-watch (the merge gate).** NOR's declined 41.7 m relocation was adjudicated
+against Slice 16's geometry, read-only and pre-registered, and the answer was
+decisive — with a reframe: the flagged jump is the RETURN of a bounded
+displacement whose out step (30.3 m at 1.96× its own allowance) hid under the
+ratio-3 gate, so once that step is admitted on the geometry's evidence the pair
+CANCELS under the standard test (13.6 m of 18.8 m allowed) and the standard
+translation runs — no bespoke repair path exists. Results: NOR's held-out
+placement 38.9/47.6 → 11.8/9.6 m (the instrument's noise floor), reversal
+7 → 0 windows over 2.0, the HAM-NOR S/F gap error 0.59 → 0.07 s (9h's broken
+correlation repaired by fixing, as its entry predicted), HAM and VER
+byte-identical, all other assets untouched. One pre-registered deviation,
+flagged: `track.pitLane` re-elected to NOR's (longest) traversal — same lane,
+0–3.8 m from VER's. The watch checks NOR's entry at 0.5× now reads in VER's 97%
+class, PIT through the lane from ≈6:30, no em dash at ≈6:19. Before it,
+**Slice 16 was ACCEPTED** (2026-09-11, PR #73, re-watch PASS): pit-lane geometry
+end to end, envelope-joined ends ratified. **The board: 9k (in watch) → 18 →
 20.** **Nothing is blocked**; the standing constraint remains:
 `build_replay.py` runs only from the human's home network (CLAUDE.md Gotchas).
 
-**What happens next.** **Slice 9k** (adjudicate NOR's declined relocation
-structurally, consuming Slice 16's lane geometry) per the board: 9k → 18 → 20,
-with the backlog's headline **fixture asymmetry overhaul** behind them. The
-housekeeping re-record of the 2024 assets is now HALF closed: pit cycle and rain
-picked up their missing `trackStatus` in this slice's regeneration; only the
-finale still carries the drift (its fresh build was reverted to keep Slice 16's
-diff free of unforced changes).
+**What happens next.** The 9k rain watch, then **Slice 18** per the board:
+9k → 18 → 20, with the backlog's headline **fixture asymmetry overhaul** behind
+them. Housekeeping unchanged: only the FINALE still carries the `trackStatus`
+drift (pit cycle and rain picked theirs up in Slice 16's re-record; 9k's rain
+rebuild keeps it).
