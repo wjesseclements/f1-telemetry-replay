@@ -34,20 +34,19 @@ re-baselined DELIBERATELY (the first canvas change since 9e — +1,402 calls =
 bit-for-bit first); fps-probe over the 22-car red flag at 2× — 120 fps, 0 frames
 over 20 ms, callback p95 4.10 ms.
 
-**What is open, and what is blocked.** **Slice 16 is BUILT, pending the human's
-watch** (2026-09-10): pit-lane geometry end to end — detector, schema field,
-regenerated assets (pit cycle, rain, red flag gain `pitLane`; restart regenerated
-byte-identical and the finale reverted to its committed bytes, the negative
+**What is open, and what is blocked.** **Slice 16 is DONE and ACCEPTED**
+(2026-09-11, watch PASS after one fix round): pit-lane geometry end to end —
+detector, schema field, regenerated assets (pit cycle, rain, red flag gain
+`pitLane`; restart byte-identical and the finale untouched, the negative
 controls holding), the second ribbon, and the geometry-gated PIT label. The
-pre-registered acceptance is in the PLAN entry: NOR and LEC drive a drawn Monza
-lane, the rain window's three stops sit in a drawn Silverstone lane, LAW/ALO
-launch from a drawn lane at the red flag — and, flagged from measurement rather
-than smoothed, the red-flag FIELD never leaves the racing line before its window
-ends, so it files toward the drawn lane, never inside it. Before this, **Slice 21
-was ACCEPTED** (2026-09-10, watch PASS): FLIP tower animation, `TOWER_MOVE_MS =
-300` ratified. **The board after 16 merges: 9k → 18 → 20.** **Nothing is
-blocked**; the standing constraint remains: `build_replay.py` runs only from the
-human's home network (CLAUDE.md Gotchas).
+watch's one finding — the lane's ends stopping at the 10 m detection bound (an
+entry hook, an exit gap) — was diagnosed from the emitted residual profiles and
+fixed by extending each unclipped end to the on-line envelope
+(`PIT_ONLINE_RESIDUAL_M` = 2 m, capped walk, closest-approach fallback); the
+re-watch confirmed entries taper off the track and exits rejoin seamlessly, all
+stops draw inside the lane, finale/restart unchanged. **The board: 9k → 18 →
+20.** **Nothing is blocked**; the standing constraint remains:
+`build_replay.py` runs only from the human's home network (CLAUDE.md Gotchas).
 
 **What happens next.** **Slice 9k** (adjudicate NOR's declined relocation
 structurally, consuming Slice 16's lane geometry) per the board: 9k → 18 → 20,

@@ -3500,7 +3500,7 @@ smooth, with VER's 97% as the target**. Instrument-first, as always:
   thresholds (9i's rule stands: neither detector is what is wrong here).
 
 
-### [x] Slice 16 — draw the pit lane any car in the file uses (built 2026-09-10, pending watch)
+### [x] Slice 16 — draw the pit lane any car in the file uses (done 2026-09-10, ACCEPTED 2026-09-11)
 
 **Filed by Slice 9i's browser pass; built in the 9-series method (measure →
 pre-register → build → verify).** The track ribbon is traced from `cars[0]`'s
@@ -3736,6 +3736,12 @@ right, both ENDS wrong. The record:**
    flowing off and back onto the ribbon — the Silverstone entry now visibly
    peels off before turn 16 and the exit merges at turn 1, which is where the
    real ones are.
+
+**Re-watch (2026-09-11, human): PASS** — lane entries taper off the track and
+exits rejoin seamlessly at Monza and Silverstone; all stops draw inside the
+lane; finale/restart unchanged. Auto-merge (squash) enabled on the human's
+instruction. The board advances: **9k → 18 → 20**, with 9k now unblocked and
+consuming this slice's geometry.
 
 **The trace learns to hold two cars.** A "vs" control on each tower row overlays a
 second car's speed on the focused car's scrolling trace — same 20 s window, same
