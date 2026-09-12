@@ -297,6 +297,14 @@ def reject_impossible_fixes(
 #: constant is an argument, not a distribution, and is labelled as one.
 DISPLACEMENT_TOLERANCE = 1.0
 
+#: How closely a structurally adjudicated step time (see `admit` below) must match a
+#: source row's own timestamp to name that step, seconds. Source rows are 2 ms apart
+#: at their densest (the 9h-b census), so half of that both matches a cached row
+#: bit-for-bit across rebuilds and can never be ambiguous between neighbours. A time
+#: that matches nothing is IGNORED rather than snapped: the same session cut to a
+#: different window simply does not contain the adjudicated step.
+ADMIT_MATCH_S = 0.001
+
 
 @dataclass(frozen=True)
 class FrameDisplacement:
@@ -324,6 +332,12 @@ class FrameDisplacement:
     allowed_m: float
     #: Source times bounding the translated region, for the log.
     span: "tuple[float, float] | None"
+    #: Source times of steps admitted by STRUCTURAL ADJUDICATION (`admit`) rather
+    #: than by the ratio gate — empty on every un-adjudicated car, so the field is
+    #: also the report's evidence line. Recorded whether or not the pair then
+    #: cancelled: an adjudication that was heard and still refused is a fact worth
+    #: printing, not a silence.
+    admitted: "tuple[float, ...]" = ()
 
 
 def repair_frame_displacements(
@@ -336,6 +350,7 @@ def repair_frame_displacements(
     min_speed: float = IMPOSSIBLE_MIN_SPEED,
     tolerance: float = DISPLACEMENT_TOLERANCE,
     min_step: float = IMPOSSIBLE_MIN_STEP_M,
+    admit: "tuple[float, ...] | list[float]" = (),
 ) -> FrameDisplacement:
     """
     Translate a bounded displacement of the position channel's frame back into frame.
@@ -382,6 +397,24 @@ def repair_frame_displacements(
     stopped in its box — is invisible to the ratio test and lands in the same place:
     declined and reported, never silently half-repaired.
 
+    STRUCTURAL ADJUDICATION (`admit`, Slice 9k) — the decline path's one extra input
+    ----------------------------------------------------------------------------------
+    A jump can also hide ABOVE `min_speed` but UNDER the ratio gate: NOR's rain-window
+    "out" is a 30.3 m step at 1.96x its own channel allowance (~495 km/h implied, but
+    the gate must sit at 3.0 because clean cars reach 2.77), so the census saw only
+    the return and declined it as a relocation. `admit` names such steps by their
+    source time, on evidence this module cannot see — Slice 9k convicted NOR's by
+    scoring both sides of the flagged jump against the Slice 16 pit-lane geometry and
+    the racing line (the recorded post-jump branch runs 0.03 m median over VER's
+    independently-derived lane; the displaced-side hypothesis would put the car
+    40.7 m off every road for 21 s). An admitted step joins the jump list and then
+    earns NOTHING further: the cancellation test still decides, so a wrong
+    adjudication is refused exactly like an uncancelled jump, and the measurability
+    floor still applies. This is not a detector — a cancellation-only partner search
+    was measured against the corpus and MIS-FIRES (14 sham partners for BEA alone in
+    the 2026 red-flag window's low-speed chaos, all near 1.0x allowance); the
+    adjudication is a named, per-step ruling that lives with its evidence in PLAN.
+
     DIMENSIONLESS, so no position unit is assumed (6b's standing rule). The jump test
     is `reject_impossible_fixes`'s own: implied displacement rate over the speed
     channel, normalised by the car's OWN median of that quantity, calibrated the same
@@ -425,6 +458,20 @@ def repair_frame_displacements(
     floor = min_step * KMH_S_PER_METRE * scale
     jump = np.flatnonzero((ratio > max_ratio) & (step > floor))
 
+    # Structural adjudication: a named step joins the jump list on outside evidence,
+    # then survives exactly the same cancellation test as a ratio-flagged one.
+    admitted: "list[float]" = []
+    for want in admit:
+        i = int(np.argmin(np.abs(ts[:-1] - float(want))))
+        if abs(float(ts[i]) - float(want)) > ADMIT_MATCH_S:
+            continue  # this slice of the session does not contain the step
+        if step[i] <= floor:
+            continue  # the measurability floor holds, whoever vouches for the step
+        admitted.append(float(ts[i]))
+        if i not in jump:
+            jump = np.sort(np.append(jump, i))
+    admitted_t = tuple(admitted)
+
     #: Metres per position unit, from the car's own data: `scale` is position units
     #: per (km/h * s), so dividing by it gives travel units and by 3.6 gives metres.
     to_m = 1.0 / (scale * KMH_S_PER_METRE)
@@ -434,7 +481,8 @@ def repair_frame_displacements(
         # One jump is a relocation or an isolated spike; there is no pair to cancel.
         offset = float(np.hypot(dxs[jump], dys[jump]).max()) if len(jump) else 0.0
         return FrameDisplacement(
-            px, py, times, False, (), offset * to_m, offset * to_m, 0.0, None
+            px, py, times, False, (), offset * to_m, offset * to_m, 0.0, None,
+            admitted_t,
         )
 
     offsets = np.cumsum(np.stack([dxs[jump], dys[jump]], axis=1), axis=0)
@@ -444,7 +492,8 @@ def repair_frame_displacements(
 
     if residual > tolerance * allowed:
         return FrameDisplacement(
-            px, py, times, False, (), worst * to_m, residual * to_m, allowed * to_m, None
+            px, py, times, False, (), worst * to_m, residual * to_m, allowed * to_m,
+            None, admitted_t,
         )
 
     m = len(jump)
@@ -469,6 +518,7 @@ def repair_frame_displacements(
         residual * to_m,
         allowed * to_m,
         (float(ts[first]), float(ts[last])),
+        admitted_t,
     )
 
 

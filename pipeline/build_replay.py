@@ -104,6 +104,28 @@ from replay_transform import (
 #: found no matter which directory the pipeline is run from.
 APP_DIR = Path(__file__).resolve().parent.parent / "app"
 
+#: STRUCTURAL ADJUDICATIONS (Slice 9k): per-session, per-driver source step times
+#: admitted into `repair_frame_displacements`' jump list on geometry evidence the
+#: ratio gate cannot see. Keyed by (year, FastF1 EventName, session) so a CLI alias
+#: (`--gp Silverstone` vs the event's own name) cannot silently drop a ruling, and
+#: window-independent: the same session cut to a window that does not contain the
+#: step ignores it by construction (`repair.ADMIT_MATCH_S`).
+#:
+#: Each entry is a RULING, not data cleaning: it exists only with a PLAN.md record
+#: of the adjudication that convicted the step, and the machinery still applies its
+#: own cancellation test — a wrong entry is refused and reported, never obeyed.
+#:
+#: NOR, 2024 Silverstone R, t=6012.623 (window 378.87 s in the rain asset): the
+#: out-jump of his pit-entry frame displacement, 30.3 m at 1.96x its channel
+#: allowance, paired with the flagged 41.7 m return at t=6016.742. Convicted by
+#: Slice 16's pit-lane geometry (PLAN Slice 9k: the recorded post-jump branch runs
+#: 0.03 m median over VER's independently-derived lane; the alternative strands the
+#: car 40.7 m off every road for 21 s), and the pair cancels at 13.6 m of 18.8 m
+#: allowed — the same test that ratified HAM's and VER's repairs.
+STRUCTURAL_ADJUDICATIONS = {
+    (2024, "British Grand Prix", "R"): {"NOR": (6012.623,)},
+}
+
 
 def _pick_driver_laps(laps, driver: str):
     """
@@ -513,6 +535,11 @@ def build_race_replay(year, gp, session_id, drivers, laps, cache_dir=".f1cache")
         )
     print(status_report(status.intervals, status.unknown_codes))
 
+    # Structural adjudications for THIS session, keyed by the event's canonical
+    # name so `--gp Silverstone` and `--gp "British Grand Prix"` resolve alike.
+    adjudicated = STRUCTURAL_ADJUDICATIONS.get(
+        (int(year), str(session.event["EventName"]), str(session_id).upper()), {}
+    )
     replay = build_window_replay_dict(
         window_cars,
         meta,
@@ -520,11 +547,14 @@ def build_race_replay(year, gp, session_id, drivers, laps, cache_dir=".f1cache")
         corners=[row for _, row in circuit.corners.iterrows()],
         rate=SAMPLE_RATE_HZ,
         status=status.intervals,
+        adjudicated=adjudicated,
     )
-    return replay, (t0, t1), window_cars, coverage
+    return replay, (t0, t1), window_cars, coverage, adjudicated
 
 
-def report_window(replay, window, cars, coverage, compact: bool = False) -> None:
+def report_window(
+    replay, window, cars, coverage, compact: bool = False, adjudicated=None
+) -> None:
     """
     Print the numbers behind a window build, for the same reason `build_lap_replay`
     prints its closing chord and time-base stretch: a deliberate approximation should
@@ -600,7 +630,10 @@ def report_window(replay, window, cars, coverage, compact: bool = False) -> None
         b_t, b_x, b_y, b_v = (
             bridged["Time"], bridged["X"], bridged["Y"], bridged["Speed"],
         )
-        repair = repair_frame_displacements(b_t, b_x, b_y, b_v)
+        repair = repair_frame_displacements(
+            b_t, b_x, b_y, b_v,
+            admit=tuple((adjudicated or {}).get(str(car.driver), ())),
+        )
         print(frame_repair_report(str(car.driver), repair, offset=window[0]))
         r = reject_impossible_fixes(b_t, repair.x, repair.y, b_v)
         # Rebased onto the WINDOW so the times line up with the app's transport clock.
@@ -727,7 +760,7 @@ def _run_window(args) -> int:
     lap_range = parse_lap_range(args.laps)
 
     try:
-        data, window, cars, coverage = build_race_replay(
+        data, window, cars, coverage, adjudicated = build_race_replay(
             args.year, args.gp, args.session, drivers, lap_range
         )
     except TelemetryShapeError as err:
@@ -741,7 +774,7 @@ def _run_window(args) -> int:
         f"wrote {out}: {data['meta']['track']} · "
         f"{', '.join(car['driver'] for car in data['cars'])}"
     )
-    report_window(data, window, cars, coverage, compact=args.compact)
+    report_window(data, window, cars, coverage, compact=args.compact, adjudicated=adjudicated)
 
     if args.no_validate:
         print("WARNING: --no-validate: output was NOT checked against the schema.")

@@ -162,13 +162,24 @@ def frame_repair_report(
         return f"  {driver}: 0 frame displacements"
     at = ", ".join(f"{t - offset:.1f}" for t in r.jump_times[:6])
     more = "..." if len(r.jump_times) > 6 else ""
+    # A structurally adjudicated step (Slice 9k) is named whether or not the pair
+    # then cancelled: an adjudication that was heard and refused is a fact worth
+    # printing, and a repair that leaned on one must say so, because the ratio gate
+    # alone cannot reproduce it.
+    adjudicated = ""
+    if r.admitted:
+        adm = ", ".join(f"{t - offset:.1f}" for t in r.admitted)
+        adjudicated = (
+            f"\n      STRUCTURALLY ADJUDICATED (Slice 9k): step(s) at t={adm} "
+            f"admitted on geometry evidence, under the same cancellation test"
+        )
     if r.repaired:
         span = r.span or (0.0, 0.0)
         return (
             f"  {driver}: frame displaced up to {r.offset_m:.1f} m over "
             f"t={span[0] - offset:.1f}-{span[1] - offset:.1f}s, translated back "
             f"(jumps cancel to {r.residual_m:.1f} m of {r.allowed_m:.1f} m allowed; "
-            f"{len(r.jump_times)} jump steps at t={at}{more})"
+            f"{len(r.jump_times)} jump steps at t={at}{more})" + adjudicated
         )
     return (
         f"  {driver}: {len(r.jump_times)} unmatched position jump(s) at t={at}{more}\n"
@@ -179,6 +190,7 @@ def frame_repair_report(
             else " (no second jump to cancel against)"
         )
         + " - the channel relocated and stayed; left to the fix screen, not bridged"
+        + adjudicated
     )
 
 

@@ -4836,16 +4836,182 @@ positioned from the same static scene geometry avoids touching the frame path),
 one file per circuit vs one file keyed by event, and how a circuit with no lore
 degrades (to today's plain labels, obviously — but argued, not assumed).
 
-### [ ] Slice 9k — adjudicate NOR's declined relocation structurally (after Slice 16)
+### [x] Slice 9k — adjudicate NOR's declined relocation structurally (done 2026-09-11, ACCEPTED 2026-09-12)
 
-**Filed 2026-09-08, not built — sequenced AFTER Slice 16.** NOR's 41.7 m pit-entry
-relocation has stayed declined by ruling since 9i because no instrument could say
-which of his two branches is real. Slice 16 produces explicit pit-lane geometry from
-the cars that traverse it; that geometry is the missing adjudicator. The test is
-STRUCTURAL, not statistical: whichever of NOR's two branches lies on the pit-lane
-geometry is the real one — translate the displacement if the answer is decisive,
-keep declining if it is not. No new detector; this is the existing decline path
-gaining the one input it lacked.
+**Filed 2026-09-08, sequenced AFTER Slice 16; built the day 16 merged.** NOR's
+41.7 m pit-entry relocation had stayed declined by ruling since 9i because no
+instrument could say which of his two branches is real. Slice 16's pit-lane
+geometry is the missing adjudicator, and the answer was DECISIVE — with a finding
+that reframed the defect itself.
+
+**Phase 1 — read-only adjudication, decision rule pre-registered before the
+scores.** Templates first: on the emitted grid, a REAL entry (VER, HAM — both
+already repaired) runs the racing line at 0.0 m through the approach, deviates at
+most 6.1 m during entry braking (VER's own band; the corpus's widest legitimate
+on-line deviation is 9.2 m), converges onto the lane and stays ≤ 0.3 m through
+box stop and exit; same-lane traversals sit 0–3.8 m apart (Slice 16's band). The
+rule: the real branch matches that template; the displaced one sits an order of
+magnitude outside the lane's own scatter; anything less than 10 m of separation
+(PIT_OFFLINE_M, ≥ 2.6× the scatter band's top) between the two hypotheses is NOT
+decisive and the decline stands. Scored, both hypotheses, on the source fixes
+against BOTH paths (racing line = HAM's clean laps; lane = VER's traversal, which
+NOR was excluded from building — the exclusion Slice 16 made for exactly this):
+
+- **H-post-real (the flagged jump is a RETURN):** NOR's recorded post-jump branch
+  runs the racing line at 0.0 m, converges onto the lane and holds **0.03 m
+  median over 210 in-lane fixes (21 s)**, stops at a pit box on it, exits along
+  it — HAM's entry 1.5 s later, move for move.
+- **H-pre-real (the jump is an out that never returned — the census's reading):**
+  the post-jump truth would then sit **40.7 m median (min 33.2 m) off the lane
+  and 65.2 m off the line for those same 21 s** while its recorded ghost tracked
+  VER's independently-derived geometry at 3 cm. Margin: 10.7× the scatter band's
+  top, 1356× the competing score. **DECISIVE for H-post-real.**
+
+**The finding that reframes the defect: the displacement is BOUNDED after all.**
+Walking the recorded fixes backward from the return, they leave the racing line
+in ONE unflagged discontinuity at t=378.87→379.08 — a **30.3 m step at 1.96× its
+own channel allowance** (~495 km/h implied; physically impossible, but the ratio
+gate must sit at 3.0 because clean cars reach 2.77). The 31 fixes between it and
+the flagged jump are the displaced segment (recorded: 11.3 m median off-line,
+max 15.0, with the lane-distance JUMPING +28 m away from the pit at 257 km/h;
+translated by the jump vector: **0.5–5.6 m median 4.9** — inside VER's own
+braking band, both seams continuous). And the pair passes the machinery's OWN
+cancellation test: **vector sum 13.6 m against 18.8 m allowed** during the two
+steps (0.72× the bound; the two ratified repairs sit at 0.31–0.35×). NOR was
+VER's and HAM's class all along — an out-and-back whose out hid under the
+detection gate.
+
+- **Reconciliation with 9h-b's Probe 2, which searched ±60 s and found no
+  partner:** it searched the FLAGGED-jump population and the sub-`min_speed`
+  blind spot (24 pit-box steps ≤ 0.47 m). The partner sits in neither — above
+  `min_speed`, under the ratio gate — a population no probe had reason to search
+  until the geometry said the flagged jump was a return.
+- **A cancellation-only partner search is NOT the mechanism, measured before
+  deciding:** run over every declined displacement in all five windows (through
+  the real screen order, dead-feed → stuck-bridge → repair), a ±10 s sub-gate
+  search "completes cancellation" for **14 sham partners on BEA alone**
+  (red-flag), plus lone ones for ANT (×1.01), ALB (×1.44), STR (×2.22) — the
+  2026 windows' low-speed chaos makes the allowance huge and near-noise steps
+  cancel arithmetically. Auto-rescue would translate segments no geometry ever
+  certified and change shipped assets. NOR's partner is unlike all of them
+  (unique in ±10 s, ×1.96 its allowance, AND geometry-certified) — but the
+  discriminating evidence is structural, so the structure stays outside the
+  detector.
+
+**Phase 2 — the mechanism: STRUCTURAL ADJUDICATION as the decline path's one
+extra input, with the machinery keeping its own guard.** The brief pre-registered
+"translate by the measured vector; the cancellation-evidence path was unavailable
+by construction" — the measurement REFUTED the premise in the good direction
+(flagged per the standing rule on measurements contradicting an approved plan):
+once the out step is admitted, cancellation evidence EXISTS, so no bespoke
+translate-by-vector path was built. Instead:
+
+- `repair_frame_displacements` gains `admit`: source step times joined to the
+  jump list on outside evidence, then subject to the UNCHANGED flow — the
+  cancellation test still decides (a wrong adjudication is refused and reported,
+  never obeyed), the `IMPOSSIBLE_MIN_STEP_M` floor still applies, a time the
+  telemetry slice does not contain is ignored (`ADMIT_MATCH_S` = 0.001 s, half
+  the corpus's densest row spacing — matches exactly or not at all, never
+  snaps). `FrameDisplacement.admitted` records what was admitted whether or not
+  the pair then cancelled.
+- The ruling lives in `build_replay.py` `STRUCTURAL_ADJUDICATIONS`, keyed by
+  (year, canonical FastF1 EventName, session) so a CLI alias cannot drop it,
+  window-independent by the time-match rule: **NOR, 2024 British Grand Prix R,
+  step t=6012.623** (window 378.87 s). One entry; it exists only with this PLAN
+  record as its evidence. `report_window` receives the same table, so builder
+  and log cannot disagree; the report prints STRUCTURALLY ADJUDICATED beside the
+  repair (or beside a DECLINED that heard and refused one).
+- Everything downstream follows from `repaired=True` with no further code: the
+  declined flag lifts by construction — 9i's anchors (5 S/F + 2 pit brackets,
+  previously WITHHELD), 9j's reversal screen (which promptly rejected the two
+  known-corrupt fixes at t=379.1/379.2 that `REVERSAL_MIN_SPEED`'s calibration
+  note had already named), and Slice 16's geometry admissibility.
+
+**Regenerated: the rain asset ONLY. Structural diff against the committed
+bytes:** HAM and VER **byte-identical** (the per-driver keying cannot touch
+them); meta, trackStatus, corners, startFinish identical; NOR's samples
+repositioned window-wide (max 45.0 m — the anchor map re-placing his travel,
+9h's "the movement outside the repair IS the correction"; zero non-position
+changes). **One pre-registration deviation, flagged not smoothed: `track.pitLane`
+re-elected.** Lifting the flag made NOR's traversal admissible and his driven
+path is the longest, so the lane is now NOR's 262 points instead of VER's 262
+(same lane, 0–3.8 m apart by 16's own measurement; VER and HAM now report
+redundant; the report's recomputation matches the file). The other four assets:
+untracked by this build, unchanged on disk.
+
+**Verified (2026-09-11) — predictions registered in the brief, results beside
+them, misses and deviations included:**
+
+| pre-registered | before | after |
+|---|---|---|
+| NOR held-out placement (B) falls from 47.6 m toward the field | S/F 22.6 / s1 38.9 / s2 47.6 m | **5.9 / 11.8 / 9.6 m** — at the 6.6–11.7 m noise floor; now best-or-equal of the three cars ✓ |
+| reversal A on his entry drops | max 5.92 at t=378.4, **7 windows > 2.0** (all one cluster t=378.0–379.5) | **max 1.34, 0 windows > 2.0** — inside the clean band ✓ |
+| HAM / VER untouched | — | byte-identical; their A and B rows reproduce exactly ✓ |
+| every other asset byte-identical | — | only the rain asset rebuilt; git shows no other change ✓ |
+| tower at 6:19 becomes PIT | em dash ~6:19–6:21 | **CORRECTED EXPECTATION, from measurement:** at 6:19–6:23 the repaired car is ON the line (median 0.9 m, max 5.1) — the em dash is GONE and the row reads like HAM's; **PIT begins 6:29.8 and runs to 6:57.1**, entering the lane 1.2 s before HAM (PIT 6:33.0–7:00.5), the double stop in order ✓ |
+
+- **Gaps (the L loop-deltas, the adjudicating quantity per 9i's ruling):
+  HAM-NOR @ S/F 0.59 → 0.07 s mean (max 1.70 → 0.14)** — the rider-(a)
+  correlation break that 9h measured and 9i pre-registered for the eyes
+  (S/F max 1.42 → 1.96 s) is now REPAIRED BY FIXING, exactly as 9h's entry said
+  it would be ("the half that would restore the correlation by fixing it rather
+  than by preserving it"). NOR-VER @ S/F 0.77 → 0.22 s; every NOR sector pair
+  improves (0.19–0.24 → 0.04–0.06 s); the 9i-flagged NOR-VER +0.03/+0.04 s cell
+  is gone. HAM-VER identical (control). G (the retired-for-adjudication DTDA
+  quantity) mixed as G does: HAM-NOR mean 41.8 → 34.2 m, NOR-VER 32.0 → 41.5 m —
+  recorded, not adjudicating, per the 9i ruling that L decides.
+- **Gates:** pytest **329** (322 → 329), **100% lines + branches on every
+  module** — including one repair this slice owed nobody: `pit_lane.py:314` (the
+  join walk's window-edge break) was UNCOVERED on main while 16's entry claimed
+  100%; the gate sits at 90% so nothing failed, but the claim was false by one
+  branch — now covered by a test that says so. `npm run check` green: 821 tests
+  (unchanged — zero app-code changes), engine coverage 100%, build clean,
+  full-log warning grep **0**.
+- **Goldens byte-identical** (no golden window carries an adjudication);
+  drawcall md5s NOT re-captured, stated with the reason rather than skipped
+  silently: the canvas code and the committed fixture are both untouched, so the
+  captures are deterministic replays of the recorded baselines; the rain asset's
+  own data changed (lane points, NOR positions), which the `auto` mode would
+  show and which is not a baseline.
+- Emitted-file template check (the Phase 1 instrument re-run on the shipped
+  bytes): NOR approach t=378–385 line residual median 0.9 m / max 5.1 (was
+  11.3 / 15.0 recorded, against HAM's 0.0 at the same phase); in-lane median
+  0.00 m (his own elected lane — the independent same-lane checks are HAM at
+  0.03 m median on it and VER redundant at build); no em-dash span anywhere in
+  his window.
+- **Superseded acceptance, recorded so the re-watch is not surprised:** Slice
+  16's ratified "NOR's displaced blip shows an em dash instead of PIT at
+  ≈6:19–6:21" is RETIRED — the blip no longer exists to label. The honest-PIT
+  rule itself is unchanged.
+
+**Pre-registered browser acceptance (human, the merge gate) — rain at 0.5×,
+NOR's entry ≈6:19–6:31:**
+- The big zigzag at ≈6:19–6:23 is GONE: NOR brakes down the pit approach on the
+  racing line, drifting a few metres at most (his real line, the same class as
+  VER's 97% entry), no em dash in his row.
+- From ≈6:30 NOR peels into the drawn lane — one to two seconds AHEAD of HAM —
+  row reading PIT through lane, box stop (≈6:43–6:46) and exit, back to green
+  racing at ≈6:57. HAM follows the identical shape 1.5–3 s behind.
+- Severity re-ranking against 9i's baseline (VER 97% < HAM 85% < NOR): NOR
+  should now read in VER's and HAM's class; the instruments say best-of-field,
+  the eyes decide.
+- VER's stop ≈4:57–5:24 and everything else in the window: indistinguishable
+  from the current production frame by frame (his bytes did not change).
+- The drawn lane: same road as today (NOR's traversal vs VER's, 0–3.8 m apart) —
+  any visible difference is a finding.
+
+**Watch (2026-09-12, human, rain at 0.5× on the PR #74 preview): PASS.** NOR's
+zigzag gone, clean entry, PIT through the lane. Graded ratings recorded as the
+NEW BASELINE for future re-watches: **VER 97 / HAM 97 / NOR 99** — NOR rated
+**99%**, now the best entry in the window; HAM re-rated 97 from 9j's 85 (his own
+repair reads better beside a fixed neighbour — the correlation effect working in
+reverse for the eyes, consistent with the HAM-NOR L gap falling 0.59 → 0.07 s).
+9i's severity ranking VER < HAM < NOR is fully retired: the last declined
+displacement in the 2024 corpus is repaired, and the em-dash refusal has nothing
+left to refuse in this file. Both deviations RATIFIED at the review before the
+watch: the `track.pitLane` re-election, and no-label-at-6:19 (on the line is on
+the line). Auto-merge (squash) enabled on the human's instruction. The board
+advances: **18 → 20**.
 
 ## Backlog (ideas — not committed)
 - **Fixture asymmetry overhaul** — rebuild the committed fixture with no symmetries,
