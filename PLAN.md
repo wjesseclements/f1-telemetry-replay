@@ -4836,7 +4836,7 @@ positioned from the same static scene geometry avoids touching the frame path),
 one file per circuit vs one file keyed by event, and how a circuit with no lore
 degrades (to today's plain labels, obviously — but argued, not assumed).
 
-### [x] Slice 9k — adjudicate NOR's declined relocation structurally (done 2026-09-11, browser pass PENDING — the merge gate)
+### [x] Slice 9k — adjudicate NOR's declined relocation structurally (done 2026-09-11, ACCEPTED 2026-09-12)
 
 **Filed 2026-09-08, sequenced AFTER Slice 16; built the day 16 merged.** NOR's
 41.7 m pit-entry relocation had stayed declined by ruling since 9i because no
@@ -4999,6 +4999,19 @@ NOR's entry ≈6:19–6:31:**
   from the current production frame by frame (his bytes did not change).
 - The drawn lane: same road as today (NOR's traversal vs VER's, 0–3.8 m apart) —
   any visible difference is a finding.
+
+**Watch (2026-09-12, human, rain at 0.5× on the PR #74 preview): PASS.** NOR's
+zigzag gone, clean entry, PIT through the lane. Graded ratings recorded as the
+NEW BASELINE for future re-watches: **VER 97 / HAM 97 / NOR 99** — NOR rated
+**99%**, now the best entry in the window; HAM re-rated 97 from 9j's 85 (his own
+repair reads better beside a fixed neighbour — the correlation effect working in
+reverse for the eyes, consistent with the HAM-NOR L gap falling 0.59 → 0.07 s).
+9i's severity ranking VER < HAM < NOR is fully retired: the last declined
+displacement in the 2024 corpus is repaired, and the em-dash refusal has nothing
+left to refuse in this file. Both deviations RATIFIED at the review before the
+watch: the `track.pitLane` re-election, and no-label-at-6:19 (on the line is on
+the line). Auto-merge (squash) enabled on the human's instruction. The board
+advances: **18 → 20**.
 
 ## Backlog (ideas — not committed)
 - **Fixture asymmetry overhaul** — rebuild the committed fixture with no symmetries,

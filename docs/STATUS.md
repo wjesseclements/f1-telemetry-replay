@@ -35,8 +35,9 @@ warnings (zero app-code changes — the slice is pipeline + one asset); 329 pyte
 with 100% lines + branches on every module; drawcall baselines untouched (canvas
 and fixture untouched).
 
-**What is open, and what is blocked.** **Slice 9k is BUILT, awaiting the rain
-re-watch (the merge gate).** NOR's declined 41.7 m relocation was adjudicated
+**What is open, and what is blocked.** **Slice 9k is DONE and ACCEPTED**
+(2026-09-12, watch PASS — NOR rated 99%, new baseline VER 97 / HAM 97 / NOR 99,
+9i's severity ranking retired). NOR's declined 41.7 m relocation was adjudicated
 against Slice 16's geometry, read-only and pre-registered, and the answer was
 decisive — with a reframe: the flagged jump is the RETURN of a bounded
 displacement whose out step (30.3 m at 1.96× its own allowance) hid under the
@@ -47,16 +48,16 @@ placement 38.9/47.6 → 11.8/9.6 m (the instrument's noise floor), reversal
 7 → 0 windows over 2.0, the HAM-NOR S/F gap error 0.59 → 0.07 s (9h's broken
 correlation repaired by fixing, as its entry predicted), HAM and VER
 byte-identical, all other assets untouched. One pre-registered deviation,
-flagged: `track.pitLane` re-elected to NOR's (longest) traversal — same lane,
-0–3.8 m from VER's. The watch checks NOR's entry at 0.5× now reads in VER's 97%
-class, PIT through the lane from ≈6:30, no em dash at ≈6:19. Before it,
-**Slice 16 was ACCEPTED** (2026-09-11, PR #73, re-watch PASS): pit-lane geometry
-end to end, envelope-joined ends ratified. **The board: 9k (in watch) → 18 →
-20.** **Nothing is blocked**; the standing constraint remains:
-`build_replay.py` runs only from the human's home network (CLAUDE.md Gotchas).
+flagged and both RATIFIED: `track.pitLane` re-elected to NOR's (longest)
+traversal — same lane, 0–3.8 m from VER's — and no label at 6:19 (the repaired
+car is on the racing line there; PIT runs ≈6:30–6:57). The watch confirmed the
+zigzag gone and the entry clean. Before it, **Slice 16 was ACCEPTED**
+(2026-09-11, PR #73, re-watch PASS): pit-lane geometry end to end,
+envelope-joined ends ratified. **The board: 18 → 20.** **Nothing is blocked**;
+the standing constraint remains: `build_replay.py` runs only from the human's
+home network (CLAUDE.md Gotchas).
 
-**What happens next.** The 9k rain watch, then **Slice 18** per the board:
-9k → 18 → 20, with the backlog's headline **fixture asymmetry overhaul** behind
-them. Housekeeping unchanged: only the FINALE still carries the `trackStatus`
-drift (pit cycle and rain picked theirs up in Slice 16's re-record; 9k's rain
-rebuild keeps it).
+**What happens next.** **Slice 18** per the board: 18 → 20, with the backlog's
+headline **fixture asymmetry overhaul** behind them. Housekeeping unchanged:
+only the FINALE still carries the `trackStatus` drift (pit cycle and rain picked
+theirs up in Slice 16's re-record; 9k's rain rebuild keeps it).
