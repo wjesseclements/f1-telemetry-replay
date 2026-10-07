@@ -23,10 +23,19 @@
  * clock's domain is `[0, duration)`, so a mark AT `duration` is one the clock can
  * never reach — the clamp used to say `duration`, and a late event never fired, by
  * seek or by playback (Slice 23 follow-up). `lastInstant` is where End, the
- * scrubber's right edge and a clamped forward seek all land. Playback is harder:
- * it sits in `[lastInstant, duration)` for one grid step before it wraps, and this
- * detector samples at ≤30 Hz, so at 2x and 4x a pass can go unseen (measured per
- * speed in the Slice 23 PLAN entry). At 0.5x and 1x it is always seen.
+ * scrubber's right edge and a clamped forward seek all land.
+ *
+ * PLAYBACK ROUND THE END IS A CROSSING TOO. Before playback wraps it spends one
+ * grid step in `[lastInstant, duration)`, which is 100 ms / speed of real time, and
+ * this detector samples at ≤30 Hz. At 2x and 4x a pass often went unseen: the
+ * clock read 58.3, then 0.1, and a backward step is not a crossing (measured per
+ * speed and display rate in the Slice 23 PLAN entry). The loop counts its own
+ * wraps (`TelemetryFrame.wraps`), and a seek never adds to that count. So a step
+ * across a wrap passed every mark between the previous clock and the end. After a
+ * wrap the clock sits at the window's START, the far side of the moment, so the
+ * detector seeks the paused frame back onto the mark. Marks in the first instants
+ * AFTER a wrap get no such credit. That is the same ≤1-tick gap mirrored at the
+ * start; it predates this change and was left alone.
  *
  * STALE FRAMES NEITHER ARM NOR FIRE. Loading a replay swaps `replay` and
  * `scenario` while the last published frame still describes the PREVIOUS replay
@@ -44,7 +53,7 @@ import { useTelemetry } from "../telemetry/useTelemetry";
 import { EventCard } from "./EventCard";
 
 export function ScenarioEvents() {
-  const { clock, cars } = useTelemetry();
+  const { clock, cars, wraps } = useTelemetry();
   const scenario = useTransport((s) => s.scenario);
   const replay = useTransport((s) => s.replay);
 
@@ -54,11 +63,13 @@ export function ScenarioEvents() {
    * The tag is what resets the detector on a load: an observation made under
    * another scenario is not a previous clock, it is a different replay's clock —
    * so the first frame under a new scenario arms rather than fires, with no
-   * render-time ref write (`react-hooks/refs` forbids one).
+   * render-time ref write (`react-hooks/refs` forbids one). `wraps` is the loop's
+   * wrap count at that tick — see the header.
    */
   const prevClock = useRef<{
     scenario: GalleryScenario;
     clock: number;
+    wraps: number;
   } | null>(null);
 
   // A card must never survive the replay it narrates. Dropped DURING render on a
@@ -76,30 +87,45 @@ export function ScenarioEvents() {
     // The Hud stale-frame guard — see the header. A frame describing another
     // replay's cars is dropped whole: it neither arms the detector nor fires it.
     if (cars.length !== replay.cars.length) return;
-    const prev =
+    const before =
       prevClock.current !== null && prevClock.current.scenario === scenario
-        ? prevClock.current.clock
+        ? prevClock.current
         : null;
-    prevClock.current = { scenario, clock };
-    if (prev === null || active !== null) return;
+    prevClock.current = { scenario, clock, wraps };
+    if (before === null || active !== null) return;
+    const prev = before.clock;
+    // Playback carried the clock round the end since the last tick. See the
+    // header. `>` rather than `!==`: a count that went DOWN means a fresh loop
+    // started counting from 0 again, not that playback wrapped.
+    const wrapped = wraps > before.wraps;
 
     // The LAST crossed event wins when one tick jumps several marks — the most
     // recent narration is the one that explains where the playhead now is.
     let crossed: ScenarioEvent | null = null;
+    let crossedMark = 0;
     // The furthest a mark may sit and still be reachable — see the header.
     const end = lastInstant(replay.meta.duration, replay.meta.sampleRateHz);
     for (const event of scenario.events) {
       const mark = Math.min(event.clock, end);
-      if (prev < mark && clock >= mark) crossed = event;
+      // Upward past the mark. On a wrap, any mark past `prev` counts, because the
+      // path ran on through the end.
+      if (prev < mark && (wrapped || clock >= mark)) {
+        crossed = event;
+        crossedMark = mark;
+      }
     }
     if (crossed !== null) {
       setActive(crossed);
       // Pause is the ruled behaviour: the card narrates a stoppage; the replay
       // holds while it is read. `getState` rather than a subscription — this
       // effect needs the action once, not a re-render per transport change.
-      useTransport.getState().pause();
+      const transport = useTransport.getState();
+      transport.pause();
+      // After a wrap the clock is at the window's start. The frame under the card
+      // should be the moment it narrates (EventCard), so put it back on the mark.
+      if (wrapped) transport.seek(crossedMark);
     }
-  }, [clock, cars, scenario, replay, active]);
+  }, [clock, cars, wraps, scenario, replay, active]);
 
   if (scenario === null || active === null) return null;
 

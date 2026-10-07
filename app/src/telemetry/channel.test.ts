@@ -211,4 +211,19 @@ describe("telemetry channel", () => {
     channel.publish(1005, 6, [snapshot({ speed: 250 })]);
     expect(after).toHaveBeenCalledTimes(1);
   });
+
+  it("carries the loop's wrap count, which a throttled emit cannot lose", () => {
+    // Slice 23 follow-up: `ScenarioEvents` tells a playback wrap from a backward seek
+    // by this count. It only grows, so the emit that does go out after a throttled
+    // one still shows every wrap in between.
+    const { channel } = withListener();
+    expect(EMPTY_FRAME.wraps).toBe(0);
+    channel.publish(1000, 58.3, [snapshot()]); // a publisher that never wraps
+    expect(channel.getSnapshot().wraps).toBe(0);
+
+    channel.publish(1010, 0.1, [snapshot()], 1); // inside the window: throttled
+    expect(channel.getSnapshot().clock).toBe(58.3);
+    channel.publish(1100, 0.4, [snapshot()], 1);
+    expect(channel.getSnapshot()).toMatchObject({ clock: 0.4, wraps: 1 });
+  });
 });

@@ -405,6 +405,51 @@ describe("App transport integration", () => {
     expect(telemetry.getSnapshot().clock).toBeLessThan(replay.meta.duration);
   });
 
+  it("fires it at 4x on a 30 Hz display too, where the final step is shorter than a HUD tick", () => {
+    // The worst case measured for the lastInstant clamp alone: the final grid step
+    // is 25 ms of real time at 4x and a 30 Hz display emits every 33 ms or more, so
+    // the watcher saw 58.3 and then 0.1, and only 1 start phase in 20 fired. The
+    // loop's wrap count turns that backward step into a crossing. The card is then
+    // put back on the end rather than left over the window's start.
+    const lastT = replay.cars[0].samples[replay.cars[0].samples.length - 1].t;
+    const lateCard = () => screen.queryByRole("dialog", { name: "LATE" });
+    render(<App />);
+    act(() => {
+      useTransport.setState({
+        isPlaying: false,
+        speedMult: 4,
+        scenario: {
+          id: "late",
+          title: "Late",
+          hook: "h",
+          file: "late.json",
+          suggested: { driver: "VER", clock: 0, speedMult: 4 },
+          provenance: {
+            session: "S",
+            laps: "1-2",
+            drivers: ["VER"],
+            generated: "2026-09-08",
+          },
+          events: [{ clock: 500, title: "LATE", body: "b" }],
+        },
+      });
+      useTransport.getState().seek(replay.meta.duration - 1);
+    });
+    act(() => raf.tick(40)); // arms
+    act(() => useTransport.getState().play());
+    let ticks = 0;
+    for (; ticks < 60 && lateCard() === null; ticks++) {
+      act(() => raf.tick(1000 / 30));
+    }
+    expect(lateCard()).toBeInTheDocument();
+    expect(ticks).toBeLessThan(15); // on THIS pass, not a later one
+    // The loop applies the card's seek. 40 ms clears the 30 Hz window, so the HUD
+    // has caught up.
+    act(() => raf.tick(40));
+    expect(useTransport.getState().isPlaying).toBe(false);
+    expect(telemetry.getSnapshot().clock).toBe(lastT);
+  });
+
   it("gives every control an accessible name", () => {
     render(<App />);
     expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument();

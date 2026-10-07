@@ -39,6 +39,7 @@ import { sampleAt } from "../engine/interpolate";
 import { parseReplay } from "../engine/load";
 import { loadFixtureReplay } from "../data/fixture";
 import { useTransport } from "../store/transport";
+import { telemetry } from "../telemetry/channel";
 import {
   installCanvasEnvironment,
   installRafDriver,
@@ -350,6 +351,36 @@ describe("TrackCanvas", () => {
     useTransport.getState().seek(-0.25);
     raf.tick(16);
     expectMarkerAt(replay.meta.duration - 0.25);
+  });
+
+  it("counts PLAYBACK wraps in the published frame — never a seek's, never a load's", () => {
+    // Slice 23 follow-up: a ≤30 Hz reader sees the clock go backwards and cannot
+    // tell a wrap (which passed through the end) from a backward seek (which did
+    // not). Only this loop knows which one moved the clock.
+    telemetry.reset(); // the channel is a singleton; a stale cadence would throttle
+    const { rerender } = render(<TrackCanvas replay={replay} />);
+    raf.tick();
+    const frame = () => telemetry.getSnapshot();
+
+    useTransport.getState().seek(replay.meta.duration + 0.25); // a seek that wraps
+    raf.tick(100);
+    expect(frame().clock).toBeCloseTo(0.25, 9);
+    expect(frame().wraps).toBe(0);
+
+    useTransport.getState().seek(replay.meta.duration - 0.05); // and back up
+    raf.tick(100);
+    expect(frame().wraps).toBe(0);
+
+    raf.tick(100); // playback carries it 0.05 s past the end
+    expect(frame().clock).toBeCloseTo(0.05, 9);
+    expect(frame().wraps).toBe(1);
+
+    // A new replay restarts the clock at 0, which is a reset, not a wrap.
+    raf.tick(100);
+    rerender(<TrackCanvas replay={structuredClone(replay)} />);
+    raf.tick(100);
+    expect(frame().clock).toBe(0);
+    expect(frame().wraps).toBe(1);
   });
 
   it("points the heading tick along the direction of travel ON SCREEN", () => {

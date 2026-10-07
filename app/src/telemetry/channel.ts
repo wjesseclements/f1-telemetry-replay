@@ -32,6 +32,17 @@ export interface TelemetryFrame {
   clock: number;
   /** One snapshot per car, in `replay.cars` order. Always an array (rule 2). */
   cars: readonly CarSnapshot[];
+  /**
+   * How many times PLAYBACK has carried the clock round the end, never a seek.
+   * Monotone. It is what lets a ≤30 Hz reader tell the two kinds of backward step
+   * apart: a wrap passed through the end of the window, and a backward seek did
+   * not. `ScenarioEvents` needs that for a mark in the final grid step, which fast
+   * playback can cross between two emits (Slice 23 follow-up). Not in
+   * `displaySignature`, since nothing renders it. A wrap always moves the clock, so
+   * the clock term carries the emit, and a throttled emit loses nothing because
+   * the count only grows.
+   */
+  wraps: number;
 }
 
 /**
@@ -44,6 +55,7 @@ export interface TelemetryFrame {
 export const EMPTY_FRAME: TelemetryFrame = Object.freeze({
   clock: 0,
   cars: Object.freeze([]) as readonly CarSnapshot[],
+  wraps: 0,
 });
 
 /**
@@ -88,7 +100,13 @@ export function displaySignature(
 }
 
 export interface TelemetryChannel {
-  publish(nowMs: number, clock: number, cars: readonly CarSnapshot[]): void;
+  /** `wraps` defaults to 0: a publisher that never wraps has nothing to count. */
+  publish(
+    nowMs: number,
+    clock: number,
+    cars: readonly CarSnapshot[],
+    wraps?: number,
+  ): void;
   subscribe(listener: () => void): () => void;
   getSnapshot(): TelemetryFrame;
   /** Drop all state and listeners. Tests only — a module singleton needs a reset. */
@@ -102,7 +120,7 @@ export function createTelemetryChannel(): TelemetryChannel {
   let lastSignature = "";
 
   return {
-    publish(nowMs, clock, cars) {
+    publish(nowMs, clock, cars, wraps = 0) {
       // `null` means nothing has been emitted yet, so the FIRST publish goes straight
       // through: the HUD paints on the frame it mounts rather than sitting blank for up
       // to 33 ms. The cadence window then starts from that emit, not from zero.
@@ -115,7 +133,7 @@ export function createTelemetryChannel(): TelemetryChannel {
       lastSignature = signature;
       // Built here and only here, so between emits `getSnapshot` keeps returning the
       // same reference and React skips the render.
-      current = { clock, cars };
+      current = { clock, cars, wraps };
       for (const listener of listeners) listener();
     },
 

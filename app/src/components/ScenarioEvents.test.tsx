@@ -38,10 +38,11 @@ const scenario: GalleryScenario = {
  *
  * Timestamps advance past the channel's emit gap or the publish is throttled
  * away; the cars array must MATCH the replay's length or the stale-frame guard
- * (correctly) drops the frame whole.
+ * (correctly) drops the frame whole. `wraps` is the loop's playback-wrap count:
+ * a backward step with the same count is a seek, and with a higher one it is a wrap.
  */
 let nowMs = 0;
-function tick(clock: number, carCount = replay.cars.length) {
+function tick(clock: number, carCount = replay.cars.length, wraps = 0) {
   nowMs += 1000;
   const snapshot = {
     index: 0,
@@ -54,7 +55,9 @@ function tick(clock: number, carCount = replay.cars.length) {
     brake: 0 as const,
     gear: 0,
   };
-  act(() => telemetry.publish(nowMs, clock, Array(carCount).fill(snapshot)));
+  act(() =>
+    telemetry.publish(nowMs, clock, Array(carCount).fill(snapshot), wraps),
+  );
 }
 
 beforeEach(() => {
@@ -174,4 +177,62 @@ describe("ScenarioEvents", () => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     },
   );
+
+  // Fast playback can spend the whole final grid step between two ≤30 Hz ticks, so
+  // the watcher sees 58.3 and then 0.1. The loop's wrap count says that step went
+  // round through the end. Before this, 4x on a 30 Hz display fired a late card on
+  // 1 pass in 20.
+  const lateScenario = {
+    ...scenario,
+    events: [{ clock: 500, title: "LATE", body: "b" }],
+  };
+  const WRAPPED = 1;
+
+  it("a wrap crosses a late mark it stepped over between ticks — and puts the frame back on it", () => {
+    useTransport.setState({ scenario: lateScenario });
+    render(<ScenarioEvents />);
+    tick(10);
+    tick(58.3);
+    tick(0.1, replay.cars.length, WRAPPED);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(useTransport.getState().isPlaying).toBe(false);
+    // The wrapped clock is at the window's START; the card narrates the END.
+    expect(useTransport.getState().seekTarget).toBe(end);
+  });
+
+  it("a backward SEEK from the same spot is not a wrap — Home at 58.3 is quiet", () => {
+    useTransport.setState({ scenario: lateScenario });
+    render(<ScenarioEvents />);
+    tick(10);
+    tick(58.3);
+    tick(0); // same wrap count: a seek moved it, so nothing was passed
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(useTransport.getState().seekTarget).toBeNull();
+  });
+
+  it("a wrap credits only marks PAST the previous clock — a dismissed card stays dismissed, then replays", () => {
+    useTransport.setState({ scenario: lateScenario });
+    render(<ScenarioEvents />);
+    tick(10);
+    tick(end); // crossed in plain sight: no wrap, so no seek either
+    expect(useTransport.getState().seekTarget).toBeNull();
+    act(() => screen.getByRole("button", { name: "Close" }).click());
+
+    tick(end + 0.05);
+    tick(0.1, replay.cars.length, WRAPPED); // already past the mark: no nag
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    tick(30, replay.cars.length, WRAPPED); // a second pass is a second crossing
+    tick(0.1, replay.cars.length, WRAPPED + 1);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("reads a wrap count that went DOWN as a fresh loop, not a wrap", () => {
+    useTransport.setState({ scenario: lateScenario });
+    render(<ScenarioEvents />);
+    tick(10, replay.cars.length, 3);
+    tick(58.3, replay.cars.length, 3);
+    tick(0, replay.cars.length, 0);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
 });
