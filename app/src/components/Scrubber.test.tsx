@@ -11,12 +11,16 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadFixtureReplay } from "../data/fixture";
+import { wrapClock } from "../engine/interpolate";
 import { Scrubber } from "./Scrubber";
 import { segmentGradient } from "./flagTint";
 
 const replay = loadFixtureReplay();
 const { duration, sampleRateHz } = replay.meta;
 const STEP = 1 / sampleRateHz; // 0.1 s on the fixture
+/** The fixture's last sample time (58.4) — "the end", in the data's own terms. */
+const LAST_SAMPLE_T =
+  replay.cars[0].samples[replay.cars[0].samples.length - 1].t;
 
 const setup = (clock = 0) => {
   const onSeek = vi.fn();
@@ -42,10 +46,27 @@ describe("Scrubber range attributes", () => {
     expect(Number(input.step)).toBeCloseTo(0.1, 12);
   });
 
-  it("spans the whole lap on meta.duration", () => {
+  it("spans the lap from 0 to its last instant — the last sample, not `duration`", () => {
+    // `duration` is outside the clock's domain: the loop folds it to 0. A max of
+    // `duration` made the right edge a seek to the start (Slice 23).
     const { input } = setup();
     expect(input.min).toBe("0");
-    expect(input.max).toBe(String(duration));
+    expect(input.max).toBe(String(LAST_SAMPLE_T));
+    expect(Number(input.max)).toBeLessThan(duration);
+  });
+
+  it("puts its max ON the step grid, which is where a browser's right edge is", () => {
+    // A range input snaps its max DOWN to the step grid. `448.9 - 0.1` is
+    // 448.79999999999995, which Chrome 154 snaps to 448.7 — one step short of End.
+    render(
+      <Scrubber
+        clock={0}
+        duration={448.9}
+        sampleRateHz={10}
+        onSeek={() => {}}
+      />,
+    );
+    expect((screen.getByRole("slider") as HTMLInputElement).max).toBe("448.8");
   });
 
   it("is a labelled slider that announces the lap clock, not a bare number", () => {
@@ -62,6 +83,20 @@ describe("Scrubber seeking", () => {
 
     expect(onSeek).toHaveBeenCalledTimes(1);
     expect(onSeek.mock.calls[0][0]).toBeCloseTo(STEP, 12);
+  });
+
+  it("commits the last instant at its right edge — a position the loop keeps", () => {
+    // A drag past the right edge, or the native End key on the focused slider. Both
+    // ask for the max; jsdom sanitises an out-of-range value to it as a browser does.
+    const { onSeek, input } = setup(20);
+    fireEvent.pointerDown(input);
+    fireEvent.change(input, { target: { value: String(duration + 10) } });
+
+    expect(onSeek).toHaveBeenCalledTimes(1);
+    const committed = onSeek.mock.calls[0][0] as number;
+    expect(committed).toBe(LAST_SAMPLE_T);
+    // What the loop does with it (TrackCanvas): kept, not folded to the start.
+    expect(wrapClock(committed, duration)).toBe(LAST_SAMPLE_T);
   });
 
   it("follows the clock when no drag is in progress", () => {

@@ -319,6 +319,38 @@ describe("App transport integration", () => {
     expect(telemetry.getSnapshot().clock).toBeCloseTo(1, 6);
   });
 
+  it("seeks to the END at the end, through the real loop — keys and scrubber alike", () => {
+    // Slice 23: the clock's domain is [0, duration) and the loop folds every seek
+    // into it, so a seek to `duration` itself landed at 0. Shift+Right in the last
+    // five seconds and the scrubber's right edge both asked for exactly that.
+    const lastT = replay.cars[0].samples[replay.cars[0].samples.length - 1].t;
+    render(<App />);
+    act(() => raf.tick());
+    act(() => {
+      useTransport.getState().pause();
+      useTransport.getState().seek(replay.meta.duration - 2);
+    });
+    act(() => raf.tick(40));
+
+    act(() => {
+      fireEvent.keyDown(window, { key: "ArrowRight", shiftKey: true });
+    });
+    act(() => raf.tick(40));
+    expect(telemetry.getSnapshot().clock).toBe(lastT);
+
+    act(() => {
+      useTransport.getState().seek(10);
+    });
+    act(() => raf.tick(40));
+    act(() => {
+      fireEvent.change(screen.getByRole("slider"), {
+        target: { value: String(replay.meta.duration) },
+      });
+    });
+    act(() => raf.tick(40));
+    expect(telemetry.getSnapshot().clock).toBe(lastT);
+  });
+
   it("gives every control an accessible name", () => {
     render(<App />);
     expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument();

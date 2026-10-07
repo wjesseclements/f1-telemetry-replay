@@ -65,3 +65,24 @@ export function advanceClock(
 ): number {
   return wrapClock(clock + dt * speedMult, duration);
 }
+
+/**
+ * The last instant the clock can be sent to: the final sample on the grid.
+ *
+ * The clock's domain is half-open, `[0, duration)` — `wrapClock(duration, duration)`
+ * is 0, the start. So "the end", as a seek, is one grid step short of `duration`,
+ * and everything that means "go to the end" asks for this value rather than for
+ * `duration`: the End key, the forward seek clamp and the scrubber's max. Slice 23
+ * found the last two asking for `duration` and landing on the start.
+ *
+ * Counted in whole grid steps — the schema's own `Math.round(duration *
+ * sampleRateHz)` — rather than computed as `duration - 1 / sampleRateHz`, because
+ * the subtraction can come out just off the grid (448.9 - 0.1 is
+ * 448.79999999999995) and a browser snaps a range input's max DOWN to its step
+ * grid: that scrubber's right edge would sit at 448.7, one step short of End
+ * (measured in headless Chrome 154). Never negative, so never a seek that wraps
+ * round to the end.
+ */
+export function lastInstant(duration: number, sampleRateHz: number): number {
+  return Math.max(0, Math.round(duration * sampleRateHz) - 1) / sampleRateHz;
+}
