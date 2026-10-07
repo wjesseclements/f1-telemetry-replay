@@ -45,11 +45,21 @@ also marks every in/out lap and every lap with no LapTime `IsAccurate=False`, an
    a pit box, a car parked under red) is not a racing lap, whatever the timing says;
 9. it overlaps none of the car's stuck-channel `dropouts` (Slice 9m) — across one,
    the emitted positions are a BRIDGE the screen laid, not fixes the car reported,
-   and the reference lap becomes the ribbon and the gap circuit.
+   and the reference lap becomes the ribbon and the gap circuit;
+10. its car's anchor plan was not DECLINED (Slice 24, consumer half) — a car carrying
+   a frame displacement the repair could not cancel has positions KNOWN to be
+   corrupt somewhere (`AnchorPlan.declined`, the 41.7 m guard), and they are
+   inadmissible as the track for the same reason `pit_lane` already excludes that
+   car from the lane geometry (`detect_pit_lane`'s `declined` flag). The whole car,
+   not a lap: a declined relocation is not localised, which is why the anchor plan
+   withholds every loop and pit anchor too. Checked last — the most specific reason
+   a lap fails is still its own, and this one is the car's.
 
 Speeds and dropouts are read from the EMITTED file, not the source rows, for the
 reason `pit_lane` gives: the report recomputes the choice from the written file alone
-and agrees with the builder by construction.
+and agrees with the builder by construction. The declined flag is not in the file;
+the report recomputes it from the source rows exactly as the builder did, and hands
+it over the way `pit_lane_report` is handed its declined drivers.
 
 WHICH CANDIDATE
 ---------------
@@ -274,6 +284,7 @@ def _disqualify(
     lap: LapFacts,
     speed: np.ndarray,
     dropouts: "Sequence[Mapping[str, float]]",
+    declined: bool,
     rate: float,
 ) -> "tuple[int, int] | str":
     """The lap's grid span when it qualifies, else the FIRST reason it does not."""
@@ -312,6 +323,11 @@ def _disqualify(
                 f"overlaps a stuck-channel dropout at t={drop['fromT']:g}-"
                 f"{drop['toT']:g} s - positions there are bridged, not measured"
             )
+    if declined:
+        return (
+            "car carries a declined frame displacement - its positions are known "
+            "corrupt, inadmissible as the track (as for the pit-lane geometry)"
+        )
     return from_i, to_i
 
 
@@ -339,27 +355,38 @@ def select_reference_lap(
     dropouts: "Sequence[Sequence[Mapping[str, float]]]",
     status: "Sequence[Mapping[str, Any]]",
     rate: float,
+    *,
+    declined: "Sequence[bool]",
 ) -> ReferenceLap:
     """
     The window's reference lap — see the module docstring for the rule.
 
-    `drivers`, `laps`, `speeds` and `dropouts` are parallel, in `cars` order: each
-    car's in-window `LapFacts` (`lap_facts`), its EMITTED grid speeds, and its emitted
-    `dropouts` intervals (empty for a car whose feed never dropped). `status` is the
+    `drivers`, `laps`, `speeds`, `dropouts` and `declined` are parallel, in `cars`
+    order: each car's in-window `LapFacts` (`lap_facts`), its EMITTED grid speeds, its
+    emitted `dropouts` intervals (empty for a car whose feed never dropped), and
+    whether its anchor plan was declined (`AnchorPlan.declined`). `status` is the
     window's emitted `trackStatus` rows. Raises `NoReferenceLapError` when nothing
     qualifies.
+
+    `declined` is keyword-only with no default, the `reference_laps` doctrine: a
+    caller that forgot it would otherwise admit every corrupt car by omission.
     """
-    if not (len(drivers) == len(laps) == len(speeds) == len(dropouts)):
+    if not (
+        len(drivers) == len(laps) == len(speeds) == len(dropouts) == len(declined)
+    ):
         raise TelemetryShapeError(
-            f"reference-lap selection needs one lap table, one speed channel and one "
-            f"dropout list per car: got {len(drivers)} drivers, {len(laps)} lap "
-            f"tables, {len(speeds)} speed channels, {len(dropouts)} dropout lists"
+            f"reference-lap selection needs one lap table, one speed channel, one "
+            f"dropout list and one declined flag per car: got {len(drivers)} drivers, "
+            f"{len(laps)} lap tables, {len(speeds)} speed channels, {len(dropouts)} "
+            f"dropout lists, {len(declined)} declined flags"
         )
     walk = []
     for c, car_laps in enumerate(laps):
         speed = np.asarray(speeds[c], dtype=float)
         for lap in car_laps:
-            walk.append((c, lap, _disqualify(lap, speed, dropouts[c], rate)))
+            walk.append(
+                (c, lap, _disqualify(lap, speed, dropouts[c], bool(declined[c]), rate))
+            )
 
     for green_only in (True, False):
         rejected: "list[Rejection]" = []

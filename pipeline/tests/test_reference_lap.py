@@ -173,8 +173,18 @@ def _fast(seconds: float, kmh: float = 250.0) -> "list[float]":
 GREEN_ALL = [{"status": "green", "fromT": 0.0, "toT": 1000.0}]
 
 
+def _select(drivers, laps, speeds, dropouts, status, rate, declined=None):
+    """`select_reference_lap` with no car declined unless a test says so — the ONE
+    place these tests opt out of the declined screen, by name (its own tests below
+    pass the flags explicitly)."""
+    return select_reference_lap(
+        drivers, laps, speeds, dropouts, status, rate,
+        declined=[False] * len(drivers) if declined is None else declined,
+    )
+
+
 def test_the_first_cars_earliest_clean_green_lap_is_chosen():
-    ref = select_reference_lap(
+    ref = _select(
         ["AAA", "BBB"],
         [[_lap(10, 0.0, 85.0), _lap(11, 85.0, 170.0)], [_lap(10, -3.0, 82.0)]],
         [_fast(171.0), _fast(171.0)],
@@ -208,7 +218,7 @@ def test_the_first_cars_earliest_clean_green_lap_is_chosen():
 )
 def test_each_disqualification_is_named(lap, reason):
     good = _lap(9, 110.0, 195.0)
-    ref = select_reference_lap(
+    ref = _select(
         ["AAA"], [[lap, good]], [_fast(200.0)], [()], GREEN_ALL, RATE
     )
     assert ref.number == 9
@@ -222,7 +232,7 @@ def test_a_lap_containing_a_stop_is_not_a_racing_lap():
     speed = _fast(200.0)
     for k in range(300, 340):
         speed[k] = 0.0
-    ref = select_reference_lap(
+    ref = _select(
         ["RUS"],
         [[_lap(6, 0.0, 90.0), _lap(7, 90.0, 175.0)]],
         [speed],
@@ -244,7 +254,7 @@ def test_the_most_specific_timing_reason_wins_over_not_accurate():
     """FastF1 marks every in/out lap `IsAccurate=False` too; the report should say
     which kind of lap it was, not only that its timing was unvouched."""
     lap = _lap(5, 0.0, 90.0, pit_in=True, accurate=False)
-    ref = select_reference_lap(
+    ref = _select(
         ["AAA"], [[lap, _lap(6, 90.0, 175.0)]], [_fast(180.0)], [()], GREEN_ALL, RATE
     )
     assert ref.rejected == (Rejection("AAA", 5, "in-lap (PitInTime set)"),)
@@ -254,7 +264,7 @@ def test_a_lap_bridged_across_a_stuck_channel_dropout_is_passed_over():
     """Across a 9m dropout the emitted positions are the screen's bridge, not fixes
     the car reported — no material for a ribbon or a gap circuit. The 2026 corpus
     has 37 of them, at fixed track positions, so a window can hold several."""
-    ref = select_reference_lap(
+    ref = _select(
         ["COL", "RUS"],
         [[_lap(7, 0.0, 85.0), _lap(8, 85.0, 170.0)], [_lap(7, 2.0, 87.0)]],
         [_fast(171.0), _fast(171.0)],
@@ -284,7 +294,7 @@ def test_a_dropout_touching_a_lap_boundary_bridges_none_of_its_samples(
     """A dropout's edges are TRUSTED fixes (the screen brackets the run with them),
     so one that merely touches a lap's start or end leaves that lap measured; only
     the lap it actually runs through is passed over."""
-    ref = select_reference_lap(
+    ref = _select(
         ["AAA"],
         [[_lap(7, 0.0, 85.0), _lap(8, 85.0, 170.0)]],
         [_fast(171.0)],
@@ -299,7 +309,7 @@ def test_a_dropout_touching_a_lap_boundary_bridges_none_of_its_samples(
 def test_the_stop_threshold_is_the_pit_lane_detectors():
     """Reused, not re-invented: a crawl just above it is still a racing lap."""
     speed = [PIT_STOP_MAX_KMH] * 901
-    ref = select_reference_lap(
+    ref = _select(
         ["AAA"], [[_lap(3, 0.0, 90.0)]], [speed], [()], GREEN_ALL, RATE
     )
     assert ref.number == 3
@@ -309,14 +319,14 @@ def test_a_lap_ending_in_the_holding_step_snaps_to_the_last_sample():
     """The first driver's last lap ends where the window does — inside the step past
     the last sample. That is inside the window, not past it."""
     speed = _fast(90.0)  # 901 samples: duration 90.1 s
-    ref = select_reference_lap(
+    ref = _select(
         ["AAA"], [[_lap(3, 0.0, 90.08)]], [speed], [()], GREEN_ALL, RATE
     )
     assert (ref.from_i, ref.to_i) == (0, 900)
 
 
 def test_a_lap_beginning_within_half_a_step_of_the_window_starts_at_sample_zero():
-    ref = select_reference_lap(
+    ref = _select(
         ["AAA"], [[_lap(3, -0.04, 85.0)]], [_fast(90.0)], [()], GREEN_ALL, RATE
     )
     assert ref.from_i == 0
@@ -329,7 +339,7 @@ def test_a_green_lap_on_a_later_car_beats_a_clean_lap_under_the_safety_car():
         {"status": "green", "fromT": 0.0, "toT": 10.0},
         {"status": "sc", "fromT": 10.0, "toT": 100.0},
     ]
-    ref = select_reference_lap(
+    ref = _select(
         ["AAA", "BBB"],
         [[_lap(4, 5.0, 95.0)], [_lap(4, 0.0, 9.5)]],
         [_fast(100.0), _fast(100.0)],
@@ -344,7 +354,7 @@ def test_a_green_lap_on_a_later_car_beats_a_clean_lap_under_the_safety_car():
 
 
 def test_with_no_green_lap_anywhere_the_first_clean_lap_is_the_named_fallback():
-    ref = select_reference_lap(
+    ref = _select(
         ["AAA", "BBB"],
         [[_lap(1, 0.0, 90.0, race_lap_one=True), _lap(2, 90.0, 180.0)], [_lap(2, 92.0, 182.0)]],
         [_fast(190.0), _fast(190.0)],
@@ -358,7 +368,7 @@ def test_with_no_green_lap_anywhere_the_first_clean_lap_is_the_named_fallback():
 
 def test_status_that_covers_only_part_of_the_lap_is_not_green_throughout():
     status = [{"status": "green", "fromT": 0.0, "toT": 50.0}]
-    ref = select_reference_lap(
+    ref = _select(
         ["AAA", "BBB"],
         [[_lap(2, 0.0, 85.0)], [_lap(2, 1.0, 45.0)]],
         [_fast(90.0), _fast(90.0)],
@@ -374,7 +384,7 @@ def test_status_that_covers_only_part_of_the_lap_is_not_green_throughout():
 
 def test_no_qualifying_lap_fails_loudly_and_names_every_reason():
     with pytest.raises(NoReferenceLapError) as err:
-        select_reference_lap(
+        _select(
             ["RUS", "GAS"],
             [
                 [_lap(1, 0.0, 88.0, race_lap_one=True), _lap(3, 88.0, NAN)],
@@ -396,18 +406,61 @@ def test_no_qualifying_lap_fails_loudly_and_names_every_reason():
 
 def test_no_lap_table_at_all_fails_loudly_too():
     with pytest.raises(NoReferenceLapError, match="no car carries a lap table"):
-        select_reference_lap(["AAA"], [()], [_fast(90.0)], [()], GREEN_ALL, RATE)
+        _select(["AAA"], [()], [_fast(90.0)], [()], GREEN_ALL, RATE)
 
 
 @pytest.mark.parametrize(
-    "laps, dropouts",
-    [([()], [(), ()]), ([(), ()], [()])],
-    ids=["lap tables", "dropout lists"],
+    "laps, dropouts, declined",
+    [
+        ([()], [(), ()], [False, False]),
+        ([(), ()], [()], [False, False]),
+        ([(), ()], [(), ()], [False]),
+    ],
+    ids=["lap tables", "dropout lists", "declined flags"],
 )
-def test_selection_needs_one_of_everything_per_car(laps, dropouts):
-    with pytest.raises(TelemetryShapeError, match="one dropout list per car"):
-        select_reference_lap(
-            ["AAA", "BBB"], laps, [_fast(9.0)] * 2, dropouts, [], RATE
+def test_selection_needs_one_of_everything_per_car(laps, dropouts, declined):
+    with pytest.raises(TelemetryShapeError, match="one declined flag per car"):
+        _select(
+            ["AAA", "BBB"], laps, [_fast(9.0)] * 2, dropouts, [], RATE,
+            declined=declined,
+        )
+
+
+def test_a_car_whose_anchor_plan_was_declined_is_never_the_reference():
+    """Positions known corrupt (a frame displacement the repair could not cancel)
+    are inadmissible as the track — the ribbon and the gap circuit are traced from
+    this lap — for the reason `pit_lane` excludes the car from the lane geometry.
+    Every one of the car's clean laps is passed over by name, and the next car's
+    lap is chosen; a lap that fails on its own account still says so first."""
+    ref = _select(
+        ["NOR", "VER"],
+        [
+            [_lap(25, 0.0, 85.0, pit_in=True), _lap(26, 85.0, 170.0)],
+            [_lap(25, 2.0, 87.0)],
+        ],
+        [_fast(171.0), _fast(171.0)],
+        [()] * 2,
+        GREEN_ALL,
+        RATE,
+        declined=[True, False],
+    )
+    assert (ref.car, ref.driver, ref.number) == (1, "VER", 25)
+    assert ref.rejected == (
+        Rejection("NOR", 25, "in-lap (PitInTime set)"),
+        Rejection(
+            "NOR",
+            26,
+            "car carries a declined frame displacement - its positions are known "
+            "corrupt, inadmissible as the track (as for the pit-lane geometry)",
+        ),
+    )
+
+
+def test_a_field_whose_only_clean_laps_are_declined_fails_loudly():
+    with pytest.raises(NoReferenceLapError, match="declined frame displacement"):
+        _select(
+            ["NOR"], [[_lap(26, 0.0, 85.0)]], [_fast(90.0)], [()], GREEN_ALL, RATE,
+            declined=[True],
         )
 
 
@@ -593,10 +646,48 @@ def test_window_builder_hands_the_selector_each_cars_dropouts():
     assert len(replay["cars"][0]["dropouts"]) == 1
     assert "dropouts" not in replay["cars"][1]
     assert replay["track"]["referenceLap"]["car"] == 1
-    report = reference_lap_report(replay, facts)
+    report = reference_lap_report(replay, facts, declined_drivers=())
     assert "passed over AAA lap 2: overlaps a stuck-channel dropout" in report
     assert "cars[1] BBB lap 2:" in report
     assert "MISMATCH" not in report
+
+
+def _relocated_in_lap_one() -> "dict[str, np.ndarray]":
+    """The standing start with one unmatched relocation 15 s in, which stays: the
+    repair cannot cancel it, so the car's anchor plan is DECLINED — the imposition
+    `test_replay_transform`'s declined-guard tests make."""
+    tel = synthetic.standing_start_telemetry(*_WINDOW)
+    t = np.asarray(tel["Time"], dtype=float)
+    x = np.asarray(tel["X"], dtype=float).copy()
+    x[int(np.searchsorted(t, _T0 + 15.0)):] += 5000.0
+    return dict(tel, X=x)
+
+
+def test_window_builder_never_takes_the_reference_from_a_declined_car():
+    """End to end: AAA's lap 2 is clean by every lap-level test, but AAA carries a
+    declined relocation, so the reference — the ribbon, the gap circuit and the
+    line — moves to BBB's lap 2. The report agrees only when it is handed the same
+    declined drivers `report_window` recomputes; handed none, it is the loudest
+    line it can print."""
+    cars = [
+        synthetic.window_car("AAA", _relocated_in_lap_one()),
+        synthetic.window_car("BBB", synthetic.standing_start_telemetry(*_WINDOW)),
+    ]
+    facts = [_standing_facts(), _standing_facts()]
+    replay = build_window_replay_dict(
+        cars, synthetic.SESSION_META, _WINDOW, reference_laps=facts
+    )
+    ref = replay["track"]["referenceLap"]
+    assert ref["car"] == 1
+    at = replay["cars"][1]["samples"][round(ref["fromT"] * RATE)]
+    sf = replay["track"]["startFinish"]
+    assert (sf["x"], sf["y"]) == (at["x"], at["y"])
+
+    report = reference_lap_report(replay, facts, declined_drivers=["AAA"])
+    assert "passed over AAA lap 2: car carries a declined frame displacement" in report
+    assert "cars[1] BBB lap 2:" in report
+    assert "MISMATCH" not in report
+    assert "MISMATCH" in reference_lap_report(replay, facts, declined_drivers=())
 
 
 # --- the report ---------------------------------------------------------------------
@@ -604,7 +695,7 @@ def test_window_builder_hands_the_selector_each_cars_dropouts():
 
 def test_reference_lap_report_recomputes_the_choice_from_the_file():
     replay = _standing_window()
-    report = reference_lap_report(replay, [_standing_facts()])
+    report = reference_lap_report(replay, [_standing_facts()], declined_drivers=())
     assert "cars[0] AAA lap 2:" in report
     assert "FALLBACK - no qualifying lap is green throughout" in report
     assert "passed over AAA lap 1: race lap 1" in report
@@ -615,11 +706,19 @@ def test_reference_lap_report_recomputes_the_choice_from_the_file():
 def test_reference_lap_report_names_a_green_choice():
     green = [{"status": "green", "fromT": 0.0, "toT": round(_LAP2_END + 0.1, 3)}]
     replay = _standing_window(status=green)
-    report = reference_lap_report(replay, [_standing_facts()])
+    report = reference_lap_report(replay, [_standing_facts()], declined_drivers=())
     assert "green throughout" in report and "FALLBACK" not in report
 
 
 def test_reference_lap_report_is_loudest_when_the_file_disagrees():
     replay = _standing_window()
     replay["track"]["referenceLap"] = dict(replay["track"]["referenceLap"], toT=1.0)
-    assert "MISMATCH" in reference_lap_report(replay, [_standing_facts()])
+    assert "MISMATCH" in reference_lap_report(
+        replay, [_standing_facts()], declined_drivers=()
+    )
+
+
+def test_reference_lap_report_requires_the_declined_drivers():
+    """No default: a forgotten list would re-admit a car the builder excluded."""
+    with pytest.raises(TypeError, match="declined_drivers"):
+        reference_lap_report(_standing_window(), [_standing_facts()])

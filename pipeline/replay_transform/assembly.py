@@ -622,7 +622,10 @@ def build_window_replay_dict(
                 f"{len(reference_laps)} for {len(built)} cars"
             )
         # Speeds, dropouts and status as EMITTED, so `reference_lap_report` can
-        # recompute the choice from the written file and agree by construction.
+        # recompute the choice from the written file and agree by construction. A
+        # car whose anchor plan was DECLINED is excluded — its positions are known
+        # corrupt — for the reason it is excluded from the pit-lane geometry below,
+        # and the report is handed the same recomputed facts.
         reference = select_reference_lap(
             [str(car.driver) for car, _, _, _ in built],
             reference_laps,
@@ -630,6 +633,7 @@ def build_window_replay_dict(
             [dropouts_by_driver.get(str(car.driver), []) for car, _, _, _ in built],
             status,
             rate,
+            declined=[declined_by_driver[str(car.driver)] for car, _, _, _ in built],
         )
         _, ref_x, ref_y, ref_samples = built[reference.car]
         start_finish = start_finish_at(

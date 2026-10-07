@@ -162,8 +162,8 @@ const PitLanePointSchema = z.object({ x: z.number(), y: z.number() });
  * (CLAUDE.md rule 3) — with one index that does not exist: `toT` may equal
  * `meta.duration`, sample `n`, which a closed lap reaches by WRAPPING to sample 0
  * (every closed file's own `{0, 0, duration}`) and an open window by holding sample
- * `n - 1`. A consumer clamps or wraps it the way `referenceLapEnds` does, or a
- * closed lap's gaps change by the wrap step. Validated at the replay level, where
+ * `n - 1`. Every consumer reads it through `referenceSpan.ts`'s `spanSample`, the
+ * one place that rule lives. Validated at the replay level, where
  * `meta` and `cars` are in scope; see the refinement there.
  */
 const ReferenceLapSchema = z.object({

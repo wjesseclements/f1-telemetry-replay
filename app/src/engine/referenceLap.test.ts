@@ -119,10 +119,12 @@ describe("legacyReferenceLap — what a file without the field has always meant"
       fromT: 0,
       toT: replay.meta.duration,
     });
-    // Today's buildReference finds the fixture's return at its LAST sample — the
-    // same lap, one grid step short of the wrap that closes it.
+    // Before the consumer half, buildReference SEARCHED for the lap and found the
+    // fixture's return at its LAST sample — 58.4 s, one grid step short of the wrap
+    // that closes it. It now reads the span, wrap step included: the lap is the
+    // loop the transport actually plays.
     const lapSeconds = buildProgressIndex(replay).lapSeconds;
-    expect(lapSeconds).toBeCloseTo(replay.meta.duration - 1 / RATE, 9);
+    expect(lapSeconds).toBe(replay.meta.duration);
   });
 
   it("is cars[0] to its first return for a window — the span gaps.ts uses", () => {

@@ -421,7 +421,10 @@ def reversal_report(driver: str, r: "ReversalRejection | None", offset: float = 
 
 
 def reference_lap_report(
-    replay: "Mapping[str, Any]", reference_laps: "Sequence[Sequence[LapFacts]]"
+    replay: "Mapping[str, Any]",
+    reference_laps: "Sequence[Sequence[LapFacts]]",
+    *,
+    declined_drivers: "Sequence[str]",
 ) -> str:
     """
     The reference lap (Slice 24), recomputed FROM THE EMITTED FILE — speeds and
@@ -430,8 +433,16 @@ def reference_lap_report(
     doctrine). Silent-never: the chosen car, lap, span and tier always print, every
     candidate passed over prints with its reason, and a recomputation that disagrees
     with the file's `track.referenceLap` is the loudest line here.
+
+    `declined_drivers` is the one fact the file does not carry: the drivers whose
+    anchor plan was declined, recomputed from the source rows exactly as the builder
+    computed them — the same list `pit_lane_report` is handed. Keyword-only and
+    required: an empty default would let a forgotten list re-admit a corrupt car
+    here while the builder had excluded it, and the MISMATCH line would then blame
+    the lap facts.
     """
     cars = replay["cars"]
+    declined = set(declined_drivers)
     ref = select_reference_lap(
         [str(car["driver"]) for car in cars],
         reference_laps,
@@ -441,6 +452,7 @@ def reference_lap_report(
         [car.get("dropouts", []) for car in cars],
         replay.get("trackStatus", []),
         float(replay["meta"]["sampleRateHz"]),
+        declined=[str(car["driver"]) in declined for car in cars],
     )
     tier = (
         "green throughout"
@@ -462,7 +474,7 @@ def reference_lap_report(
     if replay["track"].get("referenceLap") != ref.field():
         lines.append(
             "  MISMATCH: the file's track.referenceLap differs from this recomputation - "
-            "the builder and the report were not handed the same lap facts; trust "
-            "neither until that is resolved"
+            "the builder and the report were not handed the same lap facts or "
+            "declined drivers; trust neither until that is resolved"
         )
     return "\n".join(lines)

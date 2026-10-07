@@ -14,6 +14,7 @@
  */
 import { COMET_BUCKETS, SPEED_BUCKETS, bucketOf } from "../engine/color";
 import { headingHolds, type CarSnapshot } from "../engine/interpolate";
+import { referenceSpan } from "../engine/referenceSpan";
 import {
   applyTransform,
   centroid,
@@ -41,7 +42,10 @@ export interface SceneCorner {
 
 /** Everything about a replay that can be computed before the clock starts. */
 export interface Scene {
-  /** The track ribbon, in rotated world coordinates. */
+  /**
+   * The track ribbon, in rotated world coordinates: the reference lap's points
+   * (Slice 24), closed by the painter.
+   */
   ribbon: readonly Point[];
   /**
    * The pit lane's polyline(s), rotated like the ribbon — `track.pitLane`
@@ -160,17 +164,27 @@ const toPoints = (samples: Replay["cars"][number]["samples"]): Point[] =>
 /**
  * Precompute the static parts of a replay's scene.
  *
- * The ribbon is traced from the FIRST car's lap: every car in a replay drives the
- * same circuit, so one lap is the track. That is a choice of source, not a branch
- * on car count — bounds below still span every car, so nothing can be fitted out
- * of frame when `cars` has twenty entries (rule 2).
+ * The ribbon is traced from the REFERENCE LAP (`track.referenceLap`, Slice 24):
+ * every car in a replay drives the same circuit, so one lap is the track. That is a
+ * choice of source, not a branch on car count — bounds below still span every car,
+ * so nothing can be fitted out of frame when `cars` has twenty entries (rule 2).
+ *
+ * Until Slice 24 it was `cars[0]`'s WHOLE path, closed — one lap on a lap file, but
+ * on a window every lap the first driver drove, grid slot, formation lap and all,
+ * stroked over each other. The span is samples `fromT ..= toT` of the reference car
+ * with `toT = duration` clamped to the last sample: `closePath` draws the segment
+ * back to `fromT`, which on a closed lap IS the wrap to sample 0 (`spanSample`'s
+ * rule) and on an open window's held last sample is the same point. So a lap file's
+ * `{0, 0, duration}` is exactly the path it always drew.
  */
 export function buildScene(replay: Replay): Scene {
-  const { rotation } = replay.meta;
+  const { rotation, sampleRateHz } = replay.meta;
   const carPaths = replay.cars.map((car) =>
     toScreenPoints(toPoints(car.samples), rotation),
   );
-  const ribbon = carPaths[0];
+  const span = referenceSpan(sampleRateHz, replay.track.referenceLap);
+  // `slice` stops at the last sample — that is the clamp of `toT = duration`.
+  const ribbon = carPaths[span.car].slice(span.from, span.to + 1);
   const centre = centroid(ribbon);
   const pitLanes = replay.track.pitLane.map((poly) =>
     toScreenPoints(poly, rotation),

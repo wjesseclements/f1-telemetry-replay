@@ -727,9 +727,14 @@ def report_window(
     print(pit_lane_report(replay, declined_drivers))
 
     # The reference lap (Slice 24), recomputed from the EMITTED file with the same
-    # lap facts the builder was handed: which car, which lap, which span, and why
-    # every earlier candidate was passed over.
-    print(reference_lap_report(replay, reference_laps))
+    # lap facts the builder was handed and the declined-driver facts recomputed
+    # above (a declined car is never the reference): which car, which lap, which
+    # span, and why every earlier candidate was passed over.
+    print(
+        reference_lap_report(
+            replay, reference_laps, declined_drivers=declined_drivers
+        )
+    )
 
     # What was actually WRITTEN, read back off the replay dict rather than
     # recomputed, so the report and the file cannot disagree. A strange session —

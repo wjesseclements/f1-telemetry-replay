@@ -153,8 +153,11 @@ as a Zod schema; the loader validates against it; the Python pipeline emits it.
     // fromT; startFinish within 25 m of cars[car] at fromT. The pipeline chooses it
     // by rule — not race lap 1, LapTime recorded, not an in/out lap, FastF1
     // IsAccurate, wholly in the window, no sample below 15 km/h, no stuck-channel
-    // dropout in it, green throughout preferred field-wide — and fails the build if
-    // no lap qualifies.
+    // dropout in it, its car carries no declined frame displacement, green
+    // throughout preferred field-wide — and fails the build if no lap qualifies.
+    // The app reads it and nothing else: the ribbon is cars[car]'s fromT..toT, the
+    // gap circuit is that lap (arc 0 on the timing line, lapSeconds = toT - fromT),
+    // and the tower's order key converts progress at that lap's pace.
     "referenceLap": { "car": 0, "fromT": 89.0, "toT": 175.6 }
   },
   "cars": [

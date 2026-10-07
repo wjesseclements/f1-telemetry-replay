@@ -22,7 +22,7 @@ import {
   travelSoFarM,
 } from "./gaps";
 import { withReferenceLap, type UnreferencedReplay } from "./referenceLap";
-import type { Replay, Sample } from "./schema";
+import type { ReferenceLap, Replay, Sample } from "./schema";
 
 const RATE = 10;
 /** One lap of the test circuit: 1000 m at 180 km/h = 50 m/s, so 20 s and 200 samples. */
@@ -50,21 +50,38 @@ function ring(laps: number, shift = 0, scale = 1, radiusBoost = 0): Sample[] {
 
 /** A replay whose cars are given sample by sample. `cars[0]` is the reference. */
 function replayOf(...cars: Sample[][]): Replay {
-  // Settled exactly as the loader settles a file without track.referenceLap.
+  return replayIn("open", undefined, ...cars);
+}
+
+/**
+ * A replay in the given loop mode carrying, when given, the file's own
+ * `track.referenceLap` — what a Slice 24 file carries. Without one it is settled
+ * exactly as the loader settles a file without the field: the legacy reference.
+ */
+function replayIn(
+  loop: "open" | "closed",
+  referenceLap: ReferenceLap | undefined,
+  ...cars: Sample[][]
+): Replay {
   return withReferenceLap({
     meta: {
       schemaVersion: 1,
       sampleRateHz: RATE,
       duration: cars[0].length / RATE,
       rotation: 0,
-      loop: "open",
+      loop,
       units: { speed: "km/h" },
       year: 2024,
       event: "Test",
       track: "Test",
       session: "R",
     },
-    track: { corners: [], startFinish: { x: 0, y: 0, angle: 0 }, pitLane: [] },
+    track: {
+      corners: [],
+      startFinish: { x: 0, y: 0, angle: 0 },
+      pitLane: [],
+      ...(referenceLap === undefined ? {} : { referenceLap }),
+    },
     cars: cars.map((samples, i) => ({
       driver: `C${i}`,
       team: "Test",
@@ -681,5 +698,182 @@ describe("the tower's sort key (Slice 19, revised at its watch)", () => {
     // 50 m/s: 0 at the start, 500 m at 10 s in.
     expect(travelSoFarM(index, 0, 0)).toBe(0);
     expect(travelSoFarM(index, 0, 10)).toBeCloseTo(500, 4);
+  });
+});
+
+describe("the reference circuit is the file's own reference lap (Slice 24)", () => {
+  /** One lap of the test circle as the ring traces it: 200 chords of a 1000 m circle. */
+  const LAP_UNITS =
+    PER_LAP * 2 * (1000 / (2 * Math.PI)) * Math.sin(Math.PI / PER_LAP);
+
+  /**
+   * Every car of `cars` held for 10 s four seconds into the window — a grid hold in
+   * the opening lap, the restart's shape — then resuming exactly where it stopped.
+   * The gap-edge fixture's hold, applied to the whole field.
+   */
+  const HOLD_FROM = 40;
+  const HOLD = 100;
+  const withHold = (car: Sample[]): Sample[] =>
+    Array.from({ length: car.length + HOLD }, (_, k) => {
+      const source = car[k < HOLD_FROM ? k : Math.max(HOLD_FROM, k - HOLD)];
+      const parked = k > HOLD_FROM && k < HOLD_FROM + HOLD;
+      return { ...source, t: k / RATE, speed: parked ? 0 : 180 };
+    });
+
+  it("reads the span — lapSeconds is toT − fromT, lapUnits its arc — on the NAMED car", () => {
+    // cars[0] holds in its first lap, so the legacy reference (its first return) is a
+    // 30 s lap. The file names cars[1]'s clean second lap instead. cars[0] also runs
+    // 15 m wide of cars[1], so a circuit traced from the WRONG car's samples over the
+    // same span measures a different length and cannot pass for the named one.
+    const cars = [withHold(ring(3, 0, 1, 15)).slice(0, 600), ring(3)];
+    expect(buildProgressIndex(replayOf(...cars)).lapSeconds).toBeCloseTo(30, 6);
+    const index = buildProgressIndex(
+      replayIn("open", { car: 1, fromT: 20, toT: 40 }, ...cars),
+    );
+    expect(index.lapSeconds).toBe(20);
+    expect(index.lapUnits).toBeCloseTo(LAP_UNITS, 6);
+    expect(index.paceSecondsPerUnit).toBeCloseTo(20 / LAP_UNITS, 12);
+  });
+
+  it("puts the ring's origin on the lap's start, and no answer depends on where that is", () => {
+    // The same circle, referenced from its first lap and from a lap starting a quarter
+    // of the way round: arc 0 moves, every gap and every key must not.
+    const cars = [ring(3), ring(3, 20), ring(3, -60)];
+    const first = buildProgressIndex(
+      replayIn("open", { car: 0, fromT: 0, toT: 20 }, ...cars),
+    );
+    const quarter = buildProgressIndex(
+      replayIn("open", { car: 0, fromT: 5, toT: 25 }, ...cars),
+    );
+    // The reference car stands on a whole number of laps at its lap's start.
+    const atStart = quarter.progress[0][50] / quarter.lapUnits;
+    expect(atStart - Math.round(atStart)).toBeCloseTo(0, 9);
+    expect(quarter.progress[0][0]).not.toBeCloseTo(first.progress[0][0], 3);
+    for (const now of [0, 7.5, 30, 59.9]) {
+      for (const car of [1, 2]) {
+        const a = gapTo(first, 0, car, now)!;
+        const b = gapTo(quarter, 0, car, now)!;
+        expect(b.seconds).toBeCloseTo(a.seconds, 6);
+        expect(b.metres).toBeCloseTo(a.metres, 4);
+        expect(b.lapsDown).toBe(a.lapsDown);
+        expect(progressKeyAt(quarter, 0, car, now)).toBeCloseTo(
+          progressKeyAt(first, 0, car, now)!,
+          6,
+        );
+      }
+    }
+  });
+
+  it("scales the order key at the reference LAP's pace: invariant to a hold at the window start", () => {
+    // The critic's finding on the restart: the key is ΔP at the reference's pace, and a
+    // reference lap holding the grid hold quotes every ΔP at 1.92x its seconds, so
+    // ORDER_HYSTERESIS_S held half its intended dead band. Inserting a hold into the
+    // opening lap must not move the key at all once the file names a clean lap.
+    const field = [0, -25, -50, -75].map((sh) => ring(3, sh));
+    const plain = buildProgressIndex(
+      replayIn("open", { car: 0, fromT: 20, toT: 40 }, ...field),
+    );
+    const heldField = field.map(withHold);
+    // The same lap — cars[0]'s second — ten seconds later.
+    const held = buildProgressIndex(
+      replayIn("open", { car: 0, fromT: 30, toT: 50 }, ...heldField),
+    );
+    expect(held.paceSecondsPerUnit).toBe(plain.paceSecondsPerUnit);
+    // A plain clock, and the held file's clock for the same instant of the race.
+    const heldClock = (t: number) =>
+      t < HOLD_FROM / RATE ? t : t + HOLD / RATE;
+    for (const now of [0, 2, 25, 33.3, 41.5, 59.9]) {
+      for (const car of [1, 2, 3]) {
+        expect(progressKeyAt(held, 0, car, heldClock(now))).toBeCloseTo(
+          progressKeyAt(plain, 0, car, now)!,
+          9,
+        );
+      }
+    }
+    // The control, which is what makes this a test: without the field the loader's
+    // legacy reference is cars[0]'s FIRST lap, hold and all, and the key's scale moves
+    // with it — 30 s for 20 s of lap.
+    const legacy = buildProgressIndex(replayOf(...heldField));
+    expect(legacy.lapSeconds).toBeCloseTo(30, 6);
+    expect(
+      progressKeyAt(legacy, 0, 1, heldClock(25))! /
+        progressKeyAt(plain, 0, 1, 25)!,
+    ).toBeCloseTo(1.5, 6);
+  });
+
+  it("takes the metre bridge from the reference car: a parked cars[0] no longer blanks the field", () => {
+    // A pit-lane starter listed first. As the legacy reference it has no path to
+    // measure, so every car is unanswerable; named in the file, cars[1] is the
+    // reference and only the parked car itself has nothing to say.
+    const parked = ring(3).map((s) => ({ ...s, x: 500, y: 0, speed: 0 }));
+    const cars = [parked, ring(3), ring(3, 20)];
+    const legacy = buildProgressIndex(replayOf(...cars));
+    expect(legacy.degenerate).toEqual([true, true, true]);
+    expect(gapTo(legacy, 1, 2, 30)).toBeNull();
+
+    const named = buildProgressIndex(
+      replayIn("open", { car: 1, fromT: 20, toT: 40 }, ...cars),
+    );
+    expect(named.degenerate).toEqual([true, false, false]);
+    expect(named.unitsPerMetre).toBeCloseTo(LAP_UNITS / 1000, 6);
+    expect(gapTo(named, 1, 2, 30)!.seconds).toBeCloseTo(-2, 6);
+    expect(gapTo(named, 1, 0, 30)).toBeNull();
+  });
+
+  it("closes a closed lap through its wrap: the closing chord is part of the ring", () => {
+    // `{0, 0, duration}`: toT is sample n, which a closed lap reaches by wrapping to
+    // sample 0. Before Slice 24 the lap was SEARCHED for and ended one step short.
+    const index = buildProgressIndex(
+      replayIn("closed", undefined, ring(1), ring(1, 20)),
+    );
+    expect(index.lapSeconds).toBe(LAP_SECONDS);
+    expect(index.lapUnits).toBeCloseTo(LAP_UNITS, 6);
+    expect(gapTo(index, 0, 1, 10)!.seconds).toBeCloseTo(-2, 6);
+  });
+
+  it("reads the no-ring pace off the reference span, not off the whole window", () => {
+    // A quarter lap at 180 km/h, then a quarter at 90: half a lap in 15 s, no ring.
+    // The legacy synthesis of a no-ring window IS its whole path, so on a file the two
+    // readings coincide; only a span the schema would refuse in a file (this one ends a
+    // quarter lap from its start) can tell them apart — and the engine reads the span.
+    const radius = 1000 / (2 * Math.PI);
+    const braking: Sample[] = ring(1)
+      .slice(0, 150)
+      .map((s, k) => {
+        const a = (2 * Math.PI * (k < 50 ? k : 50 + (k - 50) / 2)) / PER_LAP;
+        return {
+          ...s,
+          x: radius * Math.cos(a),
+          y: radius * Math.sin(a),
+          speed: k < 50 ? 180 : 90,
+        };
+      });
+    const index = buildProgressIndex(
+      replayIn("open", { car: 0, fromT: 0, toT: 5 }, braking),
+    );
+    expect(index.lapUnits).toBe(0);
+    // 5 s over the first quarter of the ring, not 14.9 s over the whole half lap.
+    expect(index.paceSecondsPerUnit).toBeCloseTo(5 / (LAP_UNITS / 4), 9);
+  });
+
+  it("keeps the legacy 'no ring': a span shorter than MIN_LAP_S is not a lap", () => {
+    // A closed loop of 4 s closes trivially through its wrap, but no circuit is that
+    // short: the same refusal `findLapEnd` made by never looking before 5 s.
+    const tiny = ring(3)
+      .slice(0, 40)
+      .map((s, k) => {
+        const a = (2 * Math.PI * k) / 40;
+        return { ...s, x: 100 * Math.cos(a), y: 100 * Math.sin(a) };
+      });
+    const index = buildProgressIndex(replayIn("closed", undefined, tiny));
+    expect(index.lapUnits).toBe(0);
+    expect(index.lapSeconds).toBe(0);
+    // Traced as the PATH it is — its 40 samples, not through the wrap onto a copy of
+    // its first point, where the car's own first sample could land on either end and
+    // read a negative pace: 3.9 s over 39 chords of the 100-unit circle.
+    expect(index.paceSecondsPerUnit).toBeCloseTo(
+      0.1 / (200 * Math.sin(Math.PI / 40)),
+      12,
+    );
   });
 });

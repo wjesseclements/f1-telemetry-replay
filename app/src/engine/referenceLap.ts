@@ -22,20 +22,21 @@
  *    metre bridge over the span, so "does the span close" and "is the line where
  *    the lap starts" are both answered in metres.
  *
- * Consumers do not read the field yet; switching them over is the next phase. Until
- * then this module changes nothing a user can see.
+ * THE CONSUMERS (Slice 24, consumer half) read the settled field and nothing else:
+ * `gaps.ts`'s reference circuit, its pace and its metre bridge, and `scene.ts`'s
+ * ribbon — through `referenceSpan.ts`, which owns the one rule for `toT = duration`.
+ * The start/finish line is the pipeline's, placed at the lap's start.
  *
- * A FALLBACK FOR CONSUMERS TO KNOW ABOUT. When an open window's `cars[0]` never
- * returns to its start, the legacy span is its whole path — what `buildReference`
- * projects onto today — but `gaps.ts` treats that case as "no ring" (`lapUnits` 0).
- * `{car, fromT, toT}` cannot carry that bit. Most of that case is recognisable from
- * the span itself: it is shorter than `MIN_LAP_S` or does not return within
- * `MAX_RESIDUAL_M` of where it started, which a real reference lap always does (the
- * schema now requires it of a PRESENT field). NOT all of it: a `cars[0]` that never
- * MOVED ends exactly where it started, so the return test calls it closed. gaps.ts
- * catches that case first, on `unitsPerMetre === 0`, and the consumer switch-over
- * must keep that guard ahead of any span-based "no ring" rule (review of the
- * contract half).
+ * A FALLBACK THE CONSUMERS KEEP. When an open window's `cars[0]` never returns to its
+ * start, the legacy span is its whole path, and `gaps.ts` treats that case as "no
+ * ring" (`lapUnits` 0). `{car, fromT, toT}` cannot carry that bit, so `buildReference`
+ * recognises it from the span itself: shorter than `MIN_LAP_S`, or not returning
+ * within `MAX_RESIDUAL_M` of where it started — `findLapEnd`'s own two tests, with
+ * its own bridge — which a real reference lap always passes (the schema requires it of
+ * a PRESENT field). NOT all of it: a `cars[0]` that never MOVED ends exactly where it
+ * started, so the return test calls it closed. `buildProgressIndex` catches that case
+ * first, on `unitsPerMetre === 0`, ahead of the span-based rule (review of the
+ * contract half; kept).
  */
 import {
   MAX_RESIDUAL_M,
@@ -44,6 +45,7 @@ import {
   pathLength,
   travelIntegral,
 } from "./gaps";
+import { referenceSpan, spanSample } from "./referenceSpan";
 import type { Replay, ReferenceLap } from "./schema";
 
 /**
@@ -177,19 +179,15 @@ export function referenceLapEnds(
   const rate = replay.meta.sampleRateHz;
   const samples = replay.cars[reference.car].samples;
   const last = samples.length - 1;
-  const from = Math.min(Math.round(reference.fromT * rate), last);
-  const toK = Math.round(reference.toT * rate);
+  const { from: fromK, to: toK } = referenceSpan(rate, reference);
+  const from = Math.min(fromK, last);
   const to = Math.min(toK, last);
   const span = samples.slice(from, to + 1);
   const metres = travelIntegral(span, rate)[span.length - 1];
   const path = pathLength(span);
   if (metres === 0 || path === 0) return null;
-  const end =
-    toK <= last
-      ? samples[toK]
-      : replay.meta.loop === "closed"
-        ? samples[0]
-        : samples[last];
+  // `toT = duration` is sample n: the wrap or the hold, by `spanSample`'s one rule.
+  const end = spanSample(samples, toK, replay.meta.loop);
   return {
     start: { x: samples[from].x, y: samples[from].y },
     end: { x: end.x, y: end.y },
