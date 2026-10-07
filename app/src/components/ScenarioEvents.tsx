@@ -17,9 +17,16 @@
  * The first observed clock after a scenario loads only arms the detector —
  * landing at `suggested.clock` is not a crossing.
  *
- * An event past the end of a rebuilt, shorter window clamps to the duration
+ * An event past the end of a rebuilt, shorter window clamps to the END
  * (`resolveStartClock`'s reasoning): the narration and the chain survive even if
- * the moment itself was cut.
+ * the moment itself was cut. "The end" is `lastInstant`, not `meta.duration`: the
+ * clock's domain is `[0, duration)`, so a mark AT `duration` is one the clock can
+ * never reach — the clamp used to say `duration`, and a late event never fired, by
+ * seek or by playback (Slice 23 follow-up). `lastInstant` is where End, the
+ * scrubber's right edge and a clamped forward seek all land. Playback is harder:
+ * it sits in `[lastInstant, duration)` for one grid step before it wraps, and this
+ * detector samples at ≤30 Hz, so at 2x and 4x a pass can go unseen (measured per
+ * speed in the Slice 23 PLAN entry). At 0.5x and 1x it is always seen.
  *
  * STALE FRAMES NEITHER ARM NOR FIRE. Loading a replay swaps `replay` and
  * `scenario` while the last published frame still describes the PREVIOUS replay
@@ -29,6 +36,7 @@
  * for a moment nobody watched.
  */
 import { useEffect, useRef, useState } from "react";
+import { lastInstant } from "../engine/clock";
 import type { GalleryScenario, ScenarioEvent } from "../engine/gallery";
 import { findScenario } from "../gallery/scenarios";
 import { useTransport } from "../store/transport";
@@ -78,8 +86,10 @@ export function ScenarioEvents() {
     // The LAST crossed event wins when one tick jumps several marks — the most
     // recent narration is the one that explains where the playhead now is.
     let crossed: ScenarioEvent | null = null;
+    // The furthest a mark may sit and still be reachable — see the header.
+    const end = lastInstant(replay.meta.duration, replay.meta.sampleRateHz);
     for (const event of scenario.events) {
-      const mark = Math.min(event.clock, replay.meta.duration);
+      const mark = Math.min(event.clock, end);
       if (prev < mark && clock >= mark) crossed = event;
     }
     if (crossed !== null) {

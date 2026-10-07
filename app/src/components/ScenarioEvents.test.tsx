@@ -9,6 +9,7 @@
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import sampleLap from "../engine/__fixtures__/sample-lap.json";
+import { lastInstant } from "../engine/clock";
 import { parseReplay } from "../engine/load";
 import type { GalleryScenario } from "../engine/gallery";
 import { useTransport } from "../store/transport";
@@ -147,16 +148,30 @@ describe("ScenarioEvents", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("clamps an event past a rebuilt, shorter window to the duration — narration survives the cut", () => {
-    useTransport.setState({
-      scenario: {
-        ...scenario,
-        events: [{ clock: 500, title: "LATE", body: "b" }],
-      },
-    });
-    render(<ScenarioEvents />);
-    tick(10);
-    tick(replay.meta.duration); // 58.5 — the parked clock reaches the clamp
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
-  });
+  // Slice 23 follow-up: the clamp was `duration`, a value the clock never holds — its
+  // domain is [0, duration) and a seek to the end lands on `lastInstant` — so a late
+  // event could never fire. The test it replaces published `clock = duration` by
+  // hand, the one clock no real loop produces, and so passed. Three late marks: far
+  // past the window, exactly AT `duration` (the >= boundary), and inside the final
+  // grid step, past every instant a seek can reach.
+  const end = lastInstant(replay.meta.duration, replay.meta.sampleRateHz);
+  it.each([
+    ["far past the window", 500],
+    ["exactly at the duration", replay.meta.duration],
+    ["inside the final grid step", (end + replay.meta.duration) / 2],
+  ])(
+    "clamps an event %s to the LAST INSTANT — the narration survives the cut",
+    (_, lateClock) => {
+      useTransport.setState({
+        scenario: {
+          ...scenario,
+          events: [{ clock: lateClock, title: "LATE", body: "b" }],
+        },
+      });
+      render(<ScenarioEvents />);
+      tick(10);
+      tick(end); // 58.4 — where End, the scrubber's right edge and a clamped seek land
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    },
+  );
 });

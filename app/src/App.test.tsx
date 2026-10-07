@@ -351,6 +351,60 @@ describe("App transport integration", () => {
     expect(telemetry.getSnapshot().clock).toBe(lastT);
   });
 
+  it("fires a scenario event past the end AT the end, through the real loop — End and playback alike", () => {
+    // Slice 23 follow-up: ScenarioEvents clamped a late event to `duration`, which
+    // the loop never holds, so the "narration survives the cut" promise could not be
+    // kept by any seek or any playback. Its unit test published `clock = duration`
+    // by hand; this one only lets the real loop publish.
+    const lastT = replay.cars[0].samples[replay.cars[0].samples.length - 1].t;
+    const lateCard = () => screen.queryByRole("dialog", { name: "LATE" });
+    render(<App />);
+    act(() => {
+      useTransport.setState({
+        isPlaying: false,
+        scenario: {
+          id: "late",
+          title: "Late",
+          hook: "h",
+          file: "late.json",
+          suggested: { driver: "VER", clock: 0, speedMult: 1 },
+          provenance: {
+            session: "S",
+            laps: "1-2",
+            drivers: ["VER"],
+            generated: "2026-09-08",
+          },
+          events: [{ clock: 500, title: "LATE", body: "b" }],
+        },
+      });
+      useTransport.getState().seek(10);
+    });
+    act(() => raf.tick(40)); // the first observed clock arms the detector
+
+    // End: the last instant, and a crossing of the clamped mark.
+    act(() => {
+      fireEvent.keyDown(window, { key: "End" });
+    });
+    act(() => raf.tick(40));
+    expect(telemetry.getSnapshot().clock).toBe(lastT);
+    expect(lateCard()).toBeInTheDocument();
+    act(() => lateCard()?.querySelector("button")?.click());
+    expect(lateCard()).not.toBeInTheDocument();
+
+    // Playback at 1x into the end at 60 Hz: back below the mark re-arms, and the
+    // final grid step is ~6 frames and ~3 HUD emits wide — wide enough to be seen.
+    act(() => useTransport.getState().seek(replay.meta.duration - 1));
+    act(() => raf.tick(40));
+    act(() => useTransport.getState().play());
+    for (let i = 0; i < 120 && lateCard() === null; i++) {
+      act(() => raf.tick(1000 / 60));
+    }
+    expect(lateCard()).toBeInTheDocument();
+    expect(useTransport.getState().isPlaying).toBe(false); // it paused, at the end
+    expect(telemetry.getSnapshot().clock).toBeGreaterThanOrEqual(lastT);
+    expect(telemetry.getSnapshot().clock).toBeLessThan(replay.meta.duration);
+  });
+
   it("gives every control an accessible name", () => {
     render(<App />);
     expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument();
