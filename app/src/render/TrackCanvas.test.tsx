@@ -375,6 +375,16 @@ describe("TrackCanvas", () => {
     expect(frame().clock).toBeCloseTo(0.05, 9);
     expect(frame().wraps).toBe(1);
 
+    // A BACKWARD seek moves the clock down exactly as a wrap does, and must not
+    // count as one — the seeks above are both forward, so without this a loop that
+    // counted every downward step passed the suite (Slice 23's final review).
+    useTransport.getState().seek(30);
+    raf.tick(100);
+    useTransport.getState().seek(10);
+    raf.tick(100);
+    expect(frame().clock).toBe(10);
+    expect(frame().wraps).toBe(1);
+
     // A new replay restarts the clock at 0, which is a reset, not a wrap.
     raf.tick(100);
     rerender(<TrackCanvas replay={structuredClone(replay)} />);
