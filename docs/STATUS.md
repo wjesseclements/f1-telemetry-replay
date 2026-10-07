@@ -65,8 +65,12 @@ gallery panel, seek-to-end landing at the start, stopped cars pointing east, ~80
 window-edge gap jumps, the scrim that never rendered — and the layout check gated in
 `npm run check` and CI) are done on their branches and await the human's review; CI's
 Chrome `--no-sandbox` on ubuntu-latest is unverified until the first `verify` run.
-**Slice 24** makes the reference lap explicit in the contract (the seventh defect, the
-red-flag start/finish line, is its symptom). Then **Slice 18** per the board: 18 → 20,
-with the backlog's headline **fixture asymmetry overhaul** behind them. Housekeeping unchanged:
-only the FINALE still carries the `trackStatus` drift (pit cycle and rain picked
-theirs up in Slice 16's re-record; 9k's rain rebuild keeps it).
+**Slice 24** (done on its branch, stacked on 23) makes the reference lap explicit:
+`track.referenceLap`, chosen by the pipeline from clean, accurate, green-preferred
+laps and read by the gap circuit, the tower's pace and the ribbon; all five gallery
+assets were regenerated offline, changing only that field, two start/finish lines
+(the red flag's moves off the pole slot onto the timing line — the seventh defect) and
+the finale's long-standing `trackStatus` drift. The restart's pace lap goes 166.1 →
+86.4 s. Then **Slice 18** per the board: 18 → 20, with the backlog's headline
+**fixture asymmetry overhaul** behind them. The finale's `trackStatus` drift closes with
+Slice 24's regeneration.
