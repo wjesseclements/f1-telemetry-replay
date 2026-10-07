@@ -58,11 +58,15 @@ the standing constraint remains: `build_replay.py` runs only from the human's
 home network (CLAUDE.md Gotchas).
 
 **What happens next.** The 2026-10-07 whole-project review inserted three slices
-ahead of the board, on the human's direction: **Slice 22** (done on its branch — a
-headless-Chrome layout check, `npm run check:layout`, which FAILS today by design on
-two shipped layout defects jsdom cannot see), **Slice 23** (fix the defects visible on
-the live gallery and gate the layout check) and **Slice 24** (make the reference lap
-explicit in the contract). Then **Slice 18** per the board: 18 → 20, with the
-backlog's headline **fixture asymmetry overhaul** behind them. Housekeeping unchanged:
+ahead of the board, on the human's direction. **Slice 22** (a headless-Chrome layout
+check, `npm run check:layout`) and **Slice 23** (six of the seven defects visible on
+the live gallery fixed — the phone canvas collapsing under a full field, the clipped
+gallery panel, seek-to-end landing at the start, stopped cars pointing east, ~80 s
+window-edge gap jumps, the scrim that never rendered — and the layout check gated in
+`npm run check` and CI) are done on their branches and await the human's review; CI's
+Chrome `--no-sandbox` on ubuntu-latest is unverified until the first `verify` run.
+**Slice 24** makes the reference lap explicit in the contract (the seventh defect, the
+red-flag start/finish line, is its symptom). Then **Slice 18** per the board: 18 → 20,
+with the backlog's headline **fixture asymmetry overhaul** behind them. Housekeeping unchanged:
 only the FINALE still carries the `trackStatus` drift (pit cycle and rain picked
 theirs up in Slice 16's re-record; 9k's rain rebuild keeps it).

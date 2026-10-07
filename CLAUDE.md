@@ -17,8 +17,10 @@ from FastF1 data. PRD.md holds the detail; this file holds the law.
 - Lint: `cd app && npm run lint`
 - Test: `cd app && npm run test` (CI: `npm run test -- --run`)
 - Build: `cd app && npm run build`
-- **All gates: `cd app && npm run check`** (typecheck + lint + test + build; the
-  definition-of-done command — run this, not the four individually)
+- **All gates: `cd app && npm run check`** (typecheck + lint + format + test + build +
+  the headless-Chrome layout check; the definition-of-done command — run this, not the
+  gates individually). The layout check drives a real Chrome against the fresh build,
+  so the machine needs Chrome or Chromium (`CHROME_PATH` overrides the lookup).
 - Pipeline (needs network — human's machine, never CI): `cd pipeline && python
   build_replay.py --year 2024 --gp Monza --session Q --driver VER --out
   ../app/public/data/monza_ver.json`. It validates its own output through the app's
@@ -66,9 +68,10 @@ from FastF1 data. PRD.md holds the detail; this file holds the law.
   `--no-proxy-server`), and any request off the preview origin — page, workers,
   frames — is a FAIL, as is an uncaught page exception. Exit 1 = the run finished
   with a FAIL row (read the table); 2 = it did not finish (no build, no Chrome, the
-  90 s cap — read the ABORTED line). About 2 s. **Not yet in `npm run check`**: it
-  fails by design on the two layout defects Slice 23 fixes; Slice 22's PLAN entry
-  carries the failing baseline.
+  90 s cap — read the ABORTED line). About 2 s. **Gated** (Slice 23): it runs last in
+  `npm run check` and as a step of CI's `verify`. Slice 22's PLAN entry carries the
+  failing baseline it was built against; its viewports do not include short or
+  landscape phones (Slice 23's entry has those numbers).
 
 ## Architecture rules (non-negotiable — see PRD §Load-bearing decisions)
 
@@ -223,8 +226,9 @@ Rules that come with it:
 
 - Vercel owns deployment via its GitHub integration (Root Directory = `app`). **Do not
   write deploy scripts or a deploy workflow.** GitHub Actions (`.github/workflows/ci.yml`)
-  is the quality gate only: typecheck + lint + test + build. Merges to `main` deploy to
-  production; branches/PRs get Vercel preview URLs.
+  is the quality gate only: typecheck + lint + format + test + build + the layout check,
+  then `pytest`. Merges to `main` deploy to production; branches/PRs get Vercel preview
+  URLs.
 
 ## Human-only boundary
 
