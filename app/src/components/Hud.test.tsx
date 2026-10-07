@@ -300,6 +300,22 @@ describe("Hud layout containment (Slice 23)", () => {
       "overflow-y-auto",
     );
   });
+
+  it("caps the strip with a floor, and bounds the floor by the track", () => {
+    // Each term was measured failing on its own (headless Chrome, stacked layout):
+    // the bare `40%` cut the one-car fixture's 219 px strip to 178 px at 375x667,
+    // hiding its speed trace behind a scroll; `max(40%, 13.75rem)` fixed that and
+    // took a 22-car track back to 0 px at 667x375 and 740x360, the very defect the
+    // cap exists for. jsdom has no layout and the gated layout check measures
+    // neither viewport, so this pins the expression; the reasoning is in Hud.tsx.
+    renderHud(replay);
+    expect(
+      screen.getByRole("complementary", { name: "Telemetry" }),
+    ).toHaveClass(
+      "max-h-[max(40%,min(13.75rem,100%-12.5rem))]",
+      "md:max-h-none",
+    );
+  });
 });
 
 /**

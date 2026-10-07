@@ -234,17 +234,33 @@ export function Hud({ replay }: HudProps) {
     // not. The border follows the edge it is actually on, so the panel never looks
     // detached from the canvas it belongs to.
     //
-    // The strip is CAPPED (Slice 23): `max-h-[40%]` of the stacked region between
-    // the header and the transport bar, with the list scrolling inside it. Uncapped,
-    // a full field took all of that region — the canvas measured 0 px at 375x812 and
-    // the strip ran on under the transport bar. 40% leaves the track at least 60%
-    // (339 px there with 22 cars) and still holds the focused readout whole (194 px
-    // block, 201 px list). A tower under the cap keeps its own height — the one-car
-    // fixture is untouched; a three-car window at 375x812 now scrolls its last
-    // ~48 px. The sidebar needs no cap (`md:max-h-none`): its row bounds it.
+    // The strip is CAPPED (Slice 23), with a bounded FLOOR, as one max-height over
+    // the stacked region between the header and the transport bar — the list
+    // scrolls inside whatever it resolves to:
+    //
+    //     max(40%, min(13.75rem, 100% - 12.5rem))
+    //
+    //  - 40%, the cap. Uncapped, a full field took the whole region: the canvas
+    //    measured 0 px at 375x812 and the strip ran on under the transport bar.
+    //    40% leaves the track at least 60% (339 px there with 22 cars).
+    //  - 13.75rem (220 px), the floor: a strip that fits keeps its height. The
+    //    one-car fixture's strip measures 219 px (a 194 px readout at every point
+    //    of its lap, + `p-3` + the border); 40% alone cut it to 178 px at 375x667
+    //    and hid the speed trace behind a scroll. At 375x667 the same floor holds
+    //    a full field's focused readout whole too (a 195 px list).
+    //  - 100% - 12.5rem, the floor's bound: the floor never pushes the track under
+    //    200 px (the layout check's canvas floor). Unbounded, it is taller than a
+    //    landscape phone's whole region — 22 cars measured the canvas at 0 px
+    //    again at 667x375 and 740x360. There the bare 40% wins, as before.
+    //
+    // Measured: 375x812 and taller are as the bare 40% left them (a three-car
+    // window scrolls its last ~48 px); at 375x667 the one-car strip is whole and
+    // 22 cars leave the track exactly 200 px; at 360x640 the two floors meet and
+    // the track wins — the one-car list is 192 of 194 px, the track 200. The
+    // sidebar needs no cap (`md:max-h-none`): its row bounds it.
     <aside
       aria-label="Telemetry"
-      className="flex max-h-[40%] shrink-0 flex-col border-t border-line bg-panel p-3 md:max-h-none md:w-56 md:border-l md:border-t-0 md:p-4"
+      className="flex max-h-[max(40%,min(13.75rem,100%-12.5rem))] shrink-0 flex-col border-t border-line bg-panel p-3 md:max-h-none md:w-56 md:border-l md:border-t-0 md:p-4"
     >
       {/* `overflow-y-auto` + `min-h-0` because twenty cars are taller than any
           sidebar or strip: the list shrinks to what the aside allows and scrolls,
