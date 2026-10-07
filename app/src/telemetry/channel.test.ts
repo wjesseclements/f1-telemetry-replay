@@ -150,7 +150,8 @@ describe("telemetry channel", () => {
      * a function of the clock and the car's static samples. Nothing the HUD draws is a
      * function of a published coordinate any more, so a coordinate must not buy an emit.
      *
-     * This pair CANNOT occur in production — the loop publishes `sampleAt(clock)`, so a
+     * This pair CANNOT occur in production — the loop publishes `sampleAt(replay, clock,
+     * scene.carHeadingHolds)`, a function of the clock once the replay is loaded, so a
      * moved car means a moved clock — which is exactly why the term cost nothing to
      * remove and why removing it changes no real emit count.
      */

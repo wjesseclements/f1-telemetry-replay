@@ -100,10 +100,21 @@ export function gridSpan(car: Car, sampleRateHz: number): number {
 }
 
 /**
- * Per sample, the segment a stationary car's heading is held from: the START index
- * of the last segment with non-zero length that ends at or before that sample, or
- * `-1` while the car has not moved yet. Build it once per car, per replay, and pass
- * it to `sampleCarAt`.
+ * How much of a parked car's first motion its held heading is read over, in seconds
+ * — see `headingHolds`. Exported for the tests.
+ */
+export const DEPARTURE_SECONDS = 1;
+
+/**
+ * Per sample, the heading a car stationary at that sample shows, in radians (the
+ * `atan2` convention of `CarSnapshot.heading`). Build it once per car, per replay,
+ * and pass it to `sampleCarAt`, which reads it only on a zero-length step.
+ *
+ *  - After the car's first move: the direction of the last segment that moved,
+ *    ending at or before the sample — the way it arrived.
+ *  - Up to its first move: the way it LEAVES — the chord from where it is parked to
+ *    where it is `DEPARTURE_SECONDS` after it starts moving.
+ *  - A car with no move anywhere in the replay: 0, world-east.
  *
  * WHY A PRECOMPUTED INDEX (Slice 23). The hold used to look back exactly one segment,
  * which covers a stop one grid step long and nothing longer: from the second
@@ -112,49 +123,101 @@ export function gridSpan(car: Car, sampleRateHz: number): number {
  * grid 63–90° off its line by 1:10, and LEC's red-flag wreck pointed east for two
  * minutes. Walking back to the last move at sample time would cost the length of the
  * stop, per car, per frame (rule 3); this costs one pass at load and one array read
- * after it.
+ * after it. It holds the heading itself rather than the index of a segment so that
+ * each policy below is decided here, once, and the frame path reads one number.
  *
- * Only segments `k - 1 -> k` count — never the closed lap's wrap segment — so the
- * hold does not reach round to the end of the lap: a car stationary from sample 0
- * has no direction of travel yet, and 0 (world-east) is the honest answer until it
- * first moves.
+ * WHY A LEADING STOP LOOKS FORWARD (Slice 23 follow-up, coordinator ruling). A car
+ * parked from sample 0 — a grid slot, a pit box, a car stopped when the window opens
+ * — has no move behind it, and this used to answer 0: world-east, a fact about the
+ * replay's axes and not about the car. The same bug in its other case: the red-flag
+ * window opens with all 22 cars parked, LAW for 7.0 s and ALO for 7.3 s, ticks up to
+ * 87° off the way they then drove away — ~3.5 s of wall time at the scenario's 2x,
+ * and indefinitely on its clock-0 landing frame for a reduced-motion user, who lands
+ * paused. A parked car does not reverse: it leaves the way it is facing.
+ *
+ * WHY OVER A SECOND, NOT THE FIRST SEGMENT (measured — this extends the ruling, which
+ * said the first moving segment). A car pulling away from rest makes its shortest,
+ * noisiest segments first: position is quantised, and HAM's first "move" in that file
+ * is one quantum BACKWARDS, so the literal rule turned his tick round, 175° off — worse
+ * than the 85° of the east it replaced — with HUL, LIN and LEC 20–40° off. Over one
+ * second of motion every leading stop in the gallery lands within 1° of the car's 2 s
+ * departure: long enough that a quantum is noise, short enough that it has not turned
+ * yet. Time, not distance, because the engine does not know the position unit (the
+ * Slice 6b rule `gaps.ts` keeps). The way a car ARRIVES at a later stop is still read
+ * off its last segment, as Slice 23 shipped it: the same noise is measurable there
+ * (up to 22° off the car's 2 s arrival in the restart file, 34° in the rain file's
+ * pit stops), smaller, and left for its own ruling rather than widened in here.
+ *
+ * Only segments `k - 1 -> k` count — never the closed lap's wrap segment, in either
+ * direction — so one rule serves both loop modes, and nothing reaches round the lap.
+ * What is left for 0 is a car with no move anywhere: it has no direction at all, and
+ * inventing one would be worse than the axis.
+ *
+ * @throws {RangeError} if `sampleRateHz` is not a positive finite number — which is
+ *         also what `cars.map(headingHolds)` hits on car 0, since `map` passes the
+ *         array INDEX as the second argument; it would otherwise run, quietly wrong.
  */
-export function headingHolds(car: Car): Int32Array {
+export function headingHolds(car: Car, sampleRateHz: number): Float64Array {
+  if (!(sampleRateHz > 0) || !Number.isFinite(sampleRateHz)) {
+    throw new RangeError(
+      `headingHolds needs a positive finite sampleRateHz, got ${sampleRateHz}`,
+    );
+  }
   const samples = car.samples;
-  const holds = new Int32Array(samples.length);
-  holds[0] = -1;
-  for (let k = 1; k < samples.length; k++) {
+  const n = samples.length;
+  // Zero-filled: every entry a never-moving car will ever have.
+  const held = new Float64Array(n);
+  let first = -1;
+  for (let k = 1; k < n; k++) {
     const a = samples[k - 1];
     const b = samples[k];
-    holds[k] = a.x !== b.x || a.y !== b.y ? k - 1 : holds[k - 1];
+    if (a.x !== b.x || a.y !== b.y) {
+      held[k] = Math.atan2(b.y - a.y, b.x - a.x);
+      if (first < 0) first = k - 1;
+    } else {
+      held[k] = held[k - 1];
+    }
   }
-  return holds;
+  if (first >= 0) {
+    // Every sample up to the first move — read only where a leading stop leaves
+    // them stationary — takes the departure chord.
+    const span = Math.max(1, Math.round(DEPARTURE_SECONDS * sampleRateHz));
+    const from = samples[first];
+    const to = samples[Math.min(first + span, n - 1)];
+    const departure =
+      to.x !== from.x || to.y !== from.y
+        ? Math.atan2(to.y - from.y, to.x - from.x)
+        : // Back where it was parked a second later: the first move is all there is.
+          held[first + 1];
+    held.fill(departure, 0, first + 1);
+  }
+  return held;
 }
 
 /**
  * Heading of the segment leaving sample `i`, in radians.
  *
  * A zero-length segment (a stationary car — red flag, pit box, grid, or an open
- * window's held last step) has no direction of its own, so we hold the direction of
- * the car's last move rather than let `atan2(0, 0)` snap the marker to due east. See
- * `headingHolds` for where that comes from and why it is precomputed.
+ * window's held last step) has no direction of its own, so we hold the way the car
+ * arrived — or, parked from the start, the way it leaves — rather than let
+ * `atan2(0, 0)` snap the marker to due east. See `headingHolds` for where that comes
+ * from and why it is precomputed.
  */
-function headingAt(car: Car, holds: Int32Array, i: number, j: number): number {
+function headingAt(
+  car: Car,
+  holds: Float64Array,
+  i: number,
+  j: number,
+): number {
   const samples = car.samples;
   const dx = samples[j].x - samples[i].x;
   const dy = samples[j].y - samples[i].y;
-  if (dx !== 0 || dy !== 0) return Math.atan2(dy, dx);
-
-  const m = holds[i];
-  if (m < 0) return 0;
-  return Math.atan2(
-    samples[m + 1].y - samples[m].y,
-    samples[m + 1].x - samples[m].x,
-  );
+  return dx !== 0 || dy !== 0 ? Math.atan2(dy, dx) : holds[i];
 }
 
 /**
- * Sample one car at `clock`. O(1): two sample reads (three on a stop), no scanning.
+ * Sample one car at `clock`. O(1): two sample reads (plus one array read on a stop),
+ * no scanning.
  *
  * @param loop `"closed"` — a lap: the segment leaving the last sample wraps back to
  *             the first, so the car keeps moving across the lap boundary instead of
@@ -163,10 +226,10 @@ function headingAt(car: Car, holds: Int32Array, i: number, j: number): number {
  *             the car to be travelling to. Required, with no default, so that every
  *             call site states which kind of replay it means. See the file header.
  *
- * @param holds `headingHolds(car)`, built once per replay — never per call, which
- *              would put an O(samples) pass back on the frame path. Required for the
- *              same reason `loop` is: a caller without it has a stopped car pointing
- *              east, and nothing would say so.
+ * @param holds `headingHolds(car, sampleRateHz)`, built once per replay — never per
+ *              call, which would put an O(samples) pass back on the frame path.
+ *              Required for the same reason `loop` is: a caller without it has a
+ *              stopped car pointing east, and nothing would say so.
  *
  * `clock` is wrapped in BOTH modes. An open replay still loops as a whole — the cut
  * at the window's end is the transport's, not this function's — so there is exactly
@@ -180,7 +243,7 @@ export function sampleCarAt(
   clock: number,
   sampleRateHz: number,
   loop: LoopMode,
-  holds: Int32Array,
+  holds: Float64Array,
 ): CarSnapshot {
   const samples = car.samples;
   const n = samples.length;
@@ -239,7 +302,7 @@ export function sampleCarAt(
 export function sampleAt(
   replay: Replay,
   clock: number,
-  holds: readonly Int32Array[],
+  holds: readonly Float64Array[],
 ): CarSnapshot[] {
   const { sampleRateHz, loop } = replay.meta;
   if (holds.length !== replay.cars.length) {

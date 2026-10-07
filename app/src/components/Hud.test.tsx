@@ -427,9 +427,10 @@ describe("HUD / signature coupling", () => {
  * SINCE SLICE 9d A GAP IS A FUNCTION OF THE REPLAY AND THE CLOCK, not of the published
  * snapshot. `gaps.ts` reads each car's precomputed progress around a shared circuit, so
  * these tests set up the DATA rather than injecting a position into a frame. In
- * production the two agree by construction — the snapshot IS `sampleAt(replay, clock)`,
- * published with that same clock — but a test can no longer move one without the other,
- * and should not be able to.
+ * production the two agree by construction — the snapshot IS `sampleAt(replay, clock,
+ * scene.carHeadingHolds)`, whose holds are built from that same replay, published with
+ * that same clock — but a test can no longer move one without the other, and should not
+ * be able to.
  *
  * The second car is the fixture's own lap shifted by exactly 20 samples, so at 10 Hz it
  * is 2.000 s AHEAD of the first at every clock: the expected gaps are exact by

@@ -1050,3 +1050,89 @@ describe("TrackCanvas retirement (Slice 9l)", () => {
     expect(wakeStrokes(lastFrame(recording)).length).toBeGreaterThan(0);
   });
 });
+
+describe("TrackCanvas stopped car (Slice 23)", () => {
+  /**
+   * The wiring test for `scene.carHeadingHolds`. The engine tests pin `headingHolds`
+   * and `sampleCarAt`; nothing pinned that the index `buildScene` hands the loop is
+   * the real one, in car order. The Slice 23 review swapped it for a dead index
+   * (then an all -1 `Int32Array`; today's equivalent is all zeros, world-east) and
+   * every render, component and App test still passed — the fixture never stops, so
+   * no canvas test ever drew a stopped car. This one draws one, deep enough into its
+   * stop that only the index can say which way it points. Both mutations — dead, and
+   * the right arrays in reversed car order — fail it (Slice 23 follow-up).
+   */
+  const OTHER_COLOR = "#ff8000";
+  /** Car 0 parks AT this sample, for 4 s — forty grid steps, not one. */
+  const PARK_AT = 200;
+  const PARK_STEPS = 40;
+  /** Twenty steps into the stop: far past what a one-step look-back could reach. */
+  const CLOCK = (PARK_AT + 20 + 0.5) / replay.meta.sampleRateHz;
+
+  /**
+   * Car 0 is the fixture's lap frozen at sample `PARK_AT` for `PARK_STEPS` steps
+   * (then rejoining its own line — test geometry, not physics). Car 1 is the fixture
+   * driving straight through, so a holds array handed over in the wrong car ORDER is
+   * a moving car's index read on a parked one — which the length guard cannot see,
+   * every car in a window being the same length.
+   */
+  const parkedPair = parseReplay(
+    {
+      ...replay,
+      cars: [
+        {
+          ...car,
+          samples: car.samples.map((s, k) =>
+            k > PARK_AT && k <= PARK_AT + PARK_STEPS
+              ? { ...s, x: car.samples[PARK_AT].x, y: car.samples[PARK_AT].y }
+              : s,
+          ),
+        },
+        { ...car, driver: "SEC", color: OTHER_COLOR },
+      ],
+    },
+    "parked-pair",
+  );
+
+  it("points the parked car's tick along its last move, not world-east", () => {
+    useTransport.setState({
+      replay: parkedPair,
+      isPlaying: false,
+      seekTarget: CLOCK,
+    });
+    render(<TrackCanvas replay={parkedPair} />);
+    raf.tick();
+    raf.tick(); // paused draw path: seek applied, frame painted
+
+    // The last move, PARK_AT - 1 -> PARK_AT, carried through the same rotation and
+    // fit the marker is: the direction the car was visibly travelling when it stopped.
+    const pairFit = fitTransform(
+      buildScene(parkedPair).bounds,
+      WIDTH,
+      HEIGHT,
+      PAD_PX,
+    );
+    const [before, at] = toScreenPoints(
+      [car.samples[PARK_AT - 1], car.samples[PARK_AT]],
+      replay.meta.rotation,
+    ).map((p) => applyTransform(p, pairFit));
+    const lastMove = angleOf(before, at);
+
+    const tick = headingTick(lastFrame(recording));
+    expect(tick.from.x).toBeCloseTo(at.x, 6); // it is the parked car's tick
+    expect(tick.from.y).toBeCloseTo(at.y, 6);
+    expect(angleOf(tick.from, tick.to)).toBeCloseTo(lastMove, 6);
+
+    // …and the wrong answer is genuinely different here, so the assertion has
+    // something to catch: a dead index draws heading 0, the world x-axis, on screen.
+    const [o, east] = toScreenPoints(
+      [
+        { x: 0, y: 0 },
+        { x: 1, y: 0 },
+      ],
+      replay.meta.rotation,
+    );
+    const off = Math.abs(lastMove - angleOf(o, east));
+    expect(Math.min(off, 2 * Math.PI - off)).toBeGreaterThan(0.5);
+  });
+});
