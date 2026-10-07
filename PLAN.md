@@ -5013,6 +5013,113 @@ watch: the `track.pitLane` re-election, and no-label-at-6:19 (on the line is on
 the line). Auto-merge (squash) enabled on the human's instruction. The board
 advances: **18 → 20**.
 
+### [x] Slice 22 — headless-Chrome layout check (the instrument; the fix is Slice 23) (done 2026-10-07)
+
+**Filed and built 2026-10-07 on the human's direction, ahead of the board (18 → 20),
+from the whole-project review of that day.** jsdom has no layout engine — every box
+it reports is 0x0 — so the suite proves WHAT renders and never WHERE. Two layout
+defects had shipped that no gate could see:
+1. Below `md`, a 22-car replay squeezes the track canvas to 0 px: the Hud aside is
+   `shrink-0` (`Hud.tsx:238`) and the tower spills under the transport bar.
+2. The featured panel (`FeaturedPanel.tsx:92`, `items-center justify-center
+   overflow-y-auto`) centres a card taller than itself, so its heading and Close
+   button are clipped out of reach at 1280x720.
+
+This slice builds the INSTRUMENT and fixes neither defect. It fails today by design,
+so it is **not** in `npm run check` or CI (never commit red); Slice 23 fixes the
+layout and wires it in once it is green.
+
+**What shipped: `cd app && npm run build && npm run check:layout`**
+(`scripts/layout-check.ts` + `scripts/layout/`, zero new dependencies).
+- **Browser:** the SYSTEM Chrome (`CHROME_PATH`, the macOS bundle, then
+  google-chrome / google-chrome-stable / chromium / chromium-browser on PATH), driven
+  over the DevTools Protocol with Node's built-in WebSocket, against `dist/` served
+  by Vite's own `preview()` on 127.0.0.1 and an OS-chosen port. A missing build fails
+  loudly with the fix.
+- **Viewports:** 375x812 (`mobile: true` below Tailwind's `md`), 1280x720,
+  1440x900, each in a fresh browser context, `prefers-reduced-motion` emulated so
+  every run measures the same frozen frame (paused boot, no FLIP slides).
+- **States:** A first load (gallery over the fixture); B the scenario with the most
+  cars, loaded by clicking its card (count from the built asset, title from the
+  manifest through the app's own parse) and awaited until the tower shows that many
+  rows; C the gallery reopened from the header.
+- **Assertions,** each printed with what it measured, every threshold justified
+  where it is declared and none tuned to a result: panel heading row and Close
+  visible at scrollTop 0 (inside the viewport, inside the scrollport, and a hit test
+  at the centre lands on it); last card reachable by scrolling; transport bar in the
+  viewport; canvas ≥ max(200 px, 30% of the viewport height) tall and ≥ 50% of its
+  width; the Telemetry aside clear of the transport bar and the canvas; no horizontal
+  overflow; legend clear of the header; reopened panel visible ≥ 200 px; and per
+  viewport, no off-origin request and no page exception.
+- **Selectors** use the app's existing roles, labels and ids plus a few structural
+  ones (`figure`, `ul > li > button`), all in one `SELECTORS` table; no test ids.
+
+**Robustness — why the harness is shaped this way.** Earlier headless runs on this
+machine (`--dump-dom`, `--virtual-time-budget`) hung until their tool timeouts. This
+one uses `--headless=new --remote-debugging-port=0` with a throwaway
+`--user-data-dir`, drains stderr, gives every CDP command and wait its own deadline
+under a 90 s hard cap, starts Chrome as its own process-group leader, tears down
+Chrome, profile and server on every path (success, FAIL, exception, the cap,
+SIGINT/SIGTERM, a second signal), and proves each `fn.toString()` probe runnable on
+a blank page before measuring, so a toolchain that injects a helper surfaces as one
+named failure. **Exit codes:** 0 every row passed; 1 the run finished with a FAIL
+row (layout, a state not reached, an off-origin request, a page exception, a harness
+fault mid-run); 2 the run did not finish (no build, no Chrome, probes cannot run,
+the cap); 130/143 interrupted. **CI only:** `--no-sandbox` when `CI=true` on Linux,
+UNVERIFIED until the first CI run (Ubuntu 24.04's AppArmor userns restriction).
+
+**Offline inside the browser — three layers, two of which enforce.** (1) The
+background-networking flags only REDUCE Chrome's own traffic: a net-log on Chrome
+154 still showed www.google.com, accounts.google.com, www.gstatic.com,
+update.googleapis.com and clients2.google.com attempted. (2)
+`--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1, EXCLUDE localhost` blocks
+them and anything the page tries (IP literals included, measured). (3)
+`--no-proxy-server` keeps that rule in force — a proxied request is resolved by the
+proxy, never by Chrome. The recorder FAILs any attempt off the preview origin from
+the page, its dedicated/shared/service workers and its out-of-process iframes
+(auto-attached paused; the `Network.enable`s are SENT, not awaited, before the
+resume — awaiting them deadlocked a paused service worker). Chrome's own requests
+have no page, so layers 2–3 are what stop them.
+
+**Evidence (2026-10-07, Chrome 154, macOS, app code unmodified): 39/51 passed, 12
+FAIL, ≈2.1 s.**
+- 375x812, 8 FAIL — A: heading row and Close 228 px above the scrollport; B: canvas
+  **0.0 px** (min 243.6), aside over the transport bar by 375x109, legend inside the
+  header; C: panel visible **32 px**, heading and Close clipped.
+- 1280x720, 4 FAIL — A and C: heading row and Close at y 8.6–33.1 above a scrollport
+  starting at 54; hit test misses.
+- 1440x900: all 17 rows PASS.
+- Three runs byte-identical (numbers, not just verdicts). Offline proof by scratch
+  injection (page fetches to a host, an http host and `192.0.2.1`; dedicated, shared
+  and service workers; a cross-origin iframe): all flagged, all
+  `ERR_NAME_NOT_RESOLVED`. Proxy proof: a loopback sink set as `--proxy-server` took
+  30 connections with the old flags (Chrome's own + the page's 6 fetches), **0**
+  with `--no-proxy-server`. Teardown: identical `ps` before/after and no profile left
+  on every exit path above.
+- Gates: `npm run check` green, 0 warn/error lines in the full log; vitest 4.1.10,
+  46 files / 846 tests (+5 files / 25 tests under `scripts/layout`).
+
+**Amendments (in-slice, from the adversarial review).**
+- **Reality failed more than predicted, reported rather than tuned:** the
+  prediction was 375 B/C and 1280 A; 375 A and 1280 C failed too — the same
+  panel-centring root cause, not a new bug.
+- **A proxy bypassed the offline rule** (the dead `--proxy-server` had been dropped
+  as "measured redundant" on a machine with no proxy); `--no-proxy-server` closes
+  it, and the "background flags stop Chrome phoning home" claim was false and is
+  rewritten as above.
+- **Workers were a blind spot** (recorder listened to the page session only); now
+  recorded, with the deadlock-free resume order pinned by a mutation-checked test.
+- **Page exceptions were a NOTE; now a FAIL row.** **A double Ctrl-C leaked the
+  profile** (`process.once`); fixed. **The exit-code docs** claimed an overrun step
+  exits 2; it exits 1, and the contract is documented as measured.
+- **The session-keying recorder test could not fail** (it failed the worker's
+  request, the last registration either way); it now fails the page's, and a
+  mutation back to an id-only key fails it.
+- **Crashpad unchanged, by measurement:** it writes to the user's real Chrome crash
+  store and rewrites `settings.dat` on every launch; none of
+  `--disable-crash-reporter`, `--disable-breakpad`, `--disable-crashpad-for-testing`,
+  `--crash-dumps-dir` or `CHROME_HEADLESS=1` changed that, so none is passed.
+
 ## Backlog (ideas — not committed)
 - **Fixture asymmetry overhaul** — rebuild the committed fixture with no symmetries,
   distinct angles, and no near-cancellations, so it can express handedness,
