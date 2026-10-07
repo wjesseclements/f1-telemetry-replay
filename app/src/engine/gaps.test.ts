@@ -417,7 +417,8 @@ describe("past a window edge, the walk is the FOCUSED car's own lap (Slice 23)",
    * The same shape on the test circuit: a reference held for 10 s inside its first lap
    * (a 30 s first lap), and three cars with no hold — the focus C1, C2 two seconds ahead
    * of it and C3 two seconds behind. Their true gaps are +/-2 s and +/-100 m at every
-   * clock, including where `t*` leaves the window.
+   * clock, including where `t*` leaves the window. Focused in its turn, the held car is
+   * the one whose own first and last laps differ, which pins WHICH of its laps is walked.
    */
   const HOLD_FROM = 40;
   const HOLD = 100; // samples: 10 s parked at ring sample 40
@@ -450,6 +451,38 @@ describe("past a window edge, the walk is the FOCUSED car's own lap (Slice 23)",
     // Until 2 s, C1 was at C3's point before the window opened.
     for (let k = 0; k <= 40; k++) {
       const gap = gapTo(index, 1, 3, k / RATE)!;
+      expect(gap.seconds).toBeCloseTo(2, 6);
+      expect(gap.metres).toBeCloseTo(100, 4);
+    }
+  });
+
+  it("walks the HELD car by its lap AT the edge it leaves, not its first at both", () => {
+    // The same fixture with the held car focused. Every focus above laps identically at
+    // both edges, so none of them can tell "its own lap" from "its own lap at THIS edge"
+    // — and the second half is the half that fixed the restart, where every car's first
+    // lap holds the formation and the grid (RUS 166.1 s first, 86.4 s last). The focus's
+    // own FIRST lap at both edges, its LAST at both, and the two edges swapped each
+    // passed the whole suite before this test (Slice 23 review). On the shipped restart
+    // the first brings the step back: focus ANT reads RUS -4.05 s at t=421 and -72.60 s
+    // at t=422, and the worst one-tick step at the window's end is 83.5 s. The END half
+    // below catches it, the START half catches the last-at-both, and both the swap.
+    // The precondition: C0's own laps differ, 30 s (the hold) first and 20 s last.
+    const own = index.edgeLaps[0]!;
+    expect(own.before.seconds).toBeCloseTo(30, 6);
+    expect(own.after.seconds).toBeCloseTo(20, 6);
+
+    // END: past the hold C1 runs 100 samples (10 s, 500 m) ahead of C0, and from 50 s
+    // on C0 reaches C1's point only after the window closes. Walking it on by its 30 s
+    // first lap reads -20 s.
+    for (let k = 450; k <= 599; k++) {
+      const gap = gapTo(index, 0, 1, k / RATE)!;
+      expect(gap.seconds).toBeCloseTo(-10, 6);
+      expect(gap.metres).toBeCloseTo(-500, 4);
+    }
+    // START: C3 starts 2 s (100 m) behind, and until 2 s C0 was at C3's point before
+    // the window opened. Walking it back by its 20 s last lap reads -8 s.
+    for (let k = 0; k <= 30; k++) {
+      const gap = gapTo(index, 0, 3, k / RATE)!;
       expect(gap.seconds).toBeCloseTo(2, 6);
       expect(gap.metres).toBeCloseTo(100, 4);
     }
