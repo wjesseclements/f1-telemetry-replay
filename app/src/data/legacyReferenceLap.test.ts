@@ -2,10 +2,15 @@
  * legacyReferenceLap.test.ts — the legacy synthesis, proven on the SHIPPED files.
  *
  * Slice 24 made the reference lap explicit (`track.referenceLap`), and a file
- * without one must keep behaving exactly as it did. "Exactly" is checked here
+ * without one must keep behaving exactly as it did. "Exactly" was checked here
  * against the engine that defined the old behaviour: for every committed gallery
- * asset, the span the loader synthesizes is the span `gaps.ts`'s `buildReference`
- * measures (`ProgressIndex.lapSeconds`, i.e. `findLapEnd(cars[0]) / rate`).
+ * asset, the span the loader synthesizes was the span `gaps.ts`'s `buildReference`
+ * then SEARCHED for (`ProgressIndex.lapSeconds`, i.e. `findLapEnd(cars[0]) / rate`).
+ * Since the consumer half, `buildReference` reads the settled span instead, so
+ * `toT === lapSeconds` now pins that the consumer reads what the loader settled; the
+ * `LEGACY_TO_T` values below — measured while the engine still searched, and
+ * unchanged by the regeneration (every sample is byte-identical) — are what keep
+ * "exactly as before" honest.
  *
  * The field is DELETED from the raw JSON before parsing, so this keeps testing the
  * legacy path even after the assets are regenerated with an explicit field.
