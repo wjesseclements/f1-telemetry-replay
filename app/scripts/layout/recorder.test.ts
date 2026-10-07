@@ -82,13 +82,17 @@ describe("PageRecorder", () => {
       ...request("7", "https://b.example/"),
       sessionId: "worker",
     });
+    // Fail the PAGE's request — the FIRST registration of id 7. A key of the
+    // request id alone lets the worker's registration overwrite it, so the failure
+    // would land on b.example; failing the worker's instead could not tell the two
+    // keyings apart.
     recorder.handle({
       method: "Network.loadingFailed",
-      sessionId: "worker",
+      sessionId: "page",
       params: { requestId: "7", errorText: "net::ERR_NAME_NOT_RESOLVED" },
     });
     expect(recorder.summary()).toBe(
-      "2: https://a.example/, https://b.example/ (net::ERR_NAME_NOT_RESOLVED)",
+      "2: https://a.example/ (net::ERR_NAME_NOT_RESOLVED), https://b.example/",
     );
   });
 
