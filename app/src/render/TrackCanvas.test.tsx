@@ -65,7 +65,7 @@ const fit = fitTransform(scene.bounds, WIDTH, HEIGHT, PAD_PX);
 
 /** Where the marker for `car` belongs on screen at a given clock. */
 function expectedMarker(clock: number): Point {
-  const snapshots = sampleAt(replay, clock);
+  const snapshots = sampleAt(replay, clock, scene.carHeadingHolds);
   const [rotated] = toScreenPoints(snapshots, replay.meta.rotation);
   return applyTransform(rotated, fit);
 }
@@ -702,7 +702,7 @@ describe("TrackCanvas trail", () => {
     raf.tick(0); // repaint at the new size without advancing the clock
 
     const refit = fitTransform(scene.bounds, 1000, 700, PAD_PX);
-    const snapshots = sampleAt(replay, 0.2);
+    const snapshots = sampleAt(replay, 0.2, scene.carHeadingHolds);
     const want = applyTransform(
       toScreenPoints(snapshots, replay.meta.rotation)[0],
       refit,
@@ -939,7 +939,11 @@ describe("TrackCanvas in an open window", () => {
       (c) => c.method === "stroke" && c.lineWidth === TRAIL_WIDTH && !c.path,
     );
     // The head is stroked last, and takes the bucket of the sample it leaves.
-    const index = sampleAt(openReplay, 20)[0].index;
+    const index = sampleAt(
+      openReplay,
+      20,
+      buildScene(openReplay).carHeadingHolds,
+    )[0].index;
     const speed = car.samples[index].speed;
     expect(comet[comet.length - 1].strokeStyle).toBe(
       bucketColor(bucketOf(speed, COMET_BUCKETS), COMET_BUCKETS),

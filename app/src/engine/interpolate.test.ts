@@ -9,10 +9,18 @@ import { describe, it, expect } from "vitest";
 import sampleLap from "./__fixtures__/sample-lap.json";
 import { parseReplay } from "./load";
 import type { Car, Replay, Sample } from "./schema";
-import { gridSpan, sampleAt, sampleCarAt, wrapClock } from "./interpolate";
+import {
+  gridSpan,
+  headingHolds,
+  sampleAt,
+  sampleCarAt,
+  wrapClock,
+} from "./interpolate";
 
 const replay: Replay = parseReplay(sampleLap, "sample-lap.json");
 const car: Car = replay.cars[0];
+/** Built once, as production builds it once per replay (`buildScene`). */
+const HOLDS = headingHolds(car);
 const samples = car.samples;
 const RATE = replay.meta.sampleRateHz; // 10
 const N = samples.length; // 585
@@ -81,22 +89,24 @@ describe("gridSpan", () => {
       [20, 0],
     ]);
     expect(gridSpan(short, 1)).toBe(3);
-    expect(sampleCarAt(short, 3, 1, "closed").index).toBe(0);
-    expect(sampleCarAt(short, 3, 1, "closed").x).toBe(0);
+    expect(sampleCarAt(short, 3, 1, "closed", headingHolds(short)).index).toBe(
+      0,
+    );
+    expect(sampleCarAt(short, 3, 1, "closed", headingHolds(short)).x).toBe(0);
   });
 });
 
 describe("sampleCarAt — O(1) grid lookup", () => {
   it("lands on index floor(clock * sampleRateHz) without scanning", () => {
-    expect(sampleCarAt(car, 0, RATE, "closed").index).toBe(0);
-    expect(sampleCarAt(car, 20, RATE, "closed").index).toBe(200);
-    expect(sampleCarAt(car, 20.05, RATE, "closed").index).toBe(200);
-    expect(sampleCarAt(car, 58.4, RATE, "closed").index).toBe(584);
+    expect(sampleCarAt(car, 0, RATE, "closed", HOLDS).index).toBe(0);
+    expect(sampleCarAt(car, 20, RATE, "closed", HOLDS).index).toBe(200);
+    expect(sampleCarAt(car, 20.05, RATE, "closed", HOLDS).index).toBe(200);
+    expect(sampleCarAt(car, 58.4, RATE, "closed", HOLDS).index).toBe(584);
   });
 
   it("reproduces every raw sample exactly at its own grid point", () => {
     for (let k = 0; k < N; k++) {
-      const snap = sampleCarAt(car, k / RATE, RATE, "closed");
+      const snap = sampleCarAt(car, k / RATE, RATE, "closed", HOLDS);
       expect(snap.index, `index at k=${k}`).toBe(k);
       expect(snap.x, `x at k=${k}`).toBeCloseTo(samples[k].x, 9);
       expect(snap.y, `y at k=${k}`).toBeCloseTo(samples[k].y, 9);
@@ -110,10 +120,10 @@ describe("sampleCarAt — O(1) grid lookup", () => {
   it("does not depend on the order clocks are asked for", () => {
     // A cursor-based (non-O(1)) implementation would drift when seeking backwards.
     const forward = [0, 10, 20.05, 40, 58.4].map(
-      (t) => sampleCarAt(car, t, RATE, "closed").x,
+      (t) => sampleCarAt(car, t, RATE, "closed", HOLDS).x,
     );
     const backward = [58.4, 40, 20.05, 10, 0]
-      .map((t) => sampleCarAt(car, t, RATE, "closed").x)
+      .map((t) => sampleCarAt(car, t, RATE, "closed", HOLDS).x)
       .reverse();
     expect(backward).toEqual(forward);
   });
@@ -123,7 +133,7 @@ describe("sampleCarAt — continuous channels interpolate", () => {
   // Samples 200/201 straddle a braking point: 323 -> 313 km/h at (664.6, 815.1)
   // -> (659.5, 808.0). Expected values are the hand-computed midpoints.
   it("lerps x, y and speed halfway through a step", () => {
-    const snap = sampleCarAt(car, 20.05, RATE, "closed");
+    const snap = sampleCarAt(car, 20.05, RATE, "closed", HOLDS);
     expect(snap.x).toBeCloseTo(662.05, 6);
     expect(snap.y).toBeCloseTo(811.55, 6);
     expect(snap.speed).toBeCloseTo(318, 6);
@@ -133,12 +143,15 @@ describe("sampleCarAt — continuous channels interpolate", () => {
     // Sample 199 is on full throttle, 200 is off it entirely.
     expect(samples[199].throttle).toBe(100);
     expect(samples[200].throttle).toBe(0);
-    expect(sampleCarAt(car, 19.95, RATE, "closed").throttle).toBeCloseTo(50, 6);
+    expect(sampleCarAt(car, 19.95, RATE, "closed", HOLDS).throttle).toBeCloseTo(
+      50,
+      6,
+    );
   });
 
   it("returns speed unrounded — rounding belongs to the HUD", () => {
     // A quarter of the way from 323 km/h to 313 km/h is 320.5.
-    const snap = sampleCarAt(car, 20.025, RATE, "closed");
+    const snap = sampleCarAt(car, 20.025, RATE, "closed", HOLDS);
     expect(snap.speed).toBeCloseTo(320.5, 6);
     expect(Number.isInteger(snap.speed)).toBe(false);
   });
@@ -148,24 +161,24 @@ describe("sampleCarAt — discrete channels forward-fill", () => {
   it("holds gear for the whole step and changes in one jump", () => {
     expect(samples[9].gear).toBe(5);
     expect(samples[10].gear).toBe(6);
-    expect(sampleCarAt(car, 0.9, RATE, "closed").gear).toBe(5);
-    expect(sampleCarAt(car, 0.95, RATE, "closed").gear).toBe(5); // never 5.5
-    expect(sampleCarAt(car, 0.99, RATE, "closed").gear).toBe(5);
-    expect(sampleCarAt(car, 1.0, RATE, "closed").gear).toBe(6);
+    expect(sampleCarAt(car, 0.9, RATE, "closed", HOLDS).gear).toBe(5);
+    expect(sampleCarAt(car, 0.95, RATE, "closed", HOLDS).gear).toBe(5); // never 5.5
+    expect(sampleCarAt(car, 0.99, RATE, "closed", HOLDS).gear).toBe(5);
+    expect(sampleCarAt(car, 1.0, RATE, "closed", HOLDS).gear).toBe(6);
   });
 
   it("holds brake across a step where it flips", () => {
     expect(samples[101].brake).toBe(0);
     expect(samples[102].brake).toBe(1);
-    expect(sampleCarAt(car, 10.15, RATE, "closed").brake).toBe(0);
-    expect(sampleCarAt(car, 10.2, RATE, "closed").brake).toBe(1);
+    expect(sampleCarAt(car, 10.15, RATE, "closed", HOLDS).brake).toBe(0);
+    expect(sampleCarAt(car, 10.2, RATE, "closed", HOLDS).brake).toBe(1);
   });
 
   it("holds the raw DRS code across a step where it changes", () => {
     expect(samples[12].drs).toBe(0);
     expect(samples[13].drs).toBe(12);
-    expect(sampleCarAt(car, 1.25, RATE, "closed").drs).toBe(0); // never 6
-    expect(sampleCarAt(car, 1.3, RATE, "closed").drs).toBe(12);
+    expect(sampleCarAt(car, 1.25, RATE, "closed", HOLDS).drs).toBe(0); // never 6
+    expect(sampleCarAt(car, 1.3, RATE, "closed", HOLDS).drs).toBe(12);
   });
 
   it("reports drs as undefined when the replay carries no DRS channel", () => {
@@ -173,24 +186,26 @@ describe("sampleCarAt — discrete channels forward-fill", () => {
       [0, 0],
       [1, 0],
     ]);
-    expect(sampleCarAt(noDrs, 0.5, 1, "closed").drs).toBeUndefined();
+    expect(
+      sampleCarAt(noDrs, 0.5, 1, "closed", headingHolds(noDrs)).drs,
+    ).toBeUndefined();
   });
 });
 
 describe("sampleCarAt — boundaries and wrap", () => {
   it("treats the end of the span as the start again", () => {
-    const start = sampleCarAt(car, 0, RATE, "closed");
-    const wrapped = sampleCarAt(car, SPAN, RATE, "closed");
+    const start = sampleCarAt(car, 0, RATE, "closed", HOLDS);
+    const wrapped = sampleCarAt(car, SPAN, RATE, "closed", HOLDS);
     expect(wrapped).toEqual(start);
   });
 
   it("wraps a clock past the end and a clock before zero", () => {
-    expect(sampleCarAt(car, SPAN + 20.05, RATE, "closed").x).toBeCloseTo(
+    expect(sampleCarAt(car, SPAN + 20.05, RATE, "closed", HOLDS).x).toBeCloseTo(
       662.05,
       6,
     );
-    expect(sampleCarAt(car, -0.1, RATE, "closed").index).toBe(584);
-    expect(sampleCarAt(car, -0.1, RATE, "closed").x).toBeCloseTo(
+    expect(sampleCarAt(car, -0.1, RATE, "closed", HOLDS).index).toBe(584);
+    expect(sampleCarAt(car, -0.1, RATE, "closed", HOLDS).x).toBeCloseTo(
       samples[584].x,
       6,
     );
@@ -198,7 +213,7 @@ describe("sampleCarAt — boundaries and wrap", () => {
 
   it("keeps moving across the final step instead of freezing on the last sample", () => {
     // The lap is closed: sample 584 -> sample 0 is a real segment, not a dead end.
-    const snap = sampleCarAt(car, 58.45, RATE, "closed");
+    const snap = sampleCarAt(car, 58.45, RATE, "closed", HOLDS);
     expect(snap.index).toBe(584);
     expect(snap.x).toBeCloseTo((samples[584].x + samples[0].x) / 2, 6);
     expect(snap.y).toBeCloseTo((samples[584].y + samples[0].y) / 2, 6);
@@ -241,9 +256,10 @@ describe("sampleCarAt — open replays hold the last sample", () => {
   };
   /** Heading of the last real segment, (10,10) -> (10,20): due south-in-world. */
   const LAST_SEGMENT_HEADING = Math.PI / 2;
+  const WINDOW_HOLDS = headingHolds(window);
 
   it("holds position and speed through the final step", () => {
-    const held = sampleCarAt(window, 3.5, 1, "open");
+    const held = sampleCarAt(window, 3.5, 1, "open", WINDOW_HOLDS);
     expect(held.index).toBe(3);
     expect(held.x).toBe(10);
     expect(held.y).toBe(20);
@@ -251,16 +267,16 @@ describe("sampleCarAt — open replays hold the last sample", () => {
   });
 
   it("holds the previous direction of travel, not the chord back to the start", () => {
-    const held = sampleCarAt(window, 3.5, 1, "open");
-    // headingAt already falls back to the previous segment on a zero-length step,
-    // which is exactly what a held last sample is.
+    const held = sampleCarAt(window, 3.5, 1, "open", WINDOW_HOLDS);
+    // A held last sample is a zero-length step, and a zero-length step holds the
+    // car's last direction of travel — here the segment just before it.
     expect(held.heading).toBeCloseTo(LAST_SEGMENT_HEADING, 9);
   });
 
   it("glides across that same step in closed mode — the modes really differ", () => {
     // The negative half of the pair: if `loop` were ignored, this test and the two
     // above cannot both pass.
-    const glide = sampleCarAt(window, 3.5, 1, "closed");
+    const glide = sampleCarAt(window, 3.5, 1, "closed", WINDOW_HOLDS);
     expect(glide.index).toBe(3);
     expect(glide.x).toBe(5); // halfway back to sample 0 at (0, 0)
     expect(glide.y).toBe(10);
@@ -271,9 +287,10 @@ describe("sampleCarAt — open replays hold the last sample", () => {
 
   it("is identical to closed mode everywhere except that final step", () => {
     for (const clock of [0, 0.5, 1, 1.75, 2, 2.99]) {
-      expect(sampleCarAt(window, clock, 1, "open"), `clock ${clock}`).toEqual(
-        sampleCarAt(window, clock, 1, "closed"),
-      );
+      expect(
+        sampleCarAt(window, clock, 1, "open", WINDOW_HOLDS),
+        `clock ${clock}`,
+      ).toEqual(sampleCarAt(window, clock, 1, "closed", WINDOW_HOLDS));
     }
   });
 
@@ -281,16 +298,16 @@ describe("sampleCarAt — open replays hold the last sample", () => {
     // The cut at the end of a window is the TRANSPORT's, not this function's:
     // `clock.ts` wraps at meta.duration exactly as it does for a lap, and the next
     // frame is sample 0 with no motion drawn across the gap. See the file header.
-    expect(sampleCarAt(window, 4, 1, "open")).toEqual(
-      sampleCarAt(window, 0, 1, "open"),
+    expect(sampleCarAt(window, 4, 1, "open", WINDOW_HOLDS)).toEqual(
+      sampleCarAt(window, 0, 1, "open", WINDOW_HOLDS),
     );
-    expect(sampleCarAt(window, -0.5, 1, "open").index).toBe(3);
+    expect(sampleCarAt(window, -0.5, 1, "open", WINDOW_HOLDS).index).toBe(3);
   });
 });
 
 describe("sampleCarAt — heading", () => {
   it("is the atan2 of the segment leaving the leading sample", () => {
-    expect(sampleCarAt(car, 20.05, RATE, "closed").heading).toBeCloseTo(
+    expect(sampleCarAt(car, 20.05, RATE, "closed", HOLDS).heading).toBeCloseTo(
       Math.atan2(
         samples[201].y - samples[200].y,
         samples[201].x - samples[200].x,
@@ -302,7 +319,7 @@ describe("sampleCarAt — heading", () => {
   it("is measured in world coordinates, before rotation is applied", () => {
     // meta.rotation is -14 deg; the heading must not have absorbed it.
     expect(replay.meta.rotation).toBe(-14);
-    const snap = sampleCarAt(car, 0, RATE, "closed");
+    const snap = sampleCarAt(car, 0, RATE, "closed", HOLDS);
     expect(snap.heading).toBeCloseTo(
       Math.atan2(samples[1].y - samples[0].y, samples[1].x - samples[0].x),
       9,
@@ -317,16 +334,67 @@ describe("sampleCarAt — heading", () => {
       [0, 0],
       [5, 0],
     ]);
-    expect(sampleCarAt(stalled, 0.5, 1, "closed").heading).toBeCloseTo(
+    const holds = headingHolds(stalled);
+    expect(sampleCarAt(stalled, 0.5, 1, "closed", holds).heading).toBeCloseTo(
       -Math.PI / 2,
       9,
     );
     // Index 1 -> 2 is zero-length: hold index 0 -> 1 rather than snapping to east.
-    expect(sampleCarAt(stalled, 1.5, 1, "closed").heading).toBeCloseTo(
+    expect(sampleCarAt(stalled, 1.5, 1, "closed", holds).heading).toBeCloseTo(
       -Math.PI / 2,
       9,
     );
-    expect(sampleCarAt(stalled, 1.5, 1, "closed").heading).not.toBe(0);
+    expect(sampleCarAt(stalled, 1.5, 1, "closed", holds).heading).not.toBe(0);
+  });
+
+  it("holds the direction of travel for a stop of ANY length, not one step", () => {
+    // Slice 23: the hold used to look back exactly one segment, so it covered a stop
+    // one grid step long and nothing longer — from the second stationary step on,
+    // atan2(0, 0) pointed the tick due east. Every real stop is longer than 0.1 s:
+    // a grid hold, a pit box, a red-flag park. Northward, five identical samples,
+    // then away east.
+    const stopped = carFromPoints([
+      [0, 20],
+      [0, 10],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [5, 0],
+    ]);
+    const holds = headingHolds(stopped);
+    // Samples 2..7 are one position: segments 2->3 .. 6->7 have no length.
+    for (const clock of [2.5, 3, 3.5, 4.5, 5.5, 6.5]) {
+      expect(
+        sampleCarAt(stopped, clock, 1, "closed", holds).heading,
+        `clock ${clock}`,
+      ).toBeCloseTo(-Math.PI / 2, 9);
+    }
+    // …and the stop ends where the car really turns: 7 -> 8 is due east.
+    expect(sampleCarAt(stopped, 7.5, 1, "closed", holds).heading).toBe(0);
+  });
+
+  it("holds it through an open window's held last step after a long park", () => {
+    // LEC's wreck in the red-flag scenario: parked for the final two minutes of an
+    // open window, so the stop runs straight into the held last sample. Travelling
+    // +y (pi/2), then four identical samples to the end of the window.
+    const wreck = carFromPoints([
+      [0, 0],
+      [10, 0],
+      [10, 10],
+      [10, 10],
+      [10, 10],
+      [10, 10],
+    ]);
+    const holds = headingHolds(wreck);
+    for (const clock of [2.5, 3.5, 4.5, 5.5]) {
+      expect(
+        sampleCarAt(wreck, clock, 1, "open", holds).heading,
+        `clock ${clock}`,
+      ).toBeCloseTo(Math.PI / 2, 9);
+    }
   });
 
   it("falls back to 0 only when there is no previous direction either", () => {
@@ -336,21 +404,106 @@ describe("sampleCarAt — heading", () => {
       [7, 7],
       [9, 7],
     ]);
-    expect(sampleCarAt(parked, 0.5, 1, "closed").heading).toBe(0);
-    // Two zero-length segments in a row, mid-array, also bottom out at 0.
+    expect(
+      sampleCarAt(parked, 0.5, 1, "closed", headingHolds(parked)).heading,
+    ).toBe(0);
+    // However long that first stop lasts: two zero-length segments from sample 0
+    // still have no direction to hold. (This is the case the one-step look-back
+    // was pinned on — it never saw a car that moved BEFORE stopping.)
     const frozen = carFromPoints([
       [3, 3],
       [3, 3],
       [3, 3],
       [4, 3],
     ]);
-    expect(sampleCarAt(frozen, 1.5, 1, "closed").heading).toBe(0);
+    expect(
+      sampleCarAt(frozen, 1.5, 1, "closed", headingHolds(frozen)).heading,
+    ).toBe(0);
+  });
+
+  it("starts holding at the first move, even after starting stationary", () => {
+    // Parked from sample 0 (0, world-east), away south (+y), then parked again: the
+    // second stop holds +y — "never moved" is a fact about the past, not a mode.
+    const restarted = carFromPoints([
+      [3, 3],
+      [3, 3],
+      [3, 8],
+      [3, 8],
+      [3, 8],
+    ]);
+    const holds = headingHolds(restarted);
+    expect(sampleCarAt(restarted, 0.5, 1, "open", holds).heading).toBe(0);
+    for (const clock of [2.5, 3.5, 4.5]) {
+      expect(
+        sampleCarAt(restarted, clock, 1, "open", holds).heading,
+        `clock ${clock}`,
+      ).toBeCloseTo(Math.PI / 2, 9);
+    }
+  });
+});
+
+describe("headingHolds — where a stopped car's heading comes from", () => {
+  it("names the last segment that moved, ending at or before each sample", () => {
+    // Segments: 0->1 moves, 1->2 and 2->3 do not, 3->4 moves, 4->5 does not.
+    const moving = carFromPoints([
+      [0, 0],
+      [1, 0],
+      [1, 0],
+      [1, 0],
+      [1, 2],
+      [1, 2],
+    ]);
+    expect([...headingHolds(moving)]).toEqual([-1, 0, 0, 0, 3, 3]);
+  });
+
+  it("is -1 throughout for a car that never moves", () => {
+    const still = carFromPoints([
+      [4, 4],
+      [4, 4],
+      [4, 4],
+    ]);
+    expect([...headingHolds(still)]).toEqual([-1, -1, -1]);
+  });
+
+  it("never looks across a closed lap's wrap segment", () => {
+    // The last -> first segment moves, but sample 0 still has nothing to hold.
+    const lap = carFromPoints([
+      [0, 0],
+      [0, 0],
+      [5, 0],
+    ]);
+    expect(headingHolds(lap)[0]).toBe(-1);
+    expect(sampleCarAt(lap, 0.5, 1, "closed", headingHolds(lap)).heading).toBe(
+      0,
+    );
+  });
+
+  it("agrees with the fixture's own segments wherever its car moves", () => {
+    // The fixture never stops, so every entry is simply the previous segment.
+    for (let k = 1; k < N; k++) expect(HOLDS[k], `k=${k}`).toBe(k - 1);
+    expect(HOLDS[0]).toBe(-1);
+  });
+
+  it("is rejected when it was built for some other car", () => {
+    // A stale index from a previous replay is the mistake this signature invites;
+    // the length is the part of it O(1) can see.
+    const other = carFromPoints([
+      [0, 0],
+      [1, 0],
+    ]);
+    expect(() =>
+      sampleCarAt(car, 1, RATE, "closed", headingHolds(other)),
+    ).toThrow(/heading holds cover 2 samples, VER has 585/);
+    expect(() => sampleAt(replay, 1, [])).toThrow(RangeError);
+    expect(() => sampleAt(replay, 1, [HOLDS, HOLDS])).toThrow(
+      /heading holds cover 2 cars, the replay has 1/,
+    );
   });
 });
 
 describe("sampleAt — every car, no count branching", () => {
   it("returns one snapshot per car for a single-car replay", () => {
-    const snaps = sampleAt(replay, 20.05);
+    const snaps = sampleAt(replay, 20.05, [HOLDS]);
     expect(snaps).toHaveLength(1);
     expect(snaps[0].x).toBeCloseTo(662.05, 6);
   });
@@ -365,7 +518,7 @@ describe("sampleAt — every car, no count branching", () => {
     };
     const multi: Replay = { ...replay, cars: [car, second] };
 
-    const snaps = sampleAt(multi, 20.05);
+    const snaps = sampleAt(multi, 20.05, multi.cars.map(headingHolds));
     expect(snaps).toHaveLength(2);
     expect(snaps[0].x).toBeCloseTo(662.05, 6);
     expect(snaps[1].x).toBeCloseTo(1662.05, 6);
@@ -374,7 +527,7 @@ describe("sampleAt — every car, no count branching", () => {
   });
 
   it("uses meta.sampleRateHz for the lookup", () => {
-    const snaps = sampleAt(replay, 20);
+    const snaps = sampleAt(replay, 20, [HOLDS]);
     expect(snaps[0].index).toBe(20 * replay.meta.sampleRateHz);
   });
 
@@ -389,7 +542,7 @@ describe("sampleAt — every car, no count branching", () => {
       cars: [car, second],
     };
 
-    const snaps = sampleAt(open, 58.45);
+    const snaps = sampleAt(open, 58.45, open.cars.map(headingHolds));
     expect(snaps).toHaveLength(2);
     for (const [i, snap] of snaps.entries()) {
       expect(snap.index, `car ${i}`).toBe(584);
@@ -397,7 +550,7 @@ describe("sampleAt — every car, no count branching", () => {
       expect(snap.y, `car ${i}`).toBe(samples[584].y);
     }
     // and the closed reading of the same clock is a different place entirely.
-    expect(sampleAt(replay, 58.45)[0].x).not.toBe(samples[584].x);
+    expect(sampleAt(replay, 58.45, [HOLDS])[0].x).not.toBe(samples[584].x);
   });
 
   it("defaults a replay with no meta.loop to closed", () => {

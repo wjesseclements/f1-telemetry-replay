@@ -246,7 +246,8 @@ function capture(mode, file, cars) {
     const dt = frameDelta(prevMs, nowMs);
     prevMs = nowMs;
     clock = advanceClock(clock, dt, 1, duration);
-    drawFrame(ctx, scene, paths, view, sampleAt(replay, clock), colors, FOCUSED);
+    const snapshots = sampleAt(replay, clock, scene.carHeadingHolds);
+    drawFrame(ctx, scene, paths, view, snapshots, colors, FOCUSED);
     nowMs += FRAME_MS;
   }
 

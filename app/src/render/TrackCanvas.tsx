@@ -166,7 +166,11 @@ function TrackCanvasImpl({ replay }: TrackCanvasProps) {
         );
       }
 
-      const snapshots = sampleAt(replay, clockRef.current);
+      const snapshots = sampleAt(
+        replay,
+        clockRef.current,
+        scene.carHeadingHolds,
+      );
       drawFrame(
         ctx,
         scene,
