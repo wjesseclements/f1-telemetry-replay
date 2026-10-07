@@ -139,7 +139,21 @@ as a Zod schema; the loader validates against it; the Python pipeline emits it.
   },
   "track": {
     "startFinish": { "x": 0, "y": 0, "angle": 0 },
-    "corners": [ { "number": 1, "letter": "", "x": 0, "y": 0 } ]
+    "corners": [ { "number": 1, "letter": "", "x": 0, "y": 0 } ],
+    // Slice 24, ADDITIVE within schemaVersion 1: the REFERENCE LAP — a span of
+    // replay seconds during which cars[car] drives exactly ONE clean racing lap,
+    // timing line to timing line. The start/finish line, track ribbon, gap
+    // reference circuit and gap pace are all measured from it. OPTIONAL on input,
+    // ALWAYS present once parsed: when absent the loader synthesizes the legacy
+    // reference (closed: the whole lap, 0..duration; open: cars[0] from sample 0
+    // to its first return to its start, or its whole path if it never returns).
+    // When present it is validated loudly: car in range; fromT < toT <= duration,
+    // both on the sample grid; span >= 5 s (the engine's MIN_LAP_S); startFinish
+    // within 25 m (MAX_RESIDUAL_M) of cars[car] at fromT. The pipeline chooses it
+    // by rule — not race lap 1, LapTime recorded, not an in/out lap, wholly in the
+    // window, no sample below 15 km/h, green throughout preferred — and fails the
+    // build if no lap qualifies.
+    "referenceLap": { "car": 0, "fromT": 89.0, "toT": 175.6 }
   },
   "cars": [
     {

@@ -21,6 +21,7 @@ import {
   residualAt,
   travelSoFarM,
 } from "./gaps";
+import { withReferenceLap, type UnreferencedReplay } from "./referenceLap";
 import type { Replay, Sample } from "./schema";
 
 const RATE = 10;
@@ -49,7 +50,8 @@ function ring(laps: number, shift = 0, scale = 1, radiusBoost = 0): Sample[] {
 
 /** A replay whose cars are given sample by sample. `cars[0]` is the reference. */
 function replayOf(...cars: Sample[][]): Replay {
-  return {
+  // Settled exactly as the loader settles a file without track.referenceLap.
+  return withReferenceLap({
     meta: {
       schemaVersion: 1,
       sampleRateHz: RATE,
@@ -73,7 +75,7 @@ function replayOf(...cars: Sample[][]): Replay {
       dropouts: [],
     })),
     trackStatus: [],
-  } as Replay;
+  } as UnreferencedReplay);
 }
 
 describe("gapTo — sign and magnitude", () => {

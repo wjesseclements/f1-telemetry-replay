@@ -10,6 +10,12 @@
  * are caught instead by `meta.schemaVersion`, which must match SCHEMA_VERSION.
  */
 import { z } from "zod";
+import {
+  REFERENCE_LAP_MIN_S,
+  START_FINISH_MAX_OFFSET_M,
+  startFinishOffsetM,
+  withReferenceLap,
+} from "./referenceLap";
 
 /** Bump only for a BREAKING contract change; additive fields do not need it. */
 export const SCHEMA_VERSION = 1;
@@ -143,6 +149,26 @@ const CornerSchema = z.object({
 
 const PitLanePointSchema = z.object({ x: z.number(), y: z.number() });
 
+/**
+ * The REFERENCE LAP (Slice 24): a span of replay seconds during which `cars[car]`
+ * drives exactly ONE clean racing lap, timing line to timing line. It is what the
+ * start/finish line, the track ribbon, the gap reference circuit and the gap pace
+ * are measured from — the fact that used to be implicit as "`cars[0]`'s first lap",
+ * which on a standing start is the grid slot and on a restart holds the grid hold.
+ * Both bounds lie on the sample grid, so a consumer reads samples
+ * `fromT * sampleRateHz ..= toT * sampleRateHz` of `cars[car]` with no search
+ * (CLAUDE.md rule 3). Validated at the replay level, where `meta` and `cars` are in
+ * scope; see the refinement there.
+ */
+const ReferenceLapSchema = z.object({
+  /** Index into `cars`. */
+  car: z.number().int().nonnegative(),
+  /** Replay seconds at which the lap starts — on the timing line. */
+  fromT: z.number().nonnegative(),
+  /** Replay seconds at which it ends; after `fromT`, at most `meta.duration`. */
+  toT: z.number(),
+});
+
 const TrackSchema = z.object({
   /** `angle` is RADIANS, matching the `atan2` heading convention used by the engine. */
   startFinish: z.object({ x: z.number(), y: z.number(), angle: z.number() }),
@@ -167,6 +193,17 @@ const TrackSchema = z.object({
       }),
     )
     .default([]),
+  /**
+   * See `ReferenceLapSchema`. OPTIONAL on input — every file written before Slice
+   * 24, the committed fixture and any hand-built JSON lack it — and REQUIRED on
+   * output: `ReplaySchema`'s transform fills an absent one with the LEGACY
+   * reference (`legacyReferenceLap`, exactly the span the engine used before the
+   * field existed), so `z.infer` makes it required and the engine never branches
+   * on `undefined` — the `meta.loop` doctrine. `.default()` cannot say it: the
+   * legacy value is computed from `meta` and `cars`, which a track field cannot
+   * see. When PRESENT it is validated loudly (the replay-level refinement).
+   */
+  referenceLap: ReferenceLapSchema.optional(),
 });
 
 const SampleSchema = z.object({
@@ -366,7 +403,11 @@ const CarSchema = z
  */
 export const GRID_TOLERANCE_S = 0.002;
 
-export const ReplaySchema = z
+/**
+ * Every refinement below, before the reference-lap transform. Internal: callers
+ * parse through `ReplaySchema`, whose output always carries `track.referenceLap`.
+ */
+const ValidatedReplaySchema = z
   .object({
     meta: MetaSchema,
     track: TrackSchema,
@@ -497,11 +538,113 @@ export const ReplaySchema = z
         }
       }
     });
+
+    // The reference lap, when the file carries one (Slice 24). One issue at most,
+    // the first that fails — the same restraint as every check above.
+    const reference = replay.track.referenceLap;
+    if (reference !== undefined) {
+      const issue = referenceLapIssue(replay, reference);
+      if (issue !== null) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["track", "referenceLap", ...issue.path],
+          message: issue.message,
+        });
+      }
+    }
   });
+
+type ValidatedReplay = z.infer<typeof ValidatedReplaySchema>;
+type ReferenceLapValue = z.infer<typeof ReferenceLapSchema>;
+
+/**
+ * Why a present `track.referenceLap` is not a lap of this replay, or `null`.
+ *
+ * Bounds are compared in SAMPLE COUNTS, the span-agreement convention above: a
+ * bound is on the grid when `t * sampleRateHz` is within `GRID_TOLERANCE_S` worth
+ * of steps of an integer, and every later comparison is between those integers, so
+ * no subtraction of nearby doubles can push an honest file over a bound.
+ */
+function referenceLapIssue(
+  replay: ValidatedReplay,
+  reference: ReferenceLapValue,
+): { path: (string | number)[]; message: string } | null {
+  const { car, fromT, toT } = reference;
+  const { sampleRateHz, duration } = replay.meta;
+  if (car >= replay.cars.length) {
+    return {
+      path: ["car"],
+      message: `track.referenceLap.car is ${car} but the replay has ${replay.cars.length} car(s)`,
+    };
+  }
+  const tolerance = GRID_TOLERANCE_S * sampleRateHz;
+  for (const [key, t] of [
+    ["fromT", fromT],
+    ["toT", toT],
+  ] as const) {
+    const steps = t * sampleRateHz;
+    if (Math.abs(steps - Math.round(steps)) > tolerance) {
+      return {
+        path: [key],
+        message: `track.referenceLap.${key}=${t} is not on the ${sampleRateHz} Hz sample grid; a consumer reads it as a sample index`,
+      };
+    }
+  }
+  const fromK = Math.round(fromT * sampleRateHz);
+  const toK = Math.round(toT * sampleRateHz);
+  if (toK <= fromK) {
+    return {
+      path: ["toT"],
+      message: `track.referenceLap must run forwards: fromT=${fromT} is not before toT=${toT}`,
+    };
+  }
+  if (toK > Math.round(duration * sampleRateHz)) {
+    return {
+      path: ["toT"],
+      message: `track.referenceLap ends at toT=${toT} but meta.duration is ${duration}`,
+    };
+  }
+  if (toK - fromK < REFERENCE_LAP_MIN_S * sampleRateHz) {
+    return {
+      path: ["toT"],
+      message: `track.referenceLap spans ${(toK - fromK) / sampleRateHz} s; one lap of a circuit spans at least ${REFERENCE_LAP_MIN_S} s`,
+    };
+  }
+  const driver = replay.cars[car].driver;
+  const offset = startFinishOffsetM(replay, reference);
+  if (offset === null) {
+    return {
+      path: ["car"],
+      message: `cars[${car}] (${driver}) covers no ground over track.referenceLap, so it cannot be a lap`,
+    };
+  }
+  if (offset > START_FINISH_MAX_OFFSET_M) {
+    return {
+      path: ["fromT"],
+      message: `track.startFinish is ${offset.toFixed(1)} m from cars[${car}] (${driver}) at fromT=${fromT}; the line is where the reference lap starts, so it must lie within ${START_FINISH_MAX_OFFSET_M} m of it`,
+    };
+  }
+  return null;
+}
+
+/** The parsed shape: `track.referenceLap` always present. */
+type ParsedReplay = Omit<ValidatedReplay, "track"> & {
+  track: Omit<ValidatedReplay["track"], "referenceLap"> & {
+    referenceLap: ReferenceLapValue;
+  };
+};
+
+// `track.referenceLap` settled: the file's own, or the legacy synthesis (see
+// TrackSchema). Annotated rather than inferred so `Replay` cannot depend on itself.
+export const ReplaySchema = ValidatedReplaySchema.transform(
+  (replay): ParsedReplay => withReferenceLap(replay),
+);
 
 export type Replay = z.infer<typeof ReplaySchema>;
 export type Meta = Replay["meta"];
 export type Track = Replay["track"];
+/** `{ car, fromT, toT }` — always present once parsed. See `ReferenceLapSchema`. */
+export type ReferenceLap = Track["referenceLap"];
 export type Corner = Track["corners"][number];
 export type Car = Replay["cars"][number];
 export type Sample = Car["samples"][number];

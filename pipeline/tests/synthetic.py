@@ -478,12 +478,19 @@ def pit_session_telemetry(
     }
 
 
+#: Seconds of telemetry in each v1 lap golden. It was 3 s (the `telemetry` default)
+#: until Slice 24: a closed lap now emits itself as `track.referenceLap`, and the
+#: schema refuses a reference lap under 5 s (`REFERENCE_LAP_MIN_S`, the engine's
+#: `MIN_LAP_S`) — so a 3 s golden would be, correctly, rejected by the loader.
+#: 6 s clears the floor by a second while keeping the golden small enough to diff.
+LAP_GOLDEN_S = 6.0
+
 #: The single-lap tables for the two v1 goldens, same column order. `lap-drs` is the
 #: plain path (a known compound, a known age); `lap-nodrs` carries a compound the
 #: pipeline cannot recognise plus a missing TyreLife, so the UNKNOWN mapping and the
 #: age omission are pinned cross-language by a committed file.
-LAP_TABLE_DRS = ([7], [0.0], [3.0], ["SOFT"], [3.0])
-LAP_TABLE_NODRS = ([7], [0.0], [3.0], [None], [math.nan])
+LAP_TABLE_DRS = ([7], [0.0], [LAP_GOLDEN_S], ["SOFT"], [3.0])
+LAP_TABLE_NODRS = ([7], [0.0], [LAP_GOLDEN_S], [None], [math.nan])
 
 
 def window_car(

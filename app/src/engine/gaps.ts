@@ -117,7 +117,7 @@ export const MAX_RESIDUAL_M = 25;
  * sooner than this is the car still leaving the same cell, not a lap. No F1 circuit is
  * close.
  */
-const MIN_LAP_S = 5;
+export const MIN_LAP_S = 5;
 
 /**
  * How much larger the field's largest empty arc must be than the next largest before the
@@ -317,7 +317,7 @@ export function buildProgressIndex(replay: Replay): ProgressIndex {
 }
 
 /** Trapezoid travel in metres, matching how the pipeline integrates it (Slice 6b). */
-function travelIntegral(
+export function travelIntegral(
   samples: Replay["cars"][number]["samples"],
   sampleRateHz: number,
 ): Float64Array {
@@ -331,7 +331,7 @@ function travelIntegral(
   return out;
 }
 
-function pathLength(samples: Replay["cars"][number]["samples"]): number {
+export function pathLength(samples: Replay["cars"][number]["samples"]): number {
   let total = 0;
   for (let k = 1; k < samples.length; k++) {
     total += Math.hypot(
@@ -408,7 +408,7 @@ function buildReference(replay: Replay, sameSpot: number): RefPath {
  * it is the modulus the unwrap and the lapped-car test are written against, so it wants
  * to be right rather than conservative.
  */
-function findLapEnd(
+export function findLapEnd(
   xs: Float64Array,
   ys: Float64Array,
   sampleRateHz: number,

@@ -19,6 +19,7 @@ from .repair import FixRejection, FrameDisplacement, ReversalRejection
 from .assembly import AnchorPlan, WindowCar
 from .dead_feed import DEAD_FEED_WINDOW_S, DeadFeedResult
 from .pit_lane import detect_pit_lane
+from .reference_lap import LapFacts, select_reference_lap
 from .stuck_channel import StuckResult
 
 def stint_report(driver: str, laps: "Sequence[Mapping[str, Any]]", stints: "Sequence[Mapping[str, Any]]") -> str:
@@ -417,3 +418,48 @@ def reversal_report(driver: str, r: "ReversalRejection | None", offset: float = 
         f"  {driver}: {r.n_rejected} reversal(s) at speed rejected at t={at} - "
         f"the pair turns through more than the car could (see REVERSAL_MIN_SPEED)"
     )
+
+
+def reference_lap_report(
+    replay: "Mapping[str, Any]", reference_laps: "Sequence[Sequence[LapFacts]]"
+) -> str:
+    """
+    The reference lap (Slice 24), recomputed FROM THE EMITTED FILE — speeds and
+    track status as written — through the same `select_reference_lap` the builder
+    ran, so the log and the file agree by construction (the `pit_lane_report`
+    doctrine). Silent-never: the chosen car, lap, span and tier always print, every
+    candidate passed over prints with its reason, and a recomputation that disagrees
+    with the file's `track.referenceLap` is the loudest line here.
+    """
+    cars = replay["cars"]
+    ref = select_reference_lap(
+        [str(car["driver"]) for car in cars],
+        reference_laps,
+        [[s["speed"] for s in car["samples"]] for car in cars],
+        replay.get("trackStatus", []),
+        float(replay["meta"]["sampleRateHz"]),
+    )
+    tier = (
+        "green throughout"
+        if ref.green
+        else "FALLBACK - no qualifying lap is green throughout"
+    )
+    lines = [
+        "  reference lap:",
+        f"  cars[{ref.car}] {ref.driver} lap {ref.number}: {ref.from_t:g}-{ref.to_t:g} s "
+        f"({ref.to_t - ref.from_t:.1f} s), {tier}",
+    ]
+    for r in ref.rejected:
+        lines.append(f"    passed over {r.driver} lap {r.number}: {r.reason}")
+    sf = replay["track"]["startFinish"]
+    lines.append(
+        f"  start/finish: ({sf['x']:g}, {sf['y']:g}) at {sf['angle']:.6f} rad - "
+        f"{ref.driver}'s position at {ref.from_t:g} s"
+    )
+    if replay["track"].get("referenceLap") != ref.field():
+        lines.append(
+            "  MISMATCH: the file's track.referenceLap differs from this recomputation - "
+            "the builder and the report were not handed the same lap facts; trust "
+            "neither until that is resolved"
+        )
+    return "\n".join(lines)

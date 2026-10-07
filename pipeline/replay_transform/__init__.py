@@ -10,6 +10,7 @@ here, so `from replay_transform import X` is unchanged for every caller and test
 * `repair`      — the two screens: frame displacements, impossible fixes
 * `lap_context` — laps and stints (Slice 14)
 * `pit_lane`    — pit-lane traversal detection and lane geometry (Slice 16)
+* `reference_lap` — which car's which lap is the reference; start/finish (Slice 24)
 * `assembly`    — the lap and window builders
 * `reporting`   — per-run report lines, quality metrics, serialisation
 
@@ -109,6 +110,7 @@ from .contract import (
     SCHEMA_VERSION,
     SPEED_UNIT,
     MissingColumnsError,
+    REFERENCE_LAP_MIN_S,
     ReplayMeta,
     TelemetryShapeError,
     check_columns,
@@ -132,8 +134,19 @@ from .grid import (
 from .lap_context import (
     KNOWN_COMPOUNDS,
     UNKNOWN_COMPOUND,
+    in_window_laps,
     lap_context,
     normalise_compound,
+)
+from .reference_lap import (
+    START_FINISH_HEADING_M,
+    LapFacts,
+    NoReferenceLapError,
+    ReferenceLap,
+    Rejection,
+    lap_facts,
+    select_reference_lap,
+    start_finish_at,
 )
 from .placement import (
     KMH_S_PER_METRE,
@@ -207,6 +220,7 @@ from .pit_lane import (
 from .reporting import (
     anchor_report,
     pit_lane_report,
+    reference_lap_report,
     dead_feed_report,
     stuck_channel_report,
     dump_json,

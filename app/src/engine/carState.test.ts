@@ -27,6 +27,7 @@ import {
 } from "./carState";
 import { towerOrder } from "./runningOrder";
 import { buildProgressIndex, progressKeyAt, type Gap } from "./gaps";
+import { withReferenceLap, type UnreferencedReplay } from "./referenceLap";
 import type { Replay, Sample } from "./schema";
 
 const RATE = 10;
@@ -56,7 +57,8 @@ function ring(laps: number, shift = 0, radiusBoost = 0): Sample[] {
 function replayOf(
   ...cars: (Sample[] | { samples: Sample[]; retiredAt?: number })[]
 ): Replay {
-  return {
+  // Settled exactly as the loader settles a file without track.referenceLap.
+  return withReferenceLap({
     meta: {
       schemaVersion: 1,
       sampleRateHz: RATE,
@@ -85,7 +87,7 @@ function replayOf(
         : { retiredAt: car.retiredAt }),
     })),
     trackStatus: [],
-  } as Replay;
+  } as UnreferencedReplay);
 }
 
 /** Speed rewritten to `kmh` over samples `[from, to)`, positions untouched. */

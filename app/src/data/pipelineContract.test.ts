@@ -201,6 +201,55 @@ describe("pipeline output against the schema", () => {
     ).not.toHaveProperty("pitLane");
   });
 
+  it.each([WITH_DRS, WITHOUT_DRS, RACE_PIT])(
+    "%s carries track.referenceLap through parseReplay unchanged (Slice 24)",
+    (name) => {
+      // The field must be IN the schema: unknown keys are stripped, so a field the
+      // pipeline emits but the schema does not name would vanish here silently and
+      // the loader would synthesize the legacy reference in its place.
+      const raw = readGolden(name) as { track: { referenceLap?: unknown } };
+      expect(raw.track.referenceLap).toBeDefined();
+      expect(parseReplay(raw, name).track.referenceLap).toEqual(
+        raw.track.referenceLap,
+      );
+    },
+  );
+
+  it("emits a closed lap as its own whole reference lap", () => {
+    const replay = parseReplay(readGolden(WITH_DRS), WITH_DRS);
+    expect(replay.track.referenceLap).toEqual({
+      car: 0,
+      fromT: 0,
+      toT: replay.meta.duration,
+    });
+  });
+
+  it("puts a window's start/finish line on the reference car at fromT", () => {
+    // The window builder's half of the contract: the line is where the chosen lap
+    // starts, read from the chosen car — the schema then holds it to 25 m.
+    const replay = parseReplay(readGolden(RACE_PIT), RACE_PIT);
+    const { car, fromT, toT } = replay.track.referenceLap;
+    const k = Math.round(fromT * replay.meta.sampleRateHz);
+    const at = replay.cars[car].samples[k];
+    expect(replay.track.startFinish.x).toBe(at.x);
+    expect(replay.track.startFinish.y).toBe(at.y);
+    expect(toT - fromT).toBeGreaterThanOrEqual(5);
+  });
+
+  it("leaves the race golden without one, so the loader's legacy synthesis is pinned", () => {
+    // 4 s cannot hold a lap: the builder is called without lap facts, emits no key,
+    // and the loader settles the legacy reference — cars[0]'s whole path, because
+    // it never returns to its start.
+    const raw = readGolden(RACE) as { track: object };
+    expect(raw.track).not.toHaveProperty("referenceLap");
+    const replay = parseReplay(raw, RACE);
+    expect(replay.track.referenceLap).toEqual({
+      car: 0,
+      fromT: 0,
+      toT: (replay.cars[0].samples.length - 1) / replay.meta.sampleRateHz,
+    });
+  });
+
   it("computes a real start/finish angle rather than a hard-coded zero", () => {
     const replay = parseReplay(readGolden(WITH_DRS), WITH_DRS);
     const { startFinish } = replay.track;

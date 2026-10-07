@@ -30,6 +30,7 @@ To refresh after an intentional pipeline change:  python tests/regenerate_golden
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 import pytest
@@ -41,6 +42,7 @@ from replay_transform import (
     build_window_replay_dict,
     dump_json,
     lap_context,
+    lap_facts,
     window_grid,
     window_status_intervals,
 )
@@ -48,7 +50,8 @@ from replay_transform import (
 GOLDEN_DIR = Path(__file__).parent / "golden"
 
 #: A short synthetic race window. Kept to a few seconds for the same reason the lap
-#: goldens are 3.1 s: a golden is read in a diff, and three cars multiply everything.
+#: goldens are only 6 s (`synthetic.LAP_GOLDEN_S`): a golden is read in a diff, and
+#: three cars multiply everything.
 RACE_WINDOW = (synthetic.SESSION_T0, synthetic.SESSION_T0 + 4.0)
 
 
@@ -56,11 +59,20 @@ def _lap(drs: bool, meta, table) -> "dict":
     # The lap context goes through the real `lap_context`, exactly as
     # `build_lap_replay` routes it, so the goldens pin that function's output and
     # not a hand-written imitation of it.
-    laps, stints = lap_context(*table, (0.0, 3.0))
+    laps, stints = lap_context(*table, (0.0, synthetic.LAP_GOLDEN_S))
     return build_replay_dict(
-        synthetic.telemetry(drs=drs), meta, corners=synthetic.CORNERS,
-        laps=laps, stints=stints,
+        synthetic.telemetry(duration_s=synthetic.LAP_GOLDEN_S, drs=drs),
+        meta, corners=synthetic.CORNERS, laps=laps, stints=stints,
     )
+
+
+def _facts(table, window, standing_start: bool = True) -> "tuple":
+    """A synthetic lap table as `LapFacts`, through the real `lap_facts`, exactly as
+    `build_race_replay` routes a FastF1 table — no lap of these tables went through
+    the pit lane, so both pit columns are NaN."""
+    numbers, starts, times, _, _ = table
+    nan = [math.nan] * len(numbers)
+    return lap_facts(numbers, starts, times, nan, nan, standing_start, window)
 
 
 def _window_context(driver: str) -> "tuple[list, list]":
@@ -127,6 +139,14 @@ def _pit_window() -> "dict":
     asymmetric dogleg, stops at its elbow, and rejoins — so the committed file
     carries a `track.pitLane` whose every point is a sample BBB drove. Kept to
     one lap and two cars for the same diffability reason RACE_WINDOW is 4 s.
+
+    It is also the golden that carries an explicit `track.referenceLap` from the
+    WINDOW builder (Slice 24): the lap facts go through the real `lap_facts` and
+    `select_reference_lap`, AAA's lap 21 qualifies (whole, clean, no stop) and BBB
+    has no lap table. The window has no status feed, so the choice lands in the
+    fallback tier — the shape a status-less window really takes. RACE_WINDOW
+    stays without one on purpose: at 4 s it cannot hold a lap, so it is the
+    committed negative control for the loader's legacy synthesis.
     """
     start, end = synthetic.PIT_WINDOW
     return build_window_replay_dict(
@@ -143,6 +163,10 @@ def _pit_window() -> "dict":
         synthetic.SESSION_META,
         synthetic.PIT_WINDOW,
         corners=synthetic.CORNERS,
+        reference_laps=[
+            _facts(synthetic.PIT_LAP_TABLE_REF, synthetic.PIT_WINDOW),
+            (),
+        ],
     )
 
 

@@ -38,6 +38,14 @@ SPEED_UNIT = "km/h"
 LOOP_CLOSED = "closed"
 LOOP_OPEN = "open"
 
+#: Shortest `track.referenceLap` span the schema accepts, seconds. Mirrored from
+#: `REFERENCE_LAP_MIN_S` in referenceLap.ts, which is the engine's own `MIN_LAP_S`
+#: (gaps.ts: the shortest lap `findLapEnd` will believe). No F1 lap is within an
+#: order of magnitude of it (the shortest are ~55 s); what it rejects is nonsense —
+#: a degenerate span, or a LapTime read in minutes. The selector refuses a shorter
+#: candidate by name rather than emitting a file the loader would reject.
+REFERENCE_LAP_MIN_S = 5.0
+
 #: FastF1's merged telemetry lands at roughly 4-10 Hz, so 10 Hz is the finest grid
 #: that does not invent resolution. It also matches the committed app fixture, which
 #: keeps "what the app was built against" and "what the pipeline emits" the same shape.

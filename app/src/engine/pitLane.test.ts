@@ -11,7 +11,15 @@ import type { Replay } from "./schema";
 type Track = Replay["track"];
 
 function trackWith(pitLane: Track["pitLane"]): Track {
-  return { startFinish: { x: 0, y: 0, angle: 0 }, corners: [], pitLane };
+  // A parsed track always carries a reference lap (Slice 24); distanceToPitLane
+  // never reads it, and a bare track has no cars to derive one from.
+  const referenceLap = { car: 0, fromT: 0, toT: 60 };
+  return {
+    startFinish: { x: 0, y: 0, angle: 0 },
+    corners: [],
+    pitLane,
+    referenceLap,
+  };
 }
 
 const HORIZONTAL = [

@@ -23,8 +23,10 @@ import { parseReplay, ReplayValidationError } from "../src/engine/load";
 function summarise(
   path: string,
   replay: ReturnType<typeof parseReplay>,
+  explicitReference: boolean,
 ): string {
   const { meta, track, cars } = replay;
+  const ref = track.referenceLap;
   // Derived across every car, not from `cars[0]`: the schema enforces DRS
   // all-or-nothing per CAR, so a v2 multi-car file could legitimately disagree
   // between drivers, and a summary that only looked at the first would hide it
@@ -47,6 +49,11 @@ function summarise(
             .map((p) => p.length)
             .join("+")} points`
     }`,
+    // Slice 24: which reference the app will use, and whether the file chose it or
+    // the loader synthesized the legacy one — both print, silent-never.
+    `    reference lap cars[${ref.car}] ${cars[ref.car].driver} ${ref.fromT}-${ref.toT}s (${
+      explicitReference ? "explicit" : "legacy, synthesized by the loader"
+    })`,
   ].join("\n");
 }
 
@@ -73,7 +80,11 @@ function validateFile(path: string): boolean {
   }
 
   try {
-    console.log(summarise(path, parseReplay(json, path)));
+    const replay = parseReplay(json, path);
+    // Parsed, so `json.track` is an object; the only question is whether the FILE
+    // named a reference lap or the loader synthesized the legacy one.
+    const explicit = "referenceLap" in (json as { track: object }).track;
+    console.log(summarise(path, replay, explicit));
     return true;
   } catch (err) {
     // `ReplayValidationError.message` is already written for a human — one line per
