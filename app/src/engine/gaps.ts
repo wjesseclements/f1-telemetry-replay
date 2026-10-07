@@ -148,6 +148,24 @@ export interface Gap {
   lapsDown: number;
 }
 
+/** One lap of a car's own, as a window-edge lookup walks it: its time and its metres. */
+export interface OwnLap {
+  readonly seconds: number;
+  readonly metres: number;
+}
+
+/**
+ * The laps of its OWN a car is walked by past each edge of the window (Slice 23). See
+ * `timeAtProgress` for why the lap at the edge and no other, and `edgeLaps` for a car
+ * that never completes one.
+ */
+export interface EdgeLaps {
+  /** Its first whole lap in the window: from the window start to `P[0] + lapUnits`. */
+  readonly before: OwnLap;
+  /** Its last: from where it was at `P[end] − lapUnits` to the window end. */
+  readonly after: OwnLap;
+}
+
 /** Every car's cumulative progress around one shared circuit. Built once per replay. */
 export interface ProgressIndex {
   /**
@@ -160,15 +178,18 @@ export interface ProgressIndex {
    */
   readonly lapUnits: number;
   /**
-   * One lap of the reference car, in seconds — `0` alongside a zero `lapUnits`.
+   * One lap of the reference car, in seconds — `0` alongside a zero `lapUnits`. The pace
+   * the tower's sort key converts at (`paceSecondsPerUnit`).
    *
-   * The time counterpart of `lapUnits`, and it exists for the same reason: a lookup that
-   * lands outside the window is answered by walking whole laps of the focused car, which
-   * needs both halves of "a lap" to stay consistent. See `timeAtProgress`.
+   * NOT the lap a window-edge lookup walks, which until Slice 23 it was, for every focus
+   * car: see `edgeLaps`.
    */
   readonly lapSeconds: number;
-  /** Per car: metres covered over one `lapSeconds`, for the same whole-lap walk. */
-  readonly lapMetres: readonly number[];
+  /**
+   * Per car: the laps of its own that a lookup landing outside the window is walked by.
+   * `null` where there is nothing to walk: no ring, or a car that made no headway.
+   */
+  readonly edgeLaps: readonly (EdgeLaps | null)[];
   readonly sampleRateHz: number;
   /** Per car: cumulative unwrapped progress at each sample, in position units. */
   readonly progress: readonly Float64Array[];
@@ -250,7 +271,7 @@ export function buildProgressIndex(replay: Replay): ProgressIndex {
     return {
       lapUnits: 0,
       lapSeconds: 0,
-      lapMetres: cars.map(() => 0),
+      edgeLaps: cars.map(() => null),
       sampleRateHz,
       progress: empty,
       residual: empty,
@@ -281,10 +302,8 @@ export function buildProgressIndex(replay: Replay): ProgressIndex {
   return {
     lapUnits: reference.lapUnits,
     lapSeconds: reference.lapSeconds,
-    // Each car's OWN travel over one reference lap: the metres counterpart of walking a
-    // lap in time, and per-car because they do not cover a lap at the same pace.
-    lapMetres: travelM.map(
-      (travel) => at(travel, reference.lapSeconds * sampleRateHz) - travel[0],
+    edgeLaps: progress.map((p, i) =>
+      edgeLaps(p, travelM[i], sampleRateHz, reference.lapUnits),
     ),
     sampleRateHz,
     progress,
@@ -587,10 +606,80 @@ function at(series: Float64Array, index: number): number {
 const MAX_LAP_EXTENSION = 4;
 
 /**
+ * The fractional sample at which a car's progress reaches `value`, for a value inside the
+ * window.
+ *
+ * Binary search, so O(log n). Progress is non-decreasing — a car does not drive
+ * backwards — which is what makes the inverse well defined.
+ *
+ * A car standing still has a FLAT stretch of progress, so the inverse is a range rather
+ * than a point and any answer inside it is equally true. The search settles on the latest
+ * such sample; the gap is then ambiguous by up to the length of the stop, which is a
+ * property of standing still and not of this lookup. Guarding the zero span is what keeps
+ * it from being a NaN instead.
+ */
+function indexAtProgress(progress: Float64Array, value: number): number {
+  let lo = 0;
+  let hi = progress.length - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (progress[mid] <= value) lo = mid;
+    else hi = mid;
+  }
+  const span = progress[hi] - progress[lo];
+  const f = span === 0 ? 0 : (value - progress[lo]) / span;
+  return lo + f;
+}
+
+/**
+ * One car's own laps at the two edges of the window, or `null` with nothing to walk.
+ *
+ * Each is one in-window inversion of the car's own progress, and its metres are the
+ * car's own travel over that same span, so the two halves of the walk cannot describe
+ * different laps. O(log n) per car, once, at load — a query reads them in O(1).
+ *
+ * A car that never completes a lap inside the window — a 1.2-lap window and a slower car
+ * is enough — has no lap at either edge to measure. It walks its own WINDOW pace scaled
+ * to one lap instead: still its own, and exactly what the edge lap gives at one lap
+ * covered, so nothing steps as a car's coverage crosses that line. Not the reference's
+ * lap, which is the defect this replaced; not "no answer", which would blank the walk for
+ * the slower cars of any short race window.
+ */
+function edgeLaps(
+  progress: Float64Array,
+  travel: Float64Array,
+  sampleRateHz: number,
+  lapUnits: number,
+): EdgeLaps | null {
+  const last = progress.length - 1;
+  const covered = progress[last] - progress[0];
+  if (lapUnits <= 0 || !(covered > 0)) return null;
+  if (covered < lapUnits) {
+    const scale = lapUnits / covered;
+    const lap = {
+      seconds: (last / sampleRateHz) * scale,
+      metres: (travel[last] - travel[0]) * scale,
+    };
+    return { before: lap, after: lap };
+  }
+  const firstLapEnd = indexAtProgress(progress, progress[0] + lapUnits);
+  const lastLapStart = indexAtProgress(progress, progress[last] - lapUnits);
+  return {
+    before: {
+      seconds: firstLapEnd / sampleRateHz,
+      metres: at(travel, firstLapEnd) - travel[0],
+    },
+    after: {
+      seconds: (last - lastLapStart) / sampleRateHz,
+      metres: travel[last] - at(travel, lastLapStart),
+    },
+  };
+}
+
+/**
  * The time at which a car reached `target` progress, extending by whole laps if needed.
  *
- * Binary search inside the window, so O(log n). Progress is non-decreasing — a car does
- * not drive backwards — which is what makes the inverse well defined.
+ * O(log n): one `indexAtProgress`, plus a walk of at most a few constant-time laps.
  *
  * WHY IT EXTENDS PAST THE WINDOW, AND WHY THE OBVIOUS ALTERNATIVE WAS WRONG
  * ------------------------------------------------------------------------
@@ -615,45 +704,65 @@ const MAX_LAP_EXTENSION = 4;
  * car's OWN measured lap, not on an invented pace. Being wrong by the difference between
  * two of its laps (well under a second in a race) is a different order of error from
  * switching to a quantity that answers a different question.
+ *
+ * WHICH LAP: THE FOCUSED CAR'S OWN, AT THE EDGE IT IS LEAVING (Slice 23)
+ * ---------------------------------------------------------------------
+ * The paragraph above always said "its own lap"; until Slice 23 the code walked the
+ * REFERENCE car's first lap, for every focus car. On a steady window the two agree, and
+ * every test fixture was a steady window. The shipped restart is not: `cars[0]`'s first
+ * lap holds the formation and the grid hold — 166.1 s against ~86 s racing laps — so as
+ * each car ahead's `t*` crossed the window's end its gap stepped by the difference. Focus
+ * ANT read RUS −4.05 s at t = 421 and −84.54 s at t = 422, and 15,042 displayed readings
+ * across the file were ~80 s out, metres with them.
+ *
+ * The focus car's own lap is necessary but not sufficient. The walk is the window's own
+ * (time, progress, travel) curve shifted by one lap, and it joins the window without a
+ * step ONLY if the time it shifts by is the lap that ends (or starts) exactly at that
+ * edge: shift one lap of progress by any other lap's time and the gap steps by the
+ * difference as `t*` crosses the edge. The rain file shows it on the reference car itself
+ * — focus HAM, walked by his own FIRST lap, read NOR −3.26 s then +25.60 s across the
+ * window's end, because his last lap held a pit stop. At every edge crossing the tower
+ * displays, the worst step was 80.5 s (restart), 38.9 s (red flag: SC laps against a
+ * green first lap), 28.9 s (rain), 1.6 s and 0.9 s; with the edge laps it is ≤ 0.08 s on
+ * all five files, bar one 1.7 s step at the red flag's start that predates this and is
+ * not the walk's (the reference creeping off a near-flat start). Hence `EdgeLaps` — the
+ * first whole lap in the window for the walk back, the last for the walk on.
+ *
+ * WHERE IT STILL RUNS OUT. Continuous is not right: the walk replays the edge lap, so a
+ * pit stop ON that lap is replayed too. Rain, focus HAM again: past the end, NOR's gap
+ * grows −3.3 → −16.5 s over the last 3.3 s as NOR crosses the stretch where HAM was in
+ * the pit lane a lap before, where the same stretch two laps before says ~−3.3 s. Still
+ * wrong, but less wrong than the +25.6 s it read before, and the right sign. Walking two
+ * laps back to a cleaner lap would keep the continuity (any whole laps ending at the
+ * edge do), but it needs a judgement of which lap is clean — pit stop, SC, hold — that
+ * this module does not make. Left as stated.
  */
 function timeAtProgress(
   index: ProgressIndex,
   car: number,
   target: number,
 ): number | null {
-  const { lapUnits, lapSeconds, sampleRateHz } = index;
   const progress = index.progress[car];
   const n = progress.length;
+  const own = index.edgeLaps[car];
 
   let shifted = target;
+  let walked = 0;
   let laps = 0;
-  if (lapUnits > 0 && lapSeconds > 0) {
+  if (own !== null) {
     while (shifted < progress[0] && laps < MAX_LAP_EXTENSION) {
-      shifted += lapUnits;
+      shifted += index.lapUnits;
+      walked -= own.before.seconds;
       laps += 1;
     }
     while (shifted > progress[n - 1] && -laps < MAX_LAP_EXTENSION) {
-      shifted -= lapUnits;
+      shifted -= index.lapUnits;
+      walked += own.after.seconds;
       laps -= 1;
     }
   }
   if (shifted < progress[0] || shifted > progress[n - 1]) return null;
-
-  let lo = 0;
-  let hi = n - 1;
-  while (hi - lo > 1) {
-    const mid = (lo + hi) >> 1;
-    if (progress[mid] <= shifted) lo = mid;
-    else hi = mid;
-  }
-  // A car standing still has a FLAT stretch of progress, so the inverse is a range
-  // rather than a point and any answer inside it is equally true. The search settles on
-  // the latest such sample; the gap is then ambiguous by up to the length of the stop,
-  // which is a property of standing still and not of this lookup. Guarding the zero span
-  // is what keeps it from being a NaN instead.
-  const span = progress[hi] - progress[lo];
-  const f = span === 0 ? 0 : (shifted - progress[lo]) / span;
-  return (lo + f) / sampleRateHz - laps * lapSeconds;
+  return indexAtProgress(progress, shifted) / index.sampleRateHz + walked;
 }
 
 /**
@@ -662,25 +771,28 @@ function timeAtProgress(
  *
  * The seconds and the metres have to be measured over the SAME interval or they would
  * describe different gaps, so when `t*` lands outside the window this walks the travel
- * integral by the same whole laps.
+ * integral by the same laps — the car's own, at the same edge, in time and metres both.
+ * The walk joins the window continuously in all three, which is why stepping back by
+ * time lands where `timeAtProgress` stepped back by progress.
  */
 function travelAt(index: ProgressIndex, car: number, t: number): number {
-  const { lapSeconds, sampleRateHz, lapMetres } = index;
+  const { sampleRateHz } = index;
   const travel = index.travelM[car];
   const span = (travel.length - 1) / sampleRateHz;
+  const own = index.edgeLaps[car];
 
   let u = t;
   let shift = 0;
-  if (lapSeconds > 0) {
+  if (own !== null) {
     let steps = 0;
     while (u < 0 && steps < MAX_LAP_EXTENSION) {
-      u += lapSeconds;
-      shift -= lapMetres[car];
+      u += own.before.seconds;
+      shift -= own.before.metres;
       steps += 1;
     }
     while (u > span && steps < MAX_LAP_EXTENSION) {
-      u -= lapSeconds;
-      shift += lapMetres[car];
+      u -= own.after.seconds;
+      shift += own.after.metres;
       steps += 1;
     }
   }
