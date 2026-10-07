@@ -2,11 +2,12 @@
 The reference lap (Slice 24): `reference_lap.py`, the builders' use of it, and its
 report line.
 
-The fixture that matters most here is a STANDING START: a car parked on its grid
-slot that pulls away, crosses the timing line ~30 m later, and laps. That is the
-shape of the shipped red-flag window, whose `startFinish` came out at the pole slot
-with angle 0.0 — and it is the case the lap builder already guards
-(`assert angle != 0.0`) and the window builder, until now, did not.
+The fixture that matters most here is a STANDING START (`synthetic.standing_*`): a
+car parked on its grid slot that pulls away, crosses the timing line ~30 m later,
+and laps. That is the shape of the shipped red-flag window, whose `startFinish` came
+out at the pole slot with angle 0.0 — and it is the case the lap builder already
+guards (`assert angle != 0.0`) and the window builder, until now, did not. The same
+fixture builds the `race-window-standing` golden, so the app's schema sees it too.
 """
 
 from __future__ import annotations
@@ -18,10 +19,12 @@ import pytest
 
 import synthetic
 from replay_transform import (
+    LEGACY_REFERENCE,
     PIT_STOP_MAX_KMH,
     REFERENCE_LAP_MIN_S,
     SAMPLE_RATE_HZ,
     START_FINISH_HEADING_M,
+    STUCK_MIN_ROWS,
     LapFacts,
     NoReferenceLapError,
     ReferenceLap,
@@ -40,87 +43,35 @@ from replay_transform import (
 RATE = SAMPLE_RATE_HZ
 NAN = math.nan
 
-# --- a standing start, in closed form ----------------------------------------------
+# --- a standing start, in closed form (`synthetic.standing_*`) ----------------------
 
-#: Metres per second at the synthetic circle's mean speed.
 _V = synthetic.SESSION_SPEED_KMH / 3.6
-#: The grid hold and the launch ramp, seconds.
-_HOLD_S, _RAMP_S = 3.0, 2.0
-#: The timing line sits this far up the road from the grid slot, metres. A real grid
-#: puts the slots well clear of the line (the red-flag asset's pole slot reads ~290 m
-#: off it); all the fixture needs is that the line is NOT the slot.
-_LINE_M = 30.0
-_PHI0 = math.pi / 3.0
-#: One lap of the synthetic circle, metres.
-_LAP_M = _V * synthetic.SESSION_LAP_S
-
-
-def _standing_distance_m(tau: np.ndarray) -> np.ndarray:
-    """Metres from the grid slot `tau` seconds after the window opens."""
-    tau = np.asarray(tau, dtype=float)
-    ramp = np.clip(tau - _HOLD_S, 0.0, _RAMP_S)
-    after = np.clip(tau - _HOLD_S - _RAMP_S, 0.0, None)
-    return _V * ramp * ramp / (2.0 * _RAMP_S) + _V * after
-
-
-def _time_at_m(d: float) -> float:
-    """Inverse of `_standing_distance_m` past the ramp."""
-    return _HOLD_S + _RAMP_S + (d - _V * _RAMP_S / 2.0) / _V
-
-
-def _phi_at_m(d: float) -> float:
-    return _PHI0 + d * synthetic.SESSION_UNITS_PER_M / synthetic.SESSION_RADIUS
-
-
-#: Window seconds at which the car crosses the timing line at the end of lap 1 and
-#: of lap 2. The window runs to the end of lap 2, as `resolve_lap_window` would cut it.
-_LAP1_END = _time_at_m(_LINE_M + _LAP_M)
-_LAP2_END = _time_at_m(_LINE_M + 2.0 * _LAP_M)
+_LINE_M = synthetic.STANDING_LINE_M
+_PHI0 = synthetic.STANDING_PHI0
+_LAP1_END = synthetic.STANDING_LAP1_END
+_LAP2_END = synthetic.STANDING_LAP2_END
 _T0 = synthetic.SESSION_T0
-_WINDOW = (_T0, _T0 + _LAP2_END)
+_WINDOW = synthetic.STANDING_WINDOW
+_phi_at_m = synthetic.standing_phi_at_m
 
 
-def _standing_start_telemetry(start: float, end: float) -> "dict[str, np.ndarray]":
-    """Parked on the slot for `_HOLD_S`, a linear launch over `_RAMP_S`, then the
-    circle at the mean speed; the position is the exact integral of the speed."""
-    n = int(round((end - start) * synthetic.SOURCE_RATE_HZ)) + 1
-    t = start + np.arange(n, dtype=float) / synthetic.SOURCE_RATE_HZ
-    tau = t - _T0
-    phi = _PHI0 + _standing_distance_m(tau) * synthetic.SESSION_UNITS_PER_M / (
-        synthetic.SESSION_RADIUS
-    )
-    speed = np.clip((tau - _HOLD_S) / _RAMP_S, 0.0, 1.0) * synthetic.SESSION_SPEED_KMH
-    held = speed < 1.0
-    return {
-        "Time": t,
-        "X": synthetic.SESSION_RADIUS * np.cos(phi),
-        "Y": synthetic.SESSION_RADIUS * np.sin(phi),
-        "Speed": speed,
-        "Throttle": np.where(held, 0.0, 90.0),
-        "Brake": held.astype(int),
-        "nGear": np.where(held, 1, 7).astype(int),
-        "DRS": np.zeros(n, dtype=int),
-    }
-
-
-def _standing_facts(standing_start: bool = True) -> "tuple[LapFacts, ...]":
+def _standing_facts(
+    standing_start: bool = True, accurate=(True, True)
+) -> "tuple[LapFacts, ...]":
     """Lap 1 from the lights (the window start), lap 2 line to line — through the
-    real `lap_facts`, the way `build_race_replay` hands a FastF1 table over."""
+    real `lap_facts`, the way `build_race_replay` hands a FastF1 table over. Both
+    laps are vouched for by default, so what passes over lap 1 is the standing start
+    (or, outside a race, its grid hold) and nothing else."""
+    numbers, starts, times, _, _ = synthetic.STANDING_LAP_TABLE
     return lap_facts(
-        [1, 2],
-        [_T0, _T0 + _LAP1_END],
-        [_LAP1_END, _LAP2_END - _LAP1_END],
-        [NAN, NAN],
-        [NAN, NAN],
-        standing_start,
-        _WINDOW,
+        numbers, starts, times, [NAN, NAN], [NAN, NAN], list(accurate),
+        standing_start, _WINDOW,
     )
 
 
-def _standing_window(reference_laps="facts", status=()):
-    cars = [
-        synthetic.window_car("AAA", _standing_start_telemetry(*_WINDOW)),
-    ]
+def _standing_window(reference_laps="facts", status=(), telemetry=None):
+    tel = synthetic.standing_start_telemetry(*_WINDOW) if telemetry is None else telemetry
+    cars = [synthetic.window_car("AAA", tel)]
     facts = [_standing_facts()] if reference_laps == "facts" else reference_laps
     return build_window_replay_dict(
         cars, synthetic.SESSION_META, _WINDOW, status=status, reference_laps=facts
@@ -137,11 +88,12 @@ def test_lap_facts_rebases_onto_the_window_and_reads_the_pit_columns():
         [90.0, NAN, 85.0],
         [NAN, NAN, 360.0],
         [NAN, 195.0, NAN],
+        [True, False, False],
         True,
         (100.0, 400.0),
     )
     assert [f.number for f in facts] == [4, 5, 6]
-    assert facts[0] == LapFacts(4, 0.0, 90.0, False, False, False)
+    assert facts[0] == LapFacts(4, 0.0, 90.0, False, False, False, True)
     # A missing LapTime is a NaN end, not an invented one.
     assert facts[1].start_s == 90.0 and math.isnan(facts[1].end_s)
     assert facts[1].pit_out and not facts[1].pit_in
@@ -151,7 +103,7 @@ def test_lap_facts_rebases_onto_the_window_and_reads_the_pit_columns():
 
 
 def test_lap_facts_flags_lap_one_only_for_a_standing_start_session():
-    table = ([1, 2], [0.0, 90.0], [90.0, 88.0], [NAN, NAN], [NAN, NAN])
+    table = ([1, 2], [0.0, 90.0], [90.0, 88.0], [NAN, NAN], [NAN, NAN], [True, True])
     race = lap_facts(*table, True, (0.0, 178.0))
     practice = lap_facts(*table, False, (0.0, 178.0))
     assert [f.race_lap_one for f in race] == [True, False]
@@ -165,15 +117,40 @@ def test_lap_facts_considers_exactly_the_laps_the_file_carries():
     for driver, table in synthetic.SESSION_LAP_TABLES.items():
         numbers, starts, times, _, _ = table
         nan = [NAN] * len(numbers)
-        facts = lap_facts(numbers, starts, times, nan, nan, True, window)
+        facts = lap_facts(
+            numbers, starts, times, nan, nan, [True] * len(numbers), True, window
+        )
         laps, _ = lap_context(*table, window)
         assert [f.number for f in facts] == [lap["number"] for lap in laps], driver
         assert [round(f.start_s, 3) for f in facts] == [lap["startT"] for lap in laps]
 
 
-def test_lap_facts_rejects_pit_columns_of_the_wrong_length():
+@pytest.mark.parametrize(
+    "pit_in, accurate",
+    [([NAN], [True, True]), ([NAN, NAN], [True])],
+    ids=["pit column", "IsAccurate column"],
+)
+def test_lap_facts_rejects_columns_of_the_wrong_length(pit_in, accurate):
     with pytest.raises(TelemetryShapeError, match="disagree"):
-        lap_facts([1, 2], [0.0, 90.0], [90.0, 88.0], [NAN], [NAN, NAN], True, (0, 9))
+        lap_facts(
+            [1, 2], [0.0, 90.0], [90.0, 88.0], pit_in, [NAN, NAN], accurate, True, (0, 9)
+        )
+
+
+def test_lap_facts_counts_only_a_real_true_as_accurate():
+    """FastF1 casts `IsAccurate` to bool, but an unset cell in a hand-made or older
+    table is NaN or None — and `bool(nan)` is True. An unknown is not accurate."""
+    facts = lap_facts(
+        [1, 2, 3, 4, 5],
+        [0.0, 90.0, 180.0, 270.0, 360.0],
+        [90.0] * 5,
+        [NAN] * 5,
+        [NAN] * 5,
+        [np.True_, True, NAN, None, np.False_],
+        False,
+        (0.0, 450.0),
+    )
+    assert [f.accurate for f in facts] == [True, True, False, False, False]
 
 
 def test_in_window_laps_rejects_a_lap_time_column_of_the_wrong_length():
@@ -201,6 +178,7 @@ def test_the_first_cars_earliest_clean_green_lap_is_chosen():
         ["AAA", "BBB"],
         [[_lap(10, 0.0, 85.0), _lap(11, 85.0, 170.0)], [_lap(10, -3.0, 82.0)]],
         [_fast(171.0), _fast(171.0)],
+        [()] * 2,
         GREEN_ALL,
         RATE,
     )
@@ -219,6 +197,10 @@ def test_the_first_cars_earliest_clean_green_lap_is_chosen():
         (_lap(5, 10.0, 10.0), "no LapTime recorded"),
         (_lap(5, 0.0, 90.0, pit_in=True), "in-lap"),
         (_lap(5, 0.0, 90.0, pit_out=True), "out-lap"),
+        (
+            _lap(5, 0.0, 90.0, accurate=False),
+            "lap timing not accurate (IsAccurate=False)",
+        ),
         (_lap(5, -2.0, 88.0), "began before the window"),
         (_lap(5, 100.0, 300.0), "runs past the window's end"),
         (_lap(5, 100.0, 103.0), f"under the {REFERENCE_LAP_MIN_S:g} s minimum"),
@@ -226,7 +208,9 @@ def test_the_first_cars_earliest_clean_green_lap_is_chosen():
 )
 def test_each_disqualification_is_named(lap, reason):
     good = _lap(9, 110.0, 195.0)
-    ref = select_reference_lap(["AAA"], [[lap, good]], [_fast(200.0)], GREEN_ALL, RATE)
+    ref = select_reference_lap(
+        ["AAA"], [[lap, good]], [_fast(200.0)], [()], GREEN_ALL, RATE
+    )
     assert ref.number == 9
     assert len(ref.rejected) == 1
     assert ref.rejected[0].number == lap.number
@@ -242,6 +226,7 @@ def test_a_lap_containing_a_stop_is_not_a_racing_lap():
         ["RUS"],
         [[_lap(6, 0.0, 90.0), _lap(7, 90.0, 175.0)]],
         [speed],
+        [()],
         GREEN_ALL,
         RATE,
     )
@@ -255,10 +240,68 @@ def test_a_lap_containing_a_stop_is_not_a_racing_lap():
     )
 
 
+def test_the_most_specific_timing_reason_wins_over_not_accurate():
+    """FastF1 marks every in/out lap `IsAccurate=False` too; the report should say
+    which kind of lap it was, not only that its timing was unvouched."""
+    lap = _lap(5, 0.0, 90.0, pit_in=True, accurate=False)
+    ref = select_reference_lap(
+        ["AAA"], [[lap, _lap(6, 90.0, 175.0)]], [_fast(180.0)], [()], GREEN_ALL, RATE
+    )
+    assert ref.rejected == (Rejection("AAA", 5, "in-lap (PitInTime set)"),)
+
+
+def test_a_lap_bridged_across_a_stuck_channel_dropout_is_passed_over():
+    """Across a 9m dropout the emitted positions are the screen's bridge, not fixes
+    the car reported — no material for a ribbon or a gap circuit. The 2026 corpus
+    has 37 of them, at fixed track positions, so a window can hold several."""
+    ref = select_reference_lap(
+        ["COL", "RUS"],
+        [[_lap(7, 0.0, 85.0), _lap(8, 85.0, 170.0)], [_lap(7, 2.0, 87.0)]],
+        [_fast(171.0), _fast(171.0)],
+        [[{"fromT": 30.132, "toT": 35.65}], ()],
+        GREEN_ALL,
+        RATE,
+    )
+    assert (ref.car, ref.number) == (0, 8)
+    assert ref.rejected == (
+        Rejection(
+            "COL",
+            7,
+            "overlaps a stuck-channel dropout at t=30.132-35.65 s - positions there "
+            "are bridged, not measured",
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    "drop, chosen, passed_over",
+    [((85.0, 90.0), 7, ()), ((80.0, 85.0), 8, (7,))],
+    ids=["begins where lap 7 ends", "ends where lap 8 begins"],
+)
+def test_a_dropout_touching_a_lap_boundary_bridges_none_of_its_samples(
+    drop, chosen, passed_over
+):
+    """A dropout's edges are TRUSTED fixes (the screen brackets the run with them),
+    so one that merely touches a lap's start or end leaves that lap measured; only
+    the lap it actually runs through is passed over."""
+    ref = select_reference_lap(
+        ["AAA"],
+        [[_lap(7, 0.0, 85.0), _lap(8, 85.0, 170.0)]],
+        [_fast(171.0)],
+        [[{"fromT": drop[0], "toT": drop[1]}]],
+        GREEN_ALL,
+        RATE,
+    )
+    assert ref.number == chosen
+    assert tuple(r.number for r in ref.rejected) == passed_over
+
+
 def test_the_stop_threshold_is_the_pit_lane_detectors():
     """Reused, not re-invented: a crawl just above it is still a racing lap."""
     speed = [PIT_STOP_MAX_KMH] * 901
-    ref = select_reference_lap(["AAA"], [[_lap(3, 0.0, 90.0)]], [speed], GREEN_ALL, RATE)
+    ref = select_reference_lap(
+        ["AAA"], [[_lap(3, 0.0, 90.0)]], [speed], [()], GREEN_ALL, RATE
+    )
     assert ref.number == 3
 
 
@@ -266,13 +309,15 @@ def test_a_lap_ending_in_the_holding_step_snaps_to_the_last_sample():
     """The first driver's last lap ends where the window does — inside the step past
     the last sample. That is inside the window, not past it."""
     speed = _fast(90.0)  # 901 samples: duration 90.1 s
-    ref = select_reference_lap(["AAA"], [[_lap(3, 0.0, 90.08)]], [speed], GREEN_ALL, RATE)
+    ref = select_reference_lap(
+        ["AAA"], [[_lap(3, 0.0, 90.08)]], [speed], [()], GREEN_ALL, RATE
+    )
     assert (ref.from_i, ref.to_i) == (0, 900)
 
 
 def test_a_lap_beginning_within_half_a_step_of_the_window_starts_at_sample_zero():
     ref = select_reference_lap(
-        ["AAA"], [[_lap(3, -0.04, 85.0)]], [_fast(90.0)], GREEN_ALL, RATE
+        ["AAA"], [[_lap(3, -0.04, 85.0)]], [_fast(90.0)], [()], GREEN_ALL, RATE
     )
     assert ref.from_i == 0
 
@@ -288,6 +333,7 @@ def test_a_green_lap_on_a_later_car_beats_a_clean_lap_under_the_safety_car():
         ["AAA", "BBB"],
         [[_lap(4, 5.0, 95.0)], [_lap(4, 0.0, 9.5)]],
         [_fast(100.0), _fast(100.0)],
+        [()] * 2,
         status,
         RATE,
     )
@@ -302,6 +348,7 @@ def test_with_no_green_lap_anywhere_the_first_clean_lap_is_the_named_fallback():
         ["AAA", "BBB"],
         [[_lap(1, 0.0, 90.0, race_lap_one=True), _lap(2, 90.0, 180.0)], [_lap(2, 92.0, 182.0)]],
         [_fast(190.0), _fast(190.0)],
+        [()] * 2,
         [],  # a window with no status data — the finale asset's shape
         RATE,
     )
@@ -315,6 +362,7 @@ def test_status_that_covers_only_part_of_the_lap_is_not_green_throughout():
         ["AAA", "BBB"],
         [[_lap(2, 0.0, 85.0)], [_lap(2, 1.0, 45.0)]],
         [_fast(90.0), _fast(90.0)],
+        [()] * 2,
         status,
         RATE,
     )
@@ -333,6 +381,7 @@ def test_no_qualifying_lap_fails_loudly_and_names_every_reason():
                 [_lap(3, 86.0, 190.0, pit_in=True)],
             ],
             [_fast(190.0), _fast(190.0)],
+            [()] * 2,
             GREEN_ALL,
             RATE,
         )
@@ -347,12 +396,19 @@ def test_no_qualifying_lap_fails_loudly_and_names_every_reason():
 
 def test_no_lap_table_at_all_fails_loudly_too():
     with pytest.raises(NoReferenceLapError, match="no car carries a lap table"):
-        select_reference_lap(["AAA"], [()], [_fast(90.0)], GREEN_ALL, RATE)
+        select_reference_lap(["AAA"], [()], [_fast(90.0)], [()], GREEN_ALL, RATE)
 
 
-def test_selection_needs_one_lap_table_and_speed_channel_per_car():
-    with pytest.raises(TelemetryShapeError, match="one lap table and one speed"):
-        select_reference_lap(["AAA", "BBB"], [()], [_fast(9.0)], [], RATE)
+@pytest.mark.parametrize(
+    "laps, dropouts",
+    [([()], [(), ()]), ([(), ()], [()])],
+    ids=["lap tables", "dropout lists"],
+)
+def test_selection_needs_one_of_everything_per_car(laps, dropouts):
+    with pytest.raises(TelemetryShapeError, match="one dropout list per car"):
+        select_reference_lap(
+            ["AAA", "BBB"], laps, [_fast(9.0)] * 2, dropouts, [], RATE
+        )
 
 
 # --- start_finish_at ----------------------------------------------------------------
@@ -427,7 +483,7 @@ def test_window_builder_with_a_stationary_reference_start():
     them the race's lap 1 is passed over by name, lap 2 is chosen, and the line sits
     on the timing line with the circle's own heading.
     """
-    legacy = _standing_window(reference_laps=None)
+    legacy = _standing_window(reference_laps=LEGACY_REFERENCE)
     slot_x = synthetic.SESSION_RADIUS * math.cos(_PHI0)
     slot_y = synthetic.SESSION_RADIUS * math.sin(_PHI0)
     assert legacy["track"]["startFinish"]["angle"] == 0.0
@@ -473,7 +529,7 @@ def test_window_builder_takes_the_line_from_whichever_car_is_the_reference():
     cars[1]'s, not the first car's first sample."""
     cars = [
         synthetic.window_car("CCC", synthetic.parked_telemetry(*_WINDOW)),
-        synthetic.window_car("AAA", _standing_start_telemetry(*_WINDOW)),
+        synthetic.window_car("AAA", synthetic.standing_start_telemetry(*_WINDOW)),
     ]
     replay = build_window_replay_dict(
         cars, synthetic.SESSION_META, _WINDOW, reference_laps=[(), _standing_facts()]
@@ -494,6 +550,53 @@ def test_window_builder_fails_loudly_when_nothing_qualifies():
 def test_window_builder_needs_one_lap_table_per_car():
     with pytest.raises(TelemetryShapeError, match="one lap table per car"):
         _standing_window(reference_laps=[_standing_facts(), ()])
+
+
+def test_window_builder_has_no_default_reference_and_refuses_none():
+    """The legacy line — the pole slot at angle 0.0 on a standing start — is reached
+    only BY NAME. Forgetting the lap facts is a TypeError, not that line."""
+    cars = [synthetic.window_car("AAA", synthetic.standing_start_telemetry(*_WINDOW))]
+    with pytest.raises(TypeError, match="reference_laps"):
+        build_window_replay_dict(cars, synthetic.SESSION_META, _WINDOW)
+    with pytest.raises(TypeError, match="LEGACY_REFERENCE"):
+        build_window_replay_dict(
+            cars, synthetic.SESSION_META, _WINDOW, reference_laps=None
+        )
+
+
+def _with_dropout_in_lap_two() -> "dict[str, np.ndarray]":
+    """The standing start with a saturated 9m freeze imposed 5 s into lap 2 — the
+    same imposition `test_replay_transform`'s bridging test makes."""
+    tel = synthetic.standing_start_telemetry(*_WINDOW)
+    tau = np.asarray(tel["Time"], dtype=float) - _T0
+    lo = int(np.flatnonzero(tau > _LAP1_END + 5.0)[0])
+    hi = lo + max(STUCK_MIN_ROWS + 2, int(1.4 / (tau[1] - tau[0])))
+    stuck = {name: np.asarray(col).copy() for name, col in tel.items()}
+    stuck["Speed"][lo:hi] = 280.0
+    stuck["Throttle"][lo:hi] = 104.0
+    stuck["Brake"][lo:hi] = 1
+    return stuck
+
+
+def test_window_builder_hands_the_selector_each_cars_dropouts():
+    """End to end: the 9m screen bridges AAA's lap 2, so the reference moves to
+    BBB's identical, measured lap 2 — and the report, recomputing from the FILE
+    (`cars[k].dropouts`), agrees."""
+    cars = [
+        synthetic.window_car("AAA", _with_dropout_in_lap_two()),
+        synthetic.window_car("BBB", synthetic.standing_start_telemetry(*_WINDOW)),
+    ]
+    facts = [_standing_facts(), _standing_facts()]
+    replay = build_window_replay_dict(
+        cars, synthetic.SESSION_META, _WINDOW, reference_laps=facts
+    )
+    assert len(replay["cars"][0]["dropouts"]) == 1
+    assert "dropouts" not in replay["cars"][1]
+    assert replay["track"]["referenceLap"]["car"] == 1
+    report = reference_lap_report(replay, facts)
+    assert "passed over AAA lap 2: overlaps a stuck-channel dropout" in report
+    assert "cars[1] BBB lap 2:" in report
+    assert "MISMATCH" not in report
 
 
 # --- the report ---------------------------------------------------------------------

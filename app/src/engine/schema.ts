@@ -11,9 +11,11 @@
  */
 import { z } from "zod";
 import {
+  REFERENCE_LAP_CLOSE_M,
   REFERENCE_LAP_MIN_S,
   START_FINISH_MAX_OFFSET_M,
-  startFinishOffsetM,
+  metresApart,
+  referenceLapEnds,
   withReferenceLap,
 } from "./referenceLap";
 
@@ -157,8 +159,12 @@ const PitLanePointSchema = z.object({ x: z.number(), y: z.number() });
  * which on a standing start is the grid slot and on a restart holds the grid hold.
  * Both bounds lie on the sample grid, so a consumer reads samples
  * `fromT * sampleRateHz ..= toT * sampleRateHz` of `cars[car]` with no search
- * (CLAUDE.md rule 3). Validated at the replay level, where `meta` and `cars` are in
- * scope; see the refinement there.
+ * (CLAUDE.md rule 3) — with one index that does not exist: `toT` may equal
+ * `meta.duration`, sample `n`, which a closed lap reaches by WRAPPING to sample 0
+ * (every closed file's own `{0, 0, duration}`) and an open window by holding sample
+ * `n - 1`. A consumer clamps or wraps it the way `referenceLapEnds` does, or a
+ * closed lap's gaps change by the wrap step. Validated at the replay level, where
+ * `meta` and `cars` are in scope; see the refinement there.
  */
 const ReferenceLapSchema = z.object({
   /** Index into `cars`. */
@@ -611,13 +617,25 @@ function referenceLapIssue(
     };
   }
   const driver = replay.cars[car].driver;
-  const offset = startFinishOffsetM(replay, reference);
-  if (offset === null) {
+  const ends = referenceLapEnds(replay, reference);
+  if (ends === null) {
     return {
       path: ["car"],
       message: `cars[${car}] (${driver}) covers no ground over track.referenceLap, so it cannot be a lap`,
     };
   }
+  // The span must CLOSE: one lap ends where it started (review of the contract
+  // half). Both positions are named, because which one is wrong is the question
+  // the reader of this message has to answer next.
+  const { start, end, unitsPerMetre } = ends;
+  const apart = metresApart(start, end, unitsPerMetre);
+  if (apart > REFERENCE_LAP_CLOSE_M) {
+    return {
+      path: ["toT"],
+      message: `track.referenceLap does not close: cars[${car}] (${driver}) is at (${start.x.toFixed(1)}, ${start.y.toFixed(1)}) at fromT=${fromT} and at (${end.x.toFixed(1)}, ${end.y.toFixed(1)}) at toT=${toT}, ${apart.toFixed(1)} m apart; one lap ends where it started, so they must lie within ${REFERENCE_LAP_CLOSE_M} m`,
+    };
+  }
+  const offset = metresApart(replay.track.startFinish, start, unitsPerMetre);
   if (offset > START_FINISH_MAX_OFFSET_M) {
     return {
       path: ["fromT"],

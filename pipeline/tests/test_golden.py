@@ -37,6 +37,7 @@ import pytest
 
 import synthetic
 from replay_transform import (
+    LEGACY_REFERENCE,
     SAMPLE_RATE_HZ,
     build_replay_dict,
     build_window_replay_dict,
@@ -69,10 +70,12 @@ def _lap(drs: bool, meta, table) -> "dict":
 def _facts(table, window, standing_start: bool = True) -> "tuple":
     """A synthetic lap table as `LapFacts`, through the real `lap_facts`, exactly as
     `build_race_replay` routes a FastF1 table — no lap of these tables went through
-    the pit lane, so both pit columns are NaN."""
+    the pit lane, so both pit columns are NaN, and every lap's timing is vouched for
+    (`IsAccurate` True), so what the goldens pin is the selector's own rule."""
     numbers, starts, times, _, _ = table
     nan = [math.nan] * len(numbers)
-    return lap_facts(numbers, starts, times, nan, nan, standing_start, window)
+    accurate = [True] * len(numbers)
+    return lap_facts(numbers, starts, times, nan, nan, accurate, standing_start, window)
 
 
 def _window_context(driver: str) -> "tuple[list, list]":
@@ -129,6 +132,10 @@ def _race_window() -> "dict":
         RACE_WINDOW,
         corners=synthetic.CORNERS,
         status=status,
+        # 4 s cannot hold a lap, so this golden opts into the pre-Slice-24 line BY
+        # NAME and carries no `referenceLap`: the committed negative control for the
+        # app's legacy synthesis.
+        reference_laps=LEGACY_REFERENCE,
     )
 
 
@@ -170,12 +177,54 @@ def _pit_window() -> "dict":
     )
 
 
+def _standing_window() -> "dict":
+    """
+    One car from a STANDING START (Slice 24): parked on its grid slot, launched,
+    across the timing line `synthetic.STANDING_LINE_M` later, and round twice — the
+    red-flag asset's shape, in closed form.
+
+    It is the one golden whose `track.referenceLap` the app's legacy synthesis could
+    NOT have produced. Lap 1 is the race's lap 1 and is passed over by name, so the
+    chosen lap is lap 2 with `fromT` > 0, and `startFinish` sits on the timing line
+    rather than the slot. Every other golden's field equals what the loader would
+    synthesize without it (`{0, 0, ...}`), which left `pipelineContract.test.ts`'s
+    "survives parseReplay" assertion unable to fail — mutation-proven by the review
+    of the contract half. This one can.
+
+    A green status covers the window through the real `window_status_intervals`, so
+    the choice lands in the GREEN tier; the pit golden pins the fallback tier.
+    """
+    start, end = synthetic.STANDING_WINDOW
+    grid, _ = window_grid(start, end)
+    duration = round(len(grid) / SAMPLE_RATE_HZ, 3)
+    status = window_status_intervals(
+        [start - 5.0], ["1"], synthetic.STANDING_WINDOW, duration
+    ).intervals
+    return build_window_replay_dict(
+        [
+            synthetic.window_car(
+                "AAA",
+                synthetic.standing_start_telemetry(start, end),
+                *lap_context(*synthetic.STANDING_LAP_TABLE, synthetic.STANDING_WINDOW),
+            ),
+        ],
+        synthetic.SESSION_META,
+        synthetic.STANDING_WINDOW,
+        corners=synthetic.CORNERS,
+        status=status,
+        reference_laps=[
+            _facts(synthetic.STANDING_LAP_TABLE, synthetic.STANDING_WINDOW),
+        ],
+    )
+
+
 #: name -> the exact call that produced the committed file.
 CASES = {
     "lap-drs": lambda: _lap(True, synthetic.META, synthetic.LAP_TABLE_DRS),
     "lap-nodrs": lambda: _lap(False, synthetic.META_NO_DRS, synthetic.LAP_TABLE_NODRS),
     "race-window": _race_window,
     "race-window-pit": _pit_window,
+    "race-window-standing": _standing_window,
 }
 
 
@@ -296,3 +345,21 @@ def test_the_lap_goldens_stay_closed_and_the_race_golden_open():
         replay = json.loads((GOLDEN_DIR / f"{name}.golden.json").read_text())
         assert replay["meta"]["loop"] == "closed"
         assert len(replay["cars"]) == 1
+
+
+def test_the_standing_golden_carries_a_reference_lap_the_loader_could_not_invent():
+    """The committed half of the cross-language check: `pipelineContract.test.ts`
+    asserts this file's field survives `parseReplay` and differs from the legacy
+    synthesis; this asserts, on the same committed bytes, that there is something to
+    differ — a lap that starts after the window opens, on the line, not the slot."""
+    replay = json.loads((GOLDEN_DIR / "race-window-standing.golden.json").read_text())
+    ref = replay["track"]["referenceLap"]
+    rate = replay["meta"]["sampleRateHz"]
+    assert ref["car"] == 0 and ref["fromT"] > 0.0
+    at = replay["cars"][0]["samples"][round(ref["fromT"] * rate)]
+    sf = replay["track"]["startFinish"]
+    assert (sf["x"], sf["y"]) == (at["x"], at["y"])
+    assert sf["angle"] != 0.0
+    # Lap 1 began on the grid slot, parked: the legacy line's spot, not this one.
+    slot = replay["cars"][0]["samples"][0]
+    assert slot["speed"] == 0 and (slot["x"], slot["y"]) != (sf["x"], sf["y"])

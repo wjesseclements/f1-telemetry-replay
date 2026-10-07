@@ -148,11 +148,13 @@ as a Zod schema; the loader validates against it; the Python pipeline emits it.
     // reference (closed: the whole lap, 0..duration; open: cars[0] from sample 0
     // to its first return to its start, or its whole path if it never returns).
     // When present it is validated loudly: car in range; fromT < toT <= duration,
-    // both on the sample grid; span >= 5 s (the engine's MIN_LAP_S); startFinish
-    // within 25 m (MAX_RESIDUAL_M) of cars[car] at fromT. The pipeline chooses it
-    // by rule — not race lap 1, LapTime recorded, not an in/out lap, wholly in the
-    // window, no sample below 15 km/h, green throughout preferred — and fails the
-    // build if no lap qualifies.
+    // both on the sample grid; span >= 5 s (the engine's MIN_LAP_S); the span
+    // CLOSES — cars[car] at toT within 25 m (MAX_RESIDUAL_M) of where it was at
+    // fromT; startFinish within 25 m of cars[car] at fromT. The pipeline chooses it
+    // by rule — not race lap 1, LapTime recorded, not an in/out lap, FastF1
+    // IsAccurate, wholly in the window, no sample below 15 km/h, no stuck-channel
+    // dropout in it, green throughout preferred field-wide — and fails the build if
+    // no lap qualifies.
     "referenceLap": { "car": 0, "fromT": 89.0, "toT": 175.6 }
   },
   "cars": [

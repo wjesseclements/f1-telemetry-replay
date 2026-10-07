@@ -436,6 +436,9 @@ def reference_lap_report(
         [str(car["driver"]) for car in cars],
         reference_laps,
         [[s["speed"] for s in car["samples"]] for car in cars],
+        # Absent `dropouts` is the schema's own spelling of "the feed never
+        # dropped" (the builder emits no empty list), so `[]` reads it, not a guess.
+        [car.get("dropouts", []) for car in cars],
         replay.get("trackStatus", []),
         float(replay["meta"]["sampleRateHz"]),
     )

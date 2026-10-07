@@ -20,23 +20,36 @@ So the reference is now CHOSEN, by a rule, and written into the file.
 WHAT QUALIFIES
 --------------
 A lap is a candidate when every one of these holds, checked in this order (the first
-failure is the reason the report prints):
+failure is the reason the report prints). The order runs from the lap table, through
+the grid, to the emitted samples, so the most specific timing reason wins — FastF1
+also marks every in/out lap and every lap with no LapTime `IsAccurate=False`, and
+"in-lap" says more than "not accurate":
 
 1. it is not the race's lap 1 — a standing start begins on the grid, not on the line;
 2. its LapTime is recorded — FastF1 leaves NaT on red-flagged laps and some in/out
    laps, and a lap with no time has no defined end;
 3. it is not an in-lap (PitInTime set) and 4. not an out-lap (PitOutTime set) — a lap
    through the pit lane is not the circuit;
-5. it lies wholly inside the window ON THE EMITTED GRID (see `_grid_span`);
-6. it spans at least `REFERENCE_LAP_MIN_S` — the schema's floor, mirrored, so the
+5. FastF1 calls its timing ACCURATE (`IsAccurate`) — whether the lap's start and end
+   are synchronised with the timing line, which is exactly what `fromT`, `toT` and
+   the start/finish line are read from. Only a real True passes; an unknown is not
+   accurate (review of the contract half: a recorded LapTime is not the same claim).
+   FastF1 (3.8, `Session._check_lap_accuracy`) also requires the lap's own status to
+   be green or yellow and the previous lap not to have run wholly under the Safety
+   Car, so a lap touched by SC, VSC or red never reaches the tiers below at all;
+6. it lies wholly inside the window ON THE EMITTED GRID (see `_grid_span`);
+7. it spans at least `REFERENCE_LAP_MIN_S` — the schema's floor, mirrored, so the
    selector refuses by name what the loader would refuse anyway;
-7. no emitted sample inside it is below `PIT_STOP_MAX_KMH` — the pit-lane detector's
+8. no emitted sample inside it is below `PIT_STOP_MAX_KMH` — the pit-lane detector's
    stop threshold, REUSED rather than re-invented: a span holding a stop (a grid hold,
-   a pit box, a car parked under red) is not a racing lap, whatever the timing says.
+   a pit box, a car parked under red) is not a racing lap, whatever the timing says;
+9. it overlaps none of the car's stuck-channel `dropouts` (Slice 9m) — across one,
+   the emitted positions are a BRIDGE the screen laid, not fixes the car reported,
+   and the reference lap becomes the ribbon and the gap circuit.
 
-Speeds are read from the EMITTED samples, not the source rows, for the reason
-`pit_lane` gives: the report recomputes the choice from the written file alone and
-agrees with the builder by construction.
+Speeds and dropouts are read from the EMITTED file, not the source rows, for the
+reason `pit_lane` gives: the report recomputes the choice from the written file alone
+and agrees with the builder by construction.
 
 WHICH CANDIDATE
 ---------------
@@ -47,10 +60,34 @@ car's earliest lap, then the next car's. Two passes over the same walk, green-on
 first, then any qualifying lap; the second pass is a FALLBACK the report names (a
 window with no status data — the finale asset — lands there by construction).
 
+The tier is applied FIELD-WIDE, BEFORE car order: a green clean lap on `cars[1]`
+beats a clean lap on `cars[0]` that is not green throughout. That is a ruling (the
+review of the contract half put both readings to the coordinator), and the reason is
+that the four things the reference sets do not care equally about WHO drove it: the
+line, the ribbon and the gap circuit are the same circuit whichever car traced it,
+but the pace is the one quantity a slow lap gets wrong, and only the tier protects
+it. Moving the reference to another car costs nothing the file cannot say — `car` is
+in the field, and the report names the passed-over lap with its flag. Car order
+still decides within a tier, so the human's `--drivers` order is honoured whenever
+it can be without a slow lap. On all five gallery windows the two readings choose
+the same lap (checked offline). Since check 5 removes SC, VSC and red laps outright,
+what the tier now separates in a real build is a lap under a YELLOW (the emitted
+`yellow` status) from a green one, and a status-less window lands in the fallback.
+
 If nothing qualifies anywhere the build FAILS (`NoReferenceLapError`, a
 `TelemetryShapeError`), naming every candidate's reason and the two ways out: a wider
 `--laps`, or a different first driver. Never a silent fallback to `cars[0]`'s first
 sample — that fallback is exactly the defect this module exists to remove.
+
+THE LEGACY LINE IS AN OPT-IN, NEVER A DEFAULT
+---------------------------------------------
+The pre-Slice-24 shape — no `referenceLap` key, `startFinish` from `cars[0]`'s first
+sample — survives for one kind of caller: the synthetic windows SHORTER THAN A LAP
+that the screen tests build, which cannot hold a reference lap at all. They ask for
+it by name, `reference_laps=LEGACY_REFERENCE`, and `build_window_replay_dict` has no
+default for the argument, so a caller that forgets the lap facts gets a TypeError
+rather than the pole slot at angle 0.0 (review of the contract half: a `None`
+default reproduced the defect by omission).
 
 THE START/FINISH LINE
 ---------------------
@@ -64,6 +101,7 @@ numpy and the standard library only, like every module in this package.
 
 from __future__ import annotations
 
+import enum
 import math
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
@@ -89,6 +127,19 @@ class NoReferenceLapError(TelemetryShapeError):
     """No lap in the window qualifies as the reference lap. Loud by design."""
 
 
+class LegacyReference(enum.Enum):
+    """The explicit opt-in to the pre-Slice-24 line (module docstring). One member."""
+
+    LEGACY = "legacy"
+
+
+#: Pass as `build_window_replay_dict(..., reference_laps=LEGACY_REFERENCE)` to build a
+#: window WITHOUT a reference lap: no `referenceLap` key (the loader synthesizes the
+#: legacy one) and `startFinish` from `cars[0]`'s first sample. For synthetic windows
+#: shorter than a lap only; `build_replay.py` never passes it.
+LEGACY_REFERENCE = LegacyReference.LEGACY
+
+
 @dataclass(frozen=True)
 class LapFacts:
     """One in-window lap of one car, as the selector needs it: plain data only."""
@@ -104,6 +155,10 @@ class LapFacts:
     pit_out: bool = False
     #: The race's (or sprint's) lap 1: a standing start, which begins off the line.
     race_lap_one: bool = False
+    #: FastF1 `IsAccurate`: the lap's start and end are synchronised with the timing
+    #: line. `lap_facts` always sets it from the table (an unknown reads False); the
+    #: default serves hand-built facts, like the three flags above.
+    accurate: bool = True
 
 
 @dataclass(frozen=True)
@@ -143,12 +198,19 @@ class ReferenceLap:
         return {"car": self.car, "fromT": self.from_t, "toT": self.to_t}
 
 
+def _is_true(value: Any) -> bool:
+    """A real boolean True. FastF1 leaves `IsAccurate` unset on some rows, and
+    `bool(nan)` is True — an unknown must read as NOT accurate."""
+    return isinstance(value, (bool, np.bool_)) and bool(value)
+
+
 def lap_facts(
     numbers: "Sequence[Any]",
     starts_s: "Sequence[float]",
     lap_times_s: "Sequence[float]",
     pit_in_s: "Sequence[float]",
     pit_out_s: "Sequence[float]",
+    accurate: "Sequence[Any]",
     standing_start: bool,
     window: "tuple[float, float]",
 ) -> "tuple[LapFacts, ...]":
@@ -157,15 +219,17 @@ def lap_facts(
     selector reads, in WINDOW seconds — for exactly the laps the file's `laps` carries
     (`in_window_laps`, the rule `lap_context` uses).
 
-    `standing_start` is True for a session that starts from the grid (a race or a
-    sprint); its lap 1 is then flagged. The fetch layer decides it from the session,
-    so this module never learns what a session type is.
+    `accurate` is FastF1's `IsAccurate` column as it comes; only a real True counts
+    (`_is_true`). `standing_start` is True for a session that starts from the grid (a
+    race or a sprint); its lap 1 is then flagged. The fetch layer decides it from the
+    session, so this module never learns what a session type is. Every column is
+    required — there is no default that would wave a lap through unchecked.
     """
     t0 = float(window[0])
     times = np.asarray(lap_times_s, dtype=float)
     pit_in = np.asarray(pit_in_s, dtype=float)
     pit_out = np.asarray(pit_out_s, dtype=float)
-    if not (len(numbers) == len(pit_in) == len(pit_out)):
+    if not (len(numbers) == len(pit_in) == len(pit_out) == len(accurate)):
         raise TelemetryShapeError(
             "lap table columns disagree about the number of laps"
         )
@@ -181,6 +245,7 @@ def lap_facts(
                 pit_in=bool(np.isfinite(pit_in[i])),
                 pit_out=bool(np.isfinite(pit_out[i])),
                 race_lap_one=bool(standing_start) and int(numbers[i]) == 1,
+                accurate=_is_true(accurate[i]),
             )
         )
     return tuple(out)
@@ -206,7 +271,10 @@ def _grid_span(lap: LapFacts, n: int, rate: float) -> "tuple[int, int] | str":
 
 
 def _disqualify(
-    lap: LapFacts, speed: np.ndarray, rate: float
+    lap: LapFacts,
+    speed: np.ndarray,
+    dropouts: "Sequence[Mapping[str, float]]",
+    rate: float,
 ) -> "tuple[int, int] | str":
     """The lap's grid span when it qualifies, else the FIRST reason it does not."""
     if lap.race_lap_one:
@@ -217,6 +285,8 @@ def _disqualify(
         return "in-lap (PitInTime set)"
     if lap.pit_out:
         return "out-lap (PitOutTime set)"
+    if not lap.accurate:
+        return "lap timing not accurate (IsAccurate=False)"
     span = _grid_span(lap, len(speed), rate)
     if isinstance(span, str):
         return span
@@ -232,6 +302,16 @@ def _disqualify(
             f"contains a stop - {len(slow)} sample(s) below {PIT_STOP_MAX_KMH:g} km/h "
             f"from t={(from_i + int(slow[0])) / rate:.1f} s"
         )
+    # Overlap in seconds: dropouts are emitted to the millisecond, off the grid. A
+    # dropout that ends exactly where the lap starts (or starts where it ends)
+    # bridges none of the lap's samples.
+    lo, hi = from_i / rate, to_i / rate
+    for drop in dropouts:
+        if drop["fromT"] < hi and drop["toT"] > lo:
+            return (
+                f"overlaps a stuck-channel dropout at t={drop['fromT']:g}-"
+                f"{drop['toT']:g} s - positions there are bridged, not measured"
+            )
     return from_i, to_i
 
 
@@ -256,27 +336,30 @@ def select_reference_lap(
     drivers: "Sequence[str]",
     laps: "Sequence[Sequence[LapFacts]]",
     speeds: "Sequence[Sequence[float]]",
+    dropouts: "Sequence[Sequence[Mapping[str, float]]]",
     status: "Sequence[Mapping[str, Any]]",
     rate: float,
 ) -> ReferenceLap:
     """
     The window's reference lap — see the module docstring for the rule.
 
-    `drivers`, `laps` and `speeds` are parallel, in `cars` order: each car's in-window
-    `LapFacts` (`lap_facts`) and its EMITTED grid speeds. `status` is the window's
-    emitted `trackStatus` rows. Raises `NoReferenceLapError` when nothing qualifies.
+    `drivers`, `laps`, `speeds` and `dropouts` are parallel, in `cars` order: each
+    car's in-window `LapFacts` (`lap_facts`), its EMITTED grid speeds, and its emitted
+    `dropouts` intervals (empty for a car whose feed never dropped). `status` is the
+    window's emitted `trackStatus` rows. Raises `NoReferenceLapError` when nothing
+    qualifies.
     """
-    if not (len(drivers) == len(laps) == len(speeds)):
+    if not (len(drivers) == len(laps) == len(speeds) == len(dropouts)):
         raise TelemetryShapeError(
-            f"reference-lap selection needs one lap table and one speed channel per "
-            f"car: got {len(drivers)} drivers, {len(laps)} lap tables, "
-            f"{len(speeds)} speed channels"
+            f"reference-lap selection needs one lap table, one speed channel and one "
+            f"dropout list per car: got {len(drivers)} drivers, {len(laps)} lap "
+            f"tables, {len(speeds)} speed channels, {len(dropouts)} dropout lists"
         )
     walk = []
     for c, car_laps in enumerate(laps):
         speed = np.asarray(speeds[c], dtype=float)
         for lap in car_laps:
-            walk.append((c, lap, _disqualify(lap, speed, rate)))
+            walk.append((c, lap, _disqualify(lap, speed, dropouts[c], rate)))
 
     for green_only in (True, False):
         rejected: "list[Rejection]" = []

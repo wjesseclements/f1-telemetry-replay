@@ -13,10 +13,12 @@ import sampleLap from "./__fixtures__/sample-lap.json";
 import { MAX_RESIDUAL_M, MIN_LAP_S, buildProgressIndex } from "./gaps";
 import { ReplayValidationError, parseReplay } from "./load";
 import {
+  REFERENCE_LAP_CLOSE_M,
   REFERENCE_LAP_MIN_S,
   START_FINISH_MAX_OFFSET_M,
   legacyReferenceLap,
-  startFinishOffsetM,
+  metresApart,
+  referenceLapEnds,
   withReferenceLap,
   type UnreferencedReplay,
 } from "./referenceLap";
@@ -28,15 +30,24 @@ const UNITS = 10;
 const PER_LAP = 200;
 const RADIUS = (1000 * UNITS) / (2 * Math.PI);
 
-/** `count` samples round the circle from angle `shift` steps, at `kmh`. */
-function circle(count: number, shift = 0, kmh = 180): Sample[] {
+/**
+ * `count` samples round a circle from angle `shift` steps, at `kmh`. `perLap` sizes
+ * the circle so a step stays 5 m: the default is the 1000 m ring, 50 is a 5 s lap.
+ */
+function circle(
+  count: number,
+  shift = 0,
+  kmh = 180,
+  perLap = PER_LAP,
+): Sample[] {
+  const radius = (RADIUS * perLap) / PER_LAP;
   const out: Sample[] = [];
   for (let k = 0; k < count; k++) {
-    const a = (2 * Math.PI * (k + shift)) / PER_LAP;
+    const a = (2 * Math.PI * (k + shift)) / perLap;
     out.push({
       t: k / RATE,
-      x: RADIUS * Math.cos(a),
-      y: RADIUS * Math.sin(a),
+      x: radius * Math.cos(a),
+      y: radius * Math.sin(a),
       speed: kmh,
       throttle: 100,
       brake: 0,
@@ -175,6 +186,7 @@ describe("legacyReferenceLap — what a file without the field has always meant"
 
   it("shares its constants with gaps.ts rather than restating them", () => {
     expect(START_FINISH_MAX_OFFSET_M).toBe(MAX_RESIDUAL_M);
+    expect(REFERENCE_LAP_CLOSE_M).toBe(MAX_RESIDUAL_M);
     expect(REFERENCE_LAP_MIN_S).toBe(MIN_LAP_S);
   });
 });
@@ -205,22 +217,27 @@ describe("withReferenceLap — the one place the field is settled", () => {
   });
 });
 
-describe("startFinishOffsetM", () => {
-  const atStart = (cars: Sample[][], dx: number) =>
-    parseReplay(
+describe("referenceLapEnds and metresApart", () => {
+  const LAP = { car: 0, fromT: 20, toT: 40 };
+  /** Metres from `track.startFinish` to the lap's start — the schema's line check. */
+  const lineOffset = (cars: Sample[][], dx: number) => {
+    const replay = parseReplay(
       replayJson({
         cars,
         startFinish: { x: cars[0][200].x + dx, y: cars[0][200].y, angle: 0 },
       }),
     );
+    const ends = referenceLapEnds(replay, LAP)!;
+    return metresApart(
+      replay.track.startFinish,
+      ends.start,
+      ends.unitsPerMetre,
+    );
+  };
 
   it("converts through the car's own metre bridge, not a constant", () => {
     const cars = [circle(3 * PER_LAP)];
-    const offset = startFinishOffsetM(atStart(cars, 12 * UNITS), {
-      car: 0,
-      fromT: 20,
-      toT: 40,
-    });
+    const offset = lineOffset(cars, 12 * UNITS);
     // The chord of a 5 m arc step is a hair under 5 m, so the bridge reads a hair
     // under 10 units/m and the answer a hair over 12 m.
     expect(offset).toBeCloseTo(12, 2);
@@ -228,35 +245,57 @@ describe("startFinishOffsetM", () => {
     const scaled = cars.map((c) =>
       c.map((s) => ({ ...s, x: s.x * 10, y: s.y * 10 })),
     );
-    expect(
-      startFinishOffsetM(atStart(scaled, 120 * UNITS), {
-        car: 0,
-        fromT: 20,
-        toT: 40,
-      }),
-    ).toBeCloseTo(offset!, 9);
+    expect(lineOffset(scaled, 120 * UNITS)).toBeCloseTo(offset, 9);
+  });
+
+  it("reads both ends off the reference car, so one lap of the ring closes", () => {
+    const cars = [circle(3 * PER_LAP)];
+    const replay = parseReplay(replayJson({ cars }));
+    const ends = referenceLapEnds(replay, LAP)!;
+    expect(ends.start).toEqual({ x: cars[0][200].x, y: cars[0][200].y });
+    expect(ends.end).toEqual({ x: cars[0][400].x, y: cars[0][400].y });
+    expect(metresApart(ends.start, ends.end, ends.unitsPerMetre)).toBeCloseTo(
+      0,
+      9,
+    );
   });
 
   it("is null when the car covers no ground over the span", () => {
     const replay = parseReplay(
       replayJson({ cars: [circle(300), parked(300)] }),
     );
-    expect(
-      startFinishOffsetM(replay, { car: 1, fromT: 0, toT: 20 }),
-    ).toBeNull();
+    expect(referenceLapEnds(replay, { car: 1, fromT: 0, toT: 20 })).toBeNull();
   });
 
-  it("reads a closed lap's toT = duration as the last sample, not past it", () => {
-    const replay = parseReplay(
-      replayJson({ cars: [circle(PER_LAP)], loop: "closed" }),
+  it("reads a closed lap's toT = duration as the WRAP back to sample 0", () => {
+    // Sample n does not exist; at `duration` the engine has looped back to the
+    // first sample, so a closed file's whole-lap `{0, 0, duration}` closes exactly.
+    const samples = circle(PER_LAP);
+    const replay = parseReplay(replayJson({ cars: [samples], loop: "closed" }));
+    const ends = referenceLapEnds(replay, {
+      car: 0,
+      fromT: 0,
+      toT: replay.meta.duration,
+    })!;
+    expect(ends.end).toEqual({ x: samples[0].x, y: samples[0].y });
+    expect(metresApart(ends.start, ends.end, ends.unitsPerMetre)).toBe(0);
+  });
+
+  it("reads an open window's toT = duration as the HELD last sample", () => {
+    const samples = circle(PER_LAP);
+    const replay = parseReplay(replayJson({ cars: [samples] }));
+    const ends = referenceLapEnds(replay, {
+      car: 0,
+      fromT: 0,
+      toT: replay.meta.duration,
+    })!;
+    const last = samples[PER_LAP - 1];
+    expect(ends.end).toEqual({ x: last.x, y: last.y });
+    // One 5 m step short of the start: the last fix before the line.
+    expect(metresApart(ends.start, ends.end, ends.unitsPerMetre)).toBeCloseTo(
+      5,
+      1,
     );
-    expect(
-      startFinishOffsetM(replay, {
-        car: 0,
-        fromT: 0,
-        toT: replay.meta.duration,
-      }),
-    ).toBe(0);
   });
 });
 
@@ -282,11 +321,13 @@ describe("schema: an explicit track.referenceLap", () => {
   });
 
   it("may name any car, and may end exactly at meta.duration", () => {
+    // cars[1]'s last lap, ending in the holding step: sample 600 does not exist,
+    // and the held sample 599 is one 5 m step short of where the lap began.
     const shifted = circle(3 * PER_LAP, 40);
     expect(
       parseWith(
-        { car: 1, fromT: 16, toT: 60 },
-        { ...lineAt(200), x: shifted[160].x, y: shifted[160].y },
+        { car: 1, fromT: 40, toT: 60 },
+        { ...lineAt(200), x: shifted[400].x, y: shifted[400].y },
       ).track.referenceLap.car,
     ).toBe(1);
     const closed = parseReplay(
@@ -309,7 +350,37 @@ describe("schema: an explicit track.referenceLap", () => {
         lineAt(200, START_FINISH_MAX_OFFSET_M - 1),
       ),
     ).not.toThrow();
-    expect(() => parseWith({ car: 0, fromT: 20, toT: 25 })).not.toThrow();
+    // A lap exactly at the 5 s floor: a ring of 50 steps, which closes.
+    const short = circle(3 * 50, 0, 180, 50);
+    expect(() =>
+      parseReplay(
+        replayJson({
+          cars: [short],
+          referenceLap: { car: 0, fromT: 5, toT: 10 },
+          startFinish: { x: short[50].x, y: short[50].y, angle: 0 },
+        }),
+      ),
+    ).not.toThrow();
+  });
+
+  it("accepts a lap that closes within 25 m and rejects one that does not", () => {
+    // Past the lap's end by 4 steps (20 m of arc) and by 6 (30 m).
+    expect(() => parseWith({ car: 0, fromT: 20, toT: 40.4 })).not.toThrow();
+    const over = () => parseWith({ car: 0, fromT: 20, toT: 40.6 });
+    expect(over).toThrow(ReplayValidationError);
+    expect(over).toThrow(/does not close: .* 30\.0 m apart/);
+  });
+
+  it("rejects a span that is not one lap, naming both positions", () => {
+    // Half the ring: the car ends a diameter (318.3 m) from where it started.
+    const half = () => parseWith({ car: 0, fromT: 20, toT: 30 });
+    const s = circle(3 * PER_LAP);
+    const at = (k: number) => `(${s[k].x.toFixed(1)}, ${s[k].y.toFixed(1)})`;
+    expect(half).toThrow(ReplayValidationError);
+    expect(half).toThrow(
+      `track.referenceLap does not close: cars[0] (C0) is at ${at(200)} at fromT=20 and at ${at(300)} at toT=30, 318.3 m apart`,
+    );
+    expect(half).toThrow(`must lie within ${REFERENCE_LAP_CLOSE_M} m`);
   });
 
   it.each([

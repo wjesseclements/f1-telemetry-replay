@@ -17,8 +17,10 @@
  *    `ReplaySchema`'s transform, and it calls `gaps.ts`'s own `findLapEnd`,
  *    `travelIntegral` and `pathLength` with gaps.ts's own constants — the same
  *    functions, not a copy that could drift.
- *  - `startFinishOffsetM` — the geometry the schema needs to check a PRESENT field:
- *    how far `track.startFinish` sits from the reference car at `fromT`, in metres.
+ *  - `referenceLapEnds` / `metresApart` — the geometry the schema needs to check a
+ *    PRESENT field: where `cars[car]` is at `fromT` and at `toT`, and the car's own
+ *    metre bridge over the span, so "does the span close" and "is the line where
+ *    the lap starts" are both answered in metres.
  *
  * Consumers do not read the field yet; switching them over is the next phase. Until
  * then this module changes nothing a user can see.
@@ -26,9 +28,14 @@
  * A FALLBACK FOR CONSUMERS TO KNOW ABOUT. When an open window's `cars[0]` never
  * returns to its start, the legacy span is its whole path — what `buildReference`
  * projects onto today — but `gaps.ts` treats that case as "no ring" (`lapUnits` 0).
- * `{car, fromT, toT}` cannot carry that bit. Exactly that case is recognisable from
+ * `{car, fromT, toT}` cannot carry that bit. Most of that case is recognisable from
  * the span itself: it is shorter than `MIN_LAP_S` or does not return within
- * `MAX_RESIDUAL_M` of where it started, which a real reference lap always does.
+ * `MAX_RESIDUAL_M` of where it started, which a real reference lap always does (the
+ * schema now requires it of a PRESENT field). NOT all of it: a `cars[0]` that never
+ * MOVED ends exactly where it started, so the return test calls it closed. gaps.ts
+ * catches that case first, on `unitsPerMetre === 0`, and the consumer switch-over
+ * must keep that guard ahead of any span-based "no ring" rule (review of the
+ * contract half).
  */
 import {
   MAX_RESIDUAL_M,
@@ -62,6 +69,18 @@ export const REFERENCE_LAP_MIN_S = MIN_LAP_S;
  * ~290 m from where any racing lap starts.
  */
 export const START_FINISH_MAX_OFFSET_M = MAX_RESIDUAL_M;
+
+/**
+ * How far apart `cars[car]`'s positions at `fromT` and at `toT` may be, in metres:
+ * a reference lap must CLOSE, because one lap ends where it started. `MAX_RESIDUAL_M`
+ * once more — the radius `findLapEnd` uses for "back where it started", so the
+ * schema cannot accept as a lap a span the lap finder would not have called one.
+ * Grid rounding costs at most half a step at each end (4.9 m each at 350 km/h).
+ * What it catches is a span that is not ONE lap: a lap and a bit, a timing-table
+ * row that disagrees with the positions, or a file's `fromT`/`toT` pointing at the
+ * wrong car.
+ */
+export const REFERENCE_LAP_CLOSE_M = MAX_RESIDUAL_M;
 
 /** A replay before its reference lap is settled: the field may be absent. */
 export type UnreferencedReplay = Omit<Replay, "track"> & {
@@ -124,31 +143,61 @@ export function legacyReferenceLap(
     : { car: 0, fromT: 0, toT: lapEnd / sampleRateHz };
 }
 
+interface Point {
+  x: number;
+  y: number;
+}
+
+/** Where a reference lap starts and ends, and the bridge to read the gap in metres. */
+export interface ReferenceLapEnds {
+  /** `cars[car]` at `fromT`. */
+  start: Point;
+  /** `cars[car]` at `toT`. */
+  end: Point;
+  /** Position units per metre over the span: the car's own bridge. */
+  unitsPerMetre: number;
+}
+
 /**
- * Metres between `track.startFinish` and `cars[car]` at `fromT`, or `null` when the
- * car covers no ground over the span (no metre bridge, and no lap either).
+ * `cars[car]` at both ends of `reference`, with the car's metre bridge over the
+ * span — or `null` when the car covers no ground over it (no bridge, and no lap
+ * either).
  *
- * Position units are converted through the car's own bridge over the span — its
- * path against its speed integral, the `gaps.ts` rule — never through a constant:
- * FastF1's position unit is undocumented and the engine refuses to know it.
- * Indices are clamped to the last sample: a closed lap's `toT` is `duration`, one
- * step past the last sample, where the loop wraps back to the first.
+ * The bridge is the car's path against its speed integral, the `gaps.ts` rule —
+ * never a constant: FastF1's position unit is undocumented and the engine refuses
+ * to know it. `toT` may be `meta.duration`, one step past the last sample, and the
+ * position there is what the engine draws at that instant: a closed lap has WRAPPED
+ * back to its first sample (so a whole closed lap closes exactly), an open window
+ * HOLDS its last. The bridge is measured over the samples that exist.
  */
-export function startFinishOffsetM(
-  replay: Pick<Replay, "meta" | "cars"> & {
-    track: Pick<Replay["track"], "startFinish">;
-  },
+export function referenceLapEnds(
+  replay: Pick<Replay, "meta" | "cars">,
   reference: ReferenceLap,
-): number | null {
+): ReferenceLapEnds | null {
   const rate = replay.meta.sampleRateHz;
   const samples = replay.cars[reference.car].samples;
   const last = samples.length - 1;
   const from = Math.min(Math.round(reference.fromT * rate), last);
-  const to = Math.min(Math.round(reference.toT * rate), last);
+  const toK = Math.round(reference.toT * rate);
+  const to = Math.min(toK, last);
   const span = samples.slice(from, to + 1);
   const metres = travelIntegral(span, rate)[span.length - 1];
   const path = pathLength(span);
   if (metres === 0 || path === 0) return null;
-  const { x, y } = replay.track.startFinish;
-  return Math.hypot(x - samples[from].x, y - samples[from].y) / (path / metres);
+  const end =
+    toK <= last
+      ? samples[toK]
+      : replay.meta.loop === "closed"
+        ? samples[0]
+        : samples[last];
+  return {
+    start: { x: samples[from].x, y: samples[from].y },
+    end: { x: end.x, y: end.y },
+    unitsPerMetre: path / metres,
+  };
+}
+
+/** Metres between two positions, through a car's own bridge. */
+export function metresApart(a: Point, b: Point, unitsPerMetre: number): number {
+  return Math.hypot(a.x - b.x, a.y - b.y) / unitsPerMetre;
 }

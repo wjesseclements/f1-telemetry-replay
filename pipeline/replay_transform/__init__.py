@@ -139,8 +139,10 @@ from .lap_context import (
     normalise_compound,
 )
 from .reference_lap import (
+    LEGACY_REFERENCE,
     START_FINISH_HEADING_M,
     LapFacts,
+    LegacyReference,
     NoReferenceLapError,
     ReferenceLap,
     Rejection,

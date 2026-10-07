@@ -349,6 +349,9 @@ def _lap_facts_for(laps, window, standing_start):
     column extraction, like `_lap_context_for`; the rule is
     `replay_transform.lap_facts`. NaT pit times become NaN, which is "not an in/out
     lap"; a NaT LapTime becomes NaN, which the selector names as "no LapTime".
+    `IsAccurate` is handed over as it comes — `lap_facts` counts only a real True —
+    and, unlike Compound/TyreLife, is not degraded when absent: FastF1 3.8 always
+    computes it, and a reference lap must not be chosen on timing nobody vouched for.
     """
     return lap_facts(
         laps["LapNumber"].to_numpy(dtype=float).astype(int),
@@ -356,15 +359,17 @@ def _lap_facts_for(laps, window, standing_start):
         _session_seconds(laps["LapTime"]),
         _session_seconds(laps["PitInTime"]),
         _session_seconds(laps["PitOutTime"]),
+        laps["IsAccurate"].tolist(),
         standing_start,
         window,
     )
 
 
-def _driver_window_telemetry(session, driver, t0, t1, standing_start=False):
+def _driver_window_telemetry(session, driver, t0, t1, standing_start):
     """
     One driver's telemetry over `[t0, t1]` session seconds, on the SHARED axis,
-    plus the driver's reference-lap candidates (`_lap_facts_for`).
+    plus the driver's reference-lap candidates (`_lap_facts_for`). `standing_start`
+    has no default: a forgotten one would read a race's lap 1 as a candidate.
 
     The `Time` key handed back is SessionTime, not the per-lap time `build_lap_replay`
     uses — that substitution is the whole of CLAUDE.md rule 5, and it is made here in
@@ -599,7 +604,8 @@ def report_window(
     coverage,
     compact: bool = False,
     adjudicated=None,
-    reference_laps=(),
+    *,
+    reference_laps,
 ) -> None:
     """
     Print the numbers behind a window build, for the same reason `build_lap_replay`
@@ -610,6 +616,10 @@ def report_window(
     metric, now computed per car on every build instead of by hand once. It answers
     the question Slice 9's relative gaps actually rest on: does each car's marker
     move at the speed its own telemetry claims?
+
+    `reference_laps` is keyword-only with no default: the same lap facts the
+    builder chose from, so the report recomputes the same choice. The `()` default
+    it once had would have failed only after the file was written (Slice 24 review).
     """
     t0, t1 = window
     n = len(replay["cars"][0]["samples"])

@@ -493,6 +493,97 @@ LAP_TABLE_DRS = ([7], [0.0], [LAP_GOLDEN_S], ["SOFT"], [3.0])
 LAP_TABLE_NODRS = ([7], [0.0], [LAP_GOLDEN_S], [None], [math.nan])
 
 
+# --- a STANDING START (Slice 24) ----------------------------------------------------
+#
+# A car parked on its grid slot that pulls away, crosses the timing line
+# `STANDING_LINE_M` later, and laps the synthetic circle. That is the shape of the
+# shipped red-flag window, whose `startFinish` came out at the pole slot with angle
+# 0.0, and the shape that gives a reference lap a `fromT` AFTER the window opens —
+# which is why it is shared here rather than kept in `test_reference_lap.py`: the
+# `race-window-standing` golden is built from it, and that golden is the one
+# committed file whose `track.referenceLap` the app's legacy synthesis could not
+# have produced (review of the contract half: every other golden's could).
+# Closed form throughout, like the circle it rides on.
+
+#: The grid hold and the launch ramp, seconds.
+STANDING_HOLD_S, STANDING_RAMP_S = 3.0, 2.0
+#: The timing line sits this far up the road from the grid slot, metres. A real grid
+#: puts the slots well clear of the line (the red-flag asset's pole slot reads ~290 m
+#: off it); all the fixture needs is that the line is NOT the slot.
+STANDING_LINE_M = 30.0
+#: The grid slot's angle on the circle.
+STANDING_PHI0 = math.pi / 3.0
+#: Metres per second at the circle's mean speed, and one lap of it in metres.
+_STANDING_V = SESSION_SPEED_KMH / 3.6
+STANDING_LAP_M = _STANDING_V * SESSION_LAP_S
+
+
+def standing_distance_m(tau) -> np.ndarray:
+    """Metres from the grid slot `tau` seconds after the window opens."""
+    tau = np.asarray(tau, dtype=float)
+    ramp = np.clip(tau - STANDING_HOLD_S, 0.0, STANDING_RAMP_S)
+    after = np.clip(tau - STANDING_HOLD_S - STANDING_RAMP_S, 0.0, None)
+    return _STANDING_V * ramp * ramp / (2.0 * STANDING_RAMP_S) + _STANDING_V * after
+
+
+def standing_time_at_m(d: float) -> float:
+    """Inverse of `standing_distance_m` past the ramp."""
+    return (
+        STANDING_HOLD_S
+        + STANDING_RAMP_S
+        + (d - _STANDING_V * STANDING_RAMP_S / 2.0) / _STANDING_V
+    )
+
+
+def standing_phi_at_m(d: float) -> float:
+    """The circle angle `d` metres up the road from the grid slot."""
+    return STANDING_PHI0 + d * SESSION_UNITS_PER_M / SESSION_RADIUS
+
+
+#: Window seconds at which the car crosses the timing line at the end of lap 1 and
+#: of lap 2. The window runs to the end of lap 2, as `resolve_lap_window` would cut it.
+STANDING_LAP1_END = standing_time_at_m(STANDING_LINE_M + STANDING_LAP_M)
+STANDING_LAP2_END = standing_time_at_m(STANDING_LINE_M + 2.0 * STANDING_LAP_M)
+STANDING_WINDOW = (SESSION_T0, SESSION_T0 + STANDING_LAP2_END)
+
+#: The standing car's lap table, `lap_context`'s column order: lap 1 from the lights
+#: (the window start), lap 2 line to line.
+STANDING_LAP_TABLE = (
+    [1, 2],
+    [SESSION_T0, SESSION_T0 + STANDING_LAP1_END],
+    [STANDING_LAP1_END, STANDING_LAP2_END - STANDING_LAP1_END],
+    ["MEDIUM", "MEDIUM"],
+    [1.0, 2.0],
+)
+
+
+def standing_start_telemetry(start: float, end: float) -> "dict[str, np.ndarray]":
+    """Parked on the slot for `STANDING_HOLD_S`, a linear launch over
+    `STANDING_RAMP_S`, then the circle at the mean speed; the position is the exact
+    integral of the speed."""
+    n = int(round((end - start) * SOURCE_RATE_HZ)) + 1
+    t = start + np.arange(n, dtype=float) / SOURCE_RATE_HZ
+    tau = t - SESSION_T0
+    phi = STANDING_PHI0 + standing_distance_m(tau) * SESSION_UNITS_PER_M / (
+        SESSION_RADIUS
+    )
+    speed = (
+        np.clip((tau - STANDING_HOLD_S) / STANDING_RAMP_S, 0.0, 1.0)
+        * SESSION_SPEED_KMH
+    )
+    held = speed < 1.0
+    return {
+        "Time": t,
+        "X": SESSION_RADIUS * np.cos(phi),
+        "Y": SESSION_RADIUS * np.sin(phi),
+        "Speed": speed,
+        "Throttle": np.where(held, 0.0, 90.0),
+        "Brake": held.astype(int),
+        "nGear": np.where(held, 1, 7).astype(int),
+        "DRS": np.zeros(n, dtype=int),
+    }
+
+
 def window_car(
     driver: str,
     telemetry: "dict[str, np.ndarray]",

@@ -18,7 +18,13 @@ import numpy as np
 
 from .dead_feed import detect_dead_feed, freeze_telemetry
 from .pit_lane import PitLaneResult, detect_pit_lane
-from .reference_lap import LapFacts, select_reference_lap, start_finish_at
+from .reference_lap import (
+    LEGACY_REFERENCE,
+    LapFacts,
+    LegacyReference,
+    select_reference_lap,
+    start_finish_at,
+)
 from .stuck_channel import (
     bridge_stuck_channels,
     detect_stuck_channels,
@@ -425,7 +431,8 @@ def build_window_replay_dict(
     rate: int = SAMPLE_RATE_HZ,
     status: "Sequence[Mapping[str, Any]]" = (),
     adjudicated: "Mapping[str, Sequence[float]] | None" = None,
-    reference_laps: "Sequence[Sequence[LapFacts]] | None" = None,
+    *,
+    reference_laps: "Sequence[Sequence[LapFacts]] | LegacyReference",
 ) -> "dict[str, Any]":
     """
     Build a schema-conforming MULTI-CAR replay from one session-time window.
@@ -434,17 +441,21 @@ def build_window_replay_dict(
     every driver resampled onto one grid, so `cars[k]` of every car is the same
     instant. `cars[0]`'s lap range names the window (see PLAN.md Slice 8).
 
-    THE REFERENCE LAP (Slice 24). `reference_laps` is every car's in-window
-    `LapFacts`, in `cars` order. Given it, the builder CHOOSES the reference lap
-    (`select_reference_lap`, over the emitted speeds and `status`), emits it as
-    `track.referenceLap`, and takes `track.startFinish` from it — the chosen car's
-    position at the lap's start, which is the timing line. Nothing qualifying is a
-    loud `NoReferenceLapError`. `build_replay.py` always passes it.
+    THE REFERENCE LAP (Slice 24). `reference_laps` is REQUIRED and keyword-only:
+    every car's in-window `LapFacts`, in `cars` order. The builder CHOOSES the
+    reference lap (`select_reference_lap`, over the emitted speeds, dropouts and
+    `status`), emits it as `track.referenceLap`, and takes `track.startFinish` from
+    it — the chosen car's position at the lap's start, which is the timing line.
+    Nothing qualifying is a loud `NoReferenceLapError`. `build_replay.py` always
+    passes the facts.
 
-    `None` is the pre-Slice-24 shape, kept for callers with no lap table (the
-    synthetic windows shorter than a lap that the screen tests build): no
-    `referenceLap` key, which the app's loader reads as "synthesize the legacy
-    reference", and `startFinish` from `cars[0]`'s first sample exactly as before.
+    `LEGACY_REFERENCE` is the pre-Slice-24 shape, opted into BY NAME by callers with
+    no lap table (the synthetic windows shorter than a lap that the screen tests
+    build): no `referenceLap` key, which the app's loader reads as "synthesize the
+    legacy reference", and `startFinish` from `cars[0]`'s first sample exactly as
+    before. There is no default and `None` is refused, because on a window opening
+    at a standing start that line is the pole slot at angle 0.0 — the defect — and
+    reaching it by omission is how it would come back (`reference_lap`'s docstring).
 
     THE ONE LINE THAT MATTERS MOST: no car's time axis is rebased.
     `build_replay_dict` starts with `t = t - t[0]`, which is a LAP operation — it
@@ -459,6 +470,13 @@ def build_window_replay_dict(
     """
     if len(cars) == 0:
         raise TelemetryShapeError("a window needs at least one car")
+    if reference_laps is None:
+        # A caller bug, not bad telemetry — so not a TelemetryShapeError, which
+        # `_run_window` would report as a property of the session.
+        raise TypeError(
+            "reference_laps=None is not a choice: pass every car's LapFacts, or "
+            "LEGACY_REFERENCE to opt into the pre-Slice-24 start/finish line by name"
+        )
 
     grid, src = window_grid(window[0], window[1], rate)
 
@@ -584,7 +602,7 @@ def build_window_replay_dict(
             )
         )
 
-    if reference_laps is None:
+    if reference_laps is LEGACY_REFERENCE:
         # The pre-Slice-24 line: cars[0]'s first sample, headed at its second. On
         # a window opening at a standing start this is the pole slot at angle 0.0
         # — which is why `build_replay.py` never takes this branch.
@@ -603,12 +621,13 @@ def build_window_replay_dict(
                 f"reference_laps needs one lap table per car: got "
                 f"{len(reference_laps)} for {len(built)} cars"
             )
-        # Speeds and status as EMITTED, so `reference_lap_report` can recompute
-        # the choice from the written file and agree by construction.
+        # Speeds, dropouts and status as EMITTED, so `reference_lap_report` can
+        # recompute the choice from the written file and agree by construction.
         reference = select_reference_lap(
             [str(car.driver) for car, _, _, _ in built],
             reference_laps,
             [[s["speed"] for s in samples] for _, _, _, samples in built],
+            [dropouts_by_driver.get(str(car.driver), []) for car, _, _, _ in built],
             status,
             rate,
         )

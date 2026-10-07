@@ -21,6 +21,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { parseReplay } from "../engine/load";
+import { legacyReferenceLap } from "../engine/referenceLap";
 import { SCHEMA_VERSION, SPEED_UNIT } from "../engine/schema";
 
 const GOLDEN_DIR = join(
@@ -36,9 +37,10 @@ const WITH_DRS = "lap-drs.golden.json";
 const WITHOUT_DRS = "lap-nodrs.golden.json";
 const RACE = "race-window.golden.json";
 const RACE_PIT = "race-window-pit.golden.json";
+const RACE_STANDING = "race-window-standing.golden.json";
 
 describe("pipeline output against the schema", () => {
-  it.each([WITH_DRS, WITHOUT_DRS, RACE, RACE_PIT])(
+  it.each([WITH_DRS, WITHOUT_DRS, RACE, RACE_PIT, RACE_STANDING])(
     "%s validates through parseReplay",
     (name) => {
       // Not a smoke test: `parseReplay` is the same function `main.tsx` boots with,
@@ -201,7 +203,7 @@ describe("pipeline output against the schema", () => {
     ).not.toHaveProperty("pitLane");
   });
 
-  it.each([WITH_DRS, WITHOUT_DRS, RACE_PIT])(
+  it.each([WITH_DRS, WITHOUT_DRS, RACE_PIT, RACE_STANDING])(
     "%s carries track.referenceLap through parseReplay unchanged (Slice 24)",
     (name) => {
       // The field must be IN the schema: unknown keys are stripped, so a field the
@@ -224,16 +226,35 @@ describe("pipeline output against the schema", () => {
     });
   });
 
-  it("puts a window's start/finish line on the reference car at fromT", () => {
-    // The window builder's half of the contract: the line is where the chosen lap
-    // starts, read from the chosen car — the schema then holds it to 25 m.
-    const replay = parseReplay(readGolden(RACE_PIT), RACE_PIT);
-    const { car, fromT, toT } = replay.track.referenceLap;
-    const k = Math.round(fromT * replay.meta.sampleRateHz);
-    const at = replay.cars[car].samples[k];
-    expect(replay.track.startFinish.x).toBe(at.x);
-    expect(replay.track.startFinish.y).toBe(at.y);
-    expect(toT - fromT).toBeGreaterThanOrEqual(5);
+  it.each([RACE_PIT, RACE_STANDING])(
+    "%s puts the start/finish line on the reference car at fromT",
+    (name) => {
+      // The window builder's half of the contract: the line is where the chosen
+      // lap starts, read from the chosen car — the schema then holds it to 25 m.
+      const replay = parseReplay(readGolden(name), name);
+      const { car, fromT, toT } = replay.track.referenceLap;
+      const k = Math.round(fromT * replay.meta.sampleRateHz);
+      const at = replay.cars[car].samples[k];
+      expect(replay.track.startFinish.x).toBe(at.x);
+      expect(replay.track.startFinish.y).toBe(at.y);
+      expect(toT - fromT).toBeGreaterThanOrEqual(5);
+    },
+  );
+
+  it("carries a reference lap the loader could NOT have synthesized", () => {
+    // Every other golden's emitted field equals the legacy synthesis ({0, 0, …}),
+    // so on those "survives parseReplay" passes even with the field deleted from
+    // the schema — the review of the contract half proved it by doing exactly
+    // that. The standing-start golden's lap begins AFTER the window opens (lap 1
+    // left the grid slot and is passed over), so a stripped field would come back
+    // as a different value and this would fail.
+    const raw = readGolden(RACE_STANDING) as {
+      track: { referenceLap: { car: number; fromT: number; toT: number } };
+    };
+    const replay = parseReplay(raw, RACE_STANDING);
+    expect(replay.track.referenceLap).toEqual(raw.track.referenceLap);
+    expect(replay.track.referenceLap.fromT).toBeGreaterThan(0);
+    expect(replay.track.referenceLap).not.toEqual(legacyReferenceLap(replay));
   });
 
   it("leaves the race golden without one, so the loader's legacy synthesis is pinned", () => {
