@@ -89,9 +89,16 @@ export function FeaturedPanel({ onClose, id }: FeaturedPanelProps) {
       aria-labelledby={headingId}
       id={id}
       // A wash, not a blur: the fixture animating behind this is the point.
-      className="absolute inset-0 z-10 flex items-center justify-center overflow-y-auto bg-bg/75 p-4"
+      //
+      // Centred SAFELY (Slice 23): `items-start` here, `my-auto` on the card —
+      // never `items-center`. A centred card taller than this scroller overflows
+      // above its top edge as much as below, and overflow above is outside the
+      // scroll range: the heading and Close sat out of reach at 1280x720 and on
+      // every phone. Auto margins centre the card when it fits and collapse to 0
+      // when it does not, so it scrolls from its top. EventCard shares the idiom.
+      className="absolute inset-0 z-10 flex items-start justify-center overflow-y-auto bg-bg/75 p-4"
     >
-      <div className="w-full max-w-md rounded-lg border border-line bg-panel p-4 shadow-xl">
+      <div className="my-auto w-full max-w-md rounded-lg border border-line bg-panel p-4 shadow-xl">
         <div className="mb-3 flex items-baseline justify-between gap-3">
           <h2
             id={headingId}

@@ -286,6 +286,22 @@ describe("Hud accessibility", () => {
   });
 });
 
+describe("Hud layout containment (Slice 23)", () => {
+  it("keeps the rows' screen-reader text inside the scrolling list", () => {
+    // Every row carries `sr-only` text, and `sr-only` is `position: absolute`. With
+    // no positioned ancestor its containing block is the whole page, so the rows
+    // scrolled out of the list still extended the DOCUMENT: 1070 px tall at
+    // 1280x720 with 22 cars, a page that scrolled 350 px into blank space. A
+    // positioned list contains them in its own scroll range. jsdom cannot measure
+    // that, so this pins the containing block; the geometry is the layout check's.
+    renderHud(replay);
+    expect(screen.getByRole("list", { name: "Running order" })).toHaveClass(
+      "relative",
+      "overflow-y-auto",
+    );
+  });
+});
+
 /**
  * Signature coupling — the trap this closes.
  *
