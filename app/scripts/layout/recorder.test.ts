@@ -72,6 +72,41 @@ describe("PageRecorder", () => {
     ]);
   });
 
+  it("keys a failure to its own session: a worker may reuse a page's request id", () => {
+    const recorder = new PageRecorder(ORIGIN);
+    recorder.handle({
+      ...request("7", "https://a.example/"),
+      sessionId: "page",
+    });
+    recorder.handle({
+      ...request("7", "https://b.example/"),
+      sessionId: "worker",
+    });
+    recorder.handle({
+      method: "Network.loadingFailed",
+      sessionId: "worker",
+      params: { requestId: "7", errorText: "net::ERR_NAME_NOT_RESOLVED" },
+    });
+    expect(recorder.summary()).toBe(
+      "2: https://a.example/, https://b.example/ (net::ERR_NAME_NOT_RESOLVED)",
+    );
+  });
+
+  it("summarises exceptions by their first line, and none as 0", () => {
+    const recorder = new PageRecorder(ORIGIN);
+    expect(recorder.exceptionSummary()).toBe("0");
+    recorder.handle({
+      method: "Runtime.exceptionThrown",
+      params: {
+        exceptionDetails: {
+          text: "Uncaught",
+          exception: { description: "Error: boom\n    at x (y.js:1:1)" },
+        },
+      },
+    });
+    expect(recorder.exceptionSummary()).toBe("1: Error: boom");
+  });
+
   it("summarises a clean page by its origin, and elides a long list", () => {
     expect(new PageRecorder(ORIGIN).summary()).toBe(`0 (origin ${ORIGIN})`);
     const noisy = new PageRecorder(ORIGIN);

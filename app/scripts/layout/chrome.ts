@@ -20,8 +20,21 @@
  * The one Chrome process outside that group is `chrome_crashpad_handler`, which
  * detaches into a group of its own. It needs no signal: measured on macOS, it
  * exits within 1.5 s of its browser on every path — graceful `Browser.close`
- * and a bare group SIGKILL alike — and no extra flag (`--disable-breakpad`,
- * `--disable-crash-reporter`) stops it starting.
+ * and a bare group SIGKILL alike.
+ *
+ * It is also outside the throwaway profile, and nothing here moves it. On macOS
+ * it runs with `--database=~/Library/Application Support/Google/Chrome/Crashpad`
+ * (the user's REAL crash store) and `--url=https://clients2.google.com/cr/report`,
+ * and every launch rewrites that store's `settings.dat`. Measured (Slice 22's
+ * review follow-up): `--disable-crash-reporter`, `--disable-breakpad`,
+ * `--disable-crashpad-for-testing`, `--crash-dumps-dir=<dir>` and the
+ * `CHROME_HEADLESS=1` environment variable each left the handler starting, its
+ * `--database`/`--url` unchanged and `settings.dat` rewritten — no observable
+ * effect, so none is passed. Beyond that settings write, a dump lands there only
+ * if a Chrome process crashes, and whether it would UPLOAD is the store's own
+ * consent bit — the user's Chrome setting, not this check's (it reads "off" on
+ * the project machine). The handler is a separate process, so the offline flags
+ * below do not govern it.
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import {
@@ -103,18 +116,44 @@ export function findChrome(env: NodeJS.ProcessEnv = process.env): string {
  * The launch flags, each one load-bearing.
  *
  * Offline enforcement lives here, inside the browser, because CLAUDE.md's offline
- * rule binds the app and its tests and this check runs the app: the background
- * networking flags stop Chrome itself phoning home (component updates, sync,
- * default apps, the network-prediction and variations fetches that
- * `--disable-background-networking` covers); and `--host-resolver-rules` makes
- * every host except loopback unresolvable. The rule applies to IP LITERALS too —
- * measured: a page fetch of `http://192.0.2.1/` fails `ERR_NAME_NOT_RESOLVED` —
- * which is why 127.0.0.1 has to be EXCLUDEd by name, and why no second mechanism
- * (a dead proxy was tried) adds anything. The recorder in `layout-check.ts` is
- * the other layer: it FAILs on any request the page attempts off its own origin,
- * blocked or not.
+ * rule binds the app and its tests and this check runs the app. Three layers, and
+ * only the second and third ENFORCE anything:
+ *
+ * 1. The background flags (`--disable-background-networking`, component update,
+ *    sync, default apps) REDUCE Chrome's own traffic; they do not stop it.
+ *    Measured with a net-log of a full run on Chrome 154: Chrome still starts
+ *    requests to www.google.com, accounts.google.com, www.gstatic.com,
+ *    update.googleapis.com and clients2.google.com, with no page involved.
+ * 2. `--host-resolver-rules` is what blocks them — and anything the page tries:
+ *    every host except loopback resolves to `~NOTFOUND`. It applies to IP
+ *    LITERALS too (measured: a page fetch of `http://192.0.2.1/` fails
+ *    `ERR_NAME_NOT_RESOLVED`), which is why 127.0.0.1 is EXCLUDEd by name.
+ * 3. `--no-proxy-server` is what keeps rule 2 in force. A request sent through a
+ *    proxy is never resolved locally — the proxy resolves it — so resolver rules
+ *    do not apply to it. Measured (Slice 22's review): with a loopback sink as the
+ *    proxy, one run carried requests for all five Google hosts above, plus the
+ *    page's own off-origin fetches, past the rule; with `--no-proxy-server` added,
+ *    the sink saw 0 connections and the page's fetches failed
+ *    `ERR_NAME_NOT_RESOLVED` again — and that was against an explicit
+ *    `--proxy-server`, the strongest proxy source there is. The weaker ones (the
+ *    OS settings or PAC a corporate agent or a debugging proxy installs; on Linux,
+ *    the `https_proxy`-style env vars Chrome reads there) rank below command-line
+ *    flags in Chromium, so they are closed by that precedence rather than by a
+ *    measurement here. (macOS Chrome ignores the env vars outright: measured, 0
+ *    connections with them set and no flag.) The first version of this file
+ *    dropped a dead `--proxy-server` as "measured redundant" — measured on a
+ *    machine with no proxy configured, the one case where it is.
+ *
+ * The recorder (`recorder.ts`) is the other half: it FAILs on any request the page
+ * or its workers attempt off the preview origin, blocked or not. It does not see
+ * the browser's own requests in layer 1 — those have no page — which is why the
+ * enforcement has to be here.
  */
-export function chromeArgs(userDataDir: string): string[] {
+export function chromeArgs(
+  userDataDir: string,
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): string[] {
   return [
     "--headless=new",
     "--remote-debugging-port=0",
@@ -127,14 +166,37 @@ export function chromeArgs(userDataDir: string): string[] {
     "--disable-default-apps",
     "--disable-extensions",
     "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1, EXCLUDE localhost",
+    "--no-proxy-server",
     // A fresh profile on macOS otherwise asks the Keychain for "Chrome Safe
     // Storage", and on Linux may wait on a desktop keyring: either is a prompt
     // nobody is there to answer.
     "--use-mock-keychain",
     "--password-store=basic",
     "--mute-audio",
+    ...(needsNoSandbox(env, platform) ? ["--no-sandbox"] : []),
     "about:blank",
   ];
+}
+
+/**
+ * `--no-sandbox` on a Linux CI runner, and NOWHERE else.
+ *
+ * UNVERIFIED until the first CI run — this is a prediction, not a measurement.
+ * Ubuntu 24.04 (GitHub's ubuntu-latest) restricts unprivileged user namespaces
+ * through AppArmor, and Chrome's Linux sandbox is built on them, so Chrome may
+ * refuse to start there; if it does, the launch error carries Chrome's stderr
+ * tail. Dropping the sandbox is acceptable on that machine because the runner is
+ * an ephemeral VM thrown away after the job, and the only content this Chrome
+ * renders is the repo's own build, served on loopback, with every other host
+ * unresolvable. On a developer's machine none of that holds, so the gate is
+ * narrow: GitHub Actions sets `CI=true` exactly, and only Linux has the problem.
+ * If the first CI run shows the sandbox starting fine, delete this.
+ */
+export function needsNoSandbox(
+  env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform,
+): boolean {
+  return env.CI === "true" && platform === "linux";
 }
 
 export interface ChromeProcess {

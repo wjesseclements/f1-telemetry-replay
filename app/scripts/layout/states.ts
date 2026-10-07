@@ -32,8 +32,9 @@ import {
 import type { Report, StateKey } from "./report";
 
 /**
- * Where the check finds things. The legend is found by its accessible name,
- * which for a `<figure>` is its `<figcaption>`.
+ * Where the check finds things — every dependency it has on the app's markup, in
+ * one place (the in-page probes take all of it as their argument). The legend is
+ * found by its accessible name, which for a `<figure>` is its `<figcaption>`.
  */
 export const SELECTORS: Selectors = {
   header: "main > header",
@@ -43,6 +44,12 @@ export const SELECTORS: Selectors = {
   canvas: "main canvas",
   panel: '#featured-replays[role="dialog"]',
   panelToggle: 'button[aria-controls="featured-replays"]',
+  card: "ul > li > button",
+  cardTitle: "span",
+  close: "button",
+  alert: '[role="alert"]',
+  legend: "figure",
+  legendCaption: "figcaption",
   legendName: "colour scale",
 };
 
@@ -268,7 +275,7 @@ export async function stateB(
   const { page } = ctx;
   ctx.step("clicking the scenario card");
   const click = await page.evaluate(clickScenario, {
-    panel: SELECTORS.panel,
+    sel: SELECTORS,
     title: scenario.title,
   });
   if (!click.clicked) {
@@ -378,7 +385,7 @@ export async function stateB(
 export async function stateC(ctx: StateContext): Promise<void> {
   const { page } = ctx;
   ctx.step("reopening the gallery");
-  if (!(await page.evaluate(clickToggle, { toggle: SELECTORS.panelToggle }))) {
+  if (!(await page.evaluate(clickToggle, SELECTORS))) {
     throw new Error("the gallery toggle was not found");
   }
   await waitFor(

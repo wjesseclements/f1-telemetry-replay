@@ -10,7 +10,14 @@
  * They only READ, with two deliberate exceptions that put state back: the reach
  * probe scrolls the panel to its end and then restores `scrollTop`, and the click
  * helpers click. Every selector arrives in the argument, so the list of what the
- * check depends on in the app's markup lives in one place (`layout-check.ts`).
+ * check depends on in the app's markup lives in one place (`SELECTORS`, in
+ * `states.ts`). The one lookup that is not a selector is the panel's heading,
+ * found the way assistive tech finds it: through the dialog's `aria-labelledby`.
+ *
+ * If the toolchain ever compiles a module-scope reference into one of these, the
+ * page cannot run it. `preflight.ts` runs each one on a blank page before the
+ * first measurement, so that surfaces as one named failure rather than as every
+ * row failing.
  */
 
 /** A `DOMRect`, as plain JSON. CSS px, relative to the viewport. */
@@ -32,27 +39,31 @@ export interface Selectors {
   canvas: string;
   panel: string;
   panelToggle: string;
-  /** A substring of the speed legend's accessible name (its `<figcaption>`). */
+  /** A scenario card, inside the panel. */
+  card: string;
+  /** A card's title, inside the card (the first match). */
+  cardTitle: string;
+  /** The Close button, inside the heading row. */
+  close: string;
+  /** A failed load's message, inside the panel. */
+  alert: string;
+  /** The speed legend's element, and its caption (its accessible name)… */
+  legend: string;
+  legendCaption: string;
+  /** …and a substring of that name, which is how the legend is told apart. */
   legendName: string;
 }
 
 export interface PanelProbe {
-  /** The dialog's border box. */
-  box: Box;
-  /** Its scrollport: the padding box that scrolled content is revealed in. */
+  /** The dialog's scrollport: the padding box scrolled content is revealed in. */
   scrollport: Box;
-  scrollTop: number;
-  scrollHeight: number;
-  clientHeight: number;
   /** The heading row: the element holding the dialog's labelling heading. */
   headingRow: Box | null;
   /** Whether a hit test at the heading row's centre lands inside it. */
   headingHit: boolean;
   close: Box | null;
   closeHit: boolean;
-  /** Scenario card titles in render order. */
-  cardTitles: string[];
-  /** Text of a `role=alert` inside the panel (a failed load), or `null`. */
+  /** Text of the alert inside the panel (a failed load), or `null`. */
   alert: string | null;
 }
 
@@ -113,8 +124,8 @@ export function probeLayout(sel: Selectors): LayoutProbe {
 
   const canvases = document.querySelectorAll(sel.canvas);
   const legend =
-    Array.from(document.querySelectorAll("figure")).find((figure) =>
-      (figure.querySelector("figcaption")?.textContent ?? "").includes(
+    Array.from(document.querySelectorAll(sel.legend)).find((figure) =>
+      (figure.querySelector(sel.legendCaption)?.textContent ?? "").includes(
         sel.legendName,
       ),
     ) ?? null;
@@ -127,9 +138,8 @@ export function probeLayout(sel: Selectors): LayoutProbe {
     const labelId = dialog.getAttribute("aria-labelledby");
     const heading = labelId === null ? null : document.getElementById(labelId);
     const headingRow = heading?.parentElement ?? null;
-    const close = headingRow?.querySelector("button") ?? null;
+    const close = headingRow?.querySelector(sel.close) ?? null;
     panel = {
-      box: box(dialog) as Box,
       scrollport: {
         top: r.top + dialog.clientTop,
         left: r.left + dialog.clientLeft,
@@ -138,17 +148,11 @@ export function probeLayout(sel: Selectors): LayoutProbe {
         width: dialog.clientWidth,
         height: dialog.clientHeight,
       },
-      scrollTop: dialog.scrollTop,
-      scrollHeight: dialog.scrollHeight,
-      clientHeight: dialog.clientHeight,
       headingRow: box(headingRow),
       headingHit: hits(headingRow),
       close: box(close),
       closeHit: hits(close),
-      cardTitles: Array.from(dialog.querySelectorAll("ul > li > button")).map(
-        (card) => card.querySelector("span")?.textContent ?? "",
-      ),
-      alert: dialog.querySelector('[role="alert"]')?.textContent ?? null,
+      alert: dialog.querySelector(sel.alert)?.textContent ?? null,
     };
   }
 
@@ -192,7 +196,7 @@ export function probeLastCardReach(sel: Selectors): ReachProbe | null {
   const dialog = document.querySelector(sel.panel);
   if (dialog === null) return null;
   dialog.scrollTop = dialog.scrollHeight;
-  const cards = dialog.querySelectorAll("ul > li > button");
+  const cards = dialog.querySelectorAll(sel.card);
   const last = cards[cards.length - 1] ?? null;
   const r = dialog.getBoundingClientRect();
   let card: Box | null = null;
@@ -235,23 +239,26 @@ export function probeLastCardReach(sel: Selectors): ReachProbe | null {
  * there is no such card, so the failure can say what WAS there.
  */
 export function clickScenario(arg: {
-  panel: string;
+  sel: Selectors;
   title: string;
 }): { clicked: true } | { clicked: false; titles: string[] } {
-  const dialog = document.querySelector(arg.panel);
+  const { sel, title } = arg;
+  const dialog = document.querySelector(sel.panel);
   const cards = dialog
-    ? Array.from(dialog.querySelectorAll<HTMLButtonElement>("ul > li > button"))
+    ? Array.from(dialog.querySelectorAll<HTMLButtonElement>(sel.card))
     : [];
-  const titles = cards.map((c) => c.querySelector("span")?.textContent ?? "");
-  const index = titles.indexOf(arg.title);
+  const titles = cards.map(
+    (c) => c.querySelector(sel.cardTitle)?.textContent ?? "",
+  );
+  const index = titles.indexOf(title);
   if (index === -1) return { clicked: false, titles };
   cards[index].click();
   return { clicked: true };
 }
 
 /** Click the header toggle that opens the gallery. */
-export function clickToggle(arg: { toggle: string }): boolean {
-  const toggle = document.querySelector<HTMLButtonElement>(arg.toggle);
+export function clickToggle(sel: Selectors): boolean {
+  const toggle = document.querySelector<HTMLButtonElement>(sel.panelToggle);
   if (toggle === null) return false;
   toggle.click();
   return true;

@@ -11,23 +11,35 @@
  *   B  the largest gallery scenario (most cars) loaded by clicking its card;
  *   C  the gallery reopened over that replay.
  *
- * Every assertion prints PASS/FAIL with the numbers it measured. Exit 0 only if
- * every one passes; 1 means the layout is wrong; 2 means the check could not run
- * (no build, no Chrome, a step that overran its budget, the hard cap); 130/143
- * mean it was interrupted.
+ * Every assertion prints PASS/FAIL with the numbers it measured. Per viewport,
+ * two more rows cover the whole run: no request off the preview origin (from the
+ * page, its workers or its frames) and no uncaught page exception.
  *
  *     npm run build && npm run check:layout
+ *
+ * The exit code says where to look; the rows say what is wrong.
+ *   0        the run finished and every row passed.
+ *   1        the run finished and at least one row FAILED — a layout assertion,
+ *            a state that could not be reached (its row says why, a wait that
+ *            ran out of budget included), an off-origin request, a page
+ *            exception. Read the table.
+ *   2        the run did not finish: it could not start (no build, no Chrome,
+ *            Chrome would not launch, the page cannot run the probes) or the
+ *            hard cap stopped it. Whatever was measured is printed; the ABORTED
+ *            line says why.
+ *   130/143  interrupted (SIGINT/SIGTERM).
  *
  * Zero dependencies: Node's built-in WebSocket, Vite (already here), and the
  * Chrome that is already installed (`CHROME_PATH` overrides). `layout/chrome.ts`
  * says why it cannot hang and how the browser is kept offline;
- * `layout/recorder.ts` is the other half of the offline rule.
+ * `layout/recorder.ts` (fed by `layout/targets.ts`) is the other half of the
+ * offline rule.
  *
  * Teardown — Chrome's whole process group, its throwaway profile, the preview
  * server — runs on every exit path: success, failure, exception, the hard cap,
- * SIGINT and SIGTERM. A SIGKILL to THIS process is the one path nothing can
- * catch; the profile directory's `f1-layout-check-` prefix makes a survivor
- * recognisable.
+ * SIGINT and SIGTERM, a second signal during teardown included. A SIGKILL to
+ * THIS process is the one path nothing can catch; the profile directory's
+ * `f1-layout-check-` prefix makes a survivor recognisable.
  */
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -37,6 +49,7 @@ import { scenarioUrl } from "../src/engine/gallery";
 import { SCENARIOS } from "../src/gallery/scenarios";
 import { CdpClient, CdpPage } from "./layout/cdp";
 import { findChrome, startChrome, type ChromeProcess } from "./layout/chrome";
+import { preflight } from "./layout/preflight";
 import { PageRecorder } from "./layout/recorder";
 import { Report } from "./layout/report";
 import {
@@ -46,6 +59,7 @@ import {
   type Scenario,
   type StateContext,
 } from "./layout/states";
+import { Targets } from "./layout/targets";
 
 const APP_DIR = fileURLToPath(new URL("..", import.meta.url));
 // `vite.config.ts` does not override `build.outDir`, so this is where
@@ -117,6 +131,7 @@ async function within<T>(
 
 async function checkViewport(
   cdp: CdpClient,
+  targets: Targets,
   vp: { width: number; height: number },
   origin: string,
   scenario: Scenario,
@@ -129,22 +144,22 @@ async function checkViewport(
     "Target.createBrowserContext",
   );
   const recorder = new PageRecorder(origin);
-  let sessionId: string | null = null;
-  const unsubscribe = cdp.onEvent((event) => {
-    if (sessionId !== null && event.sessionId === sessionId) {
-      recorder.handle(event);
-    }
-  });
+  // Every session in this context — the page, and each worker or frame it
+  // starts — reports to this viewport's recorder.
+  const unwatch = targets.watch(browserContextId, (event) =>
+    recorder.handle(event),
+  );
 
   try {
     const { targetId } = await cdp.send<{ targetId: string }>(
       "Target.createTarget",
       { url: "about:blank", browserContextId },
     );
-    ({ sessionId } = await cdp.send<{ sessionId: string }>(
+    const { sessionId } = await cdp.send<{ sessionId: string }>(
       "Target.attachToTarget",
       { targetId, flatten: true },
-    ));
+    );
+    await targets.adoptPage(sessionId, browserContextId);
     const page = new CdpPage(cdp, sessionId);
     await page.send("Network.enable");
     await page.send("Runtime.enable");
@@ -192,7 +207,7 @@ async function checkViewport(
       }
     }
   } finally {
-    unsubscribe();
+    unwatch();
     report.record(
       name,
       "*",
@@ -200,9 +215,15 @@ async function checkViewport(
       recorder.offOrigin.length === 0,
       recorder.summary(),
     );
-    for (const text of recorder.exceptions) {
-      report.note(`${name} page exception: ${text.split("\n")[0]}`);
-    }
+    // An uncaught exception while A/B/C ran is a defect in the page, whatever the
+    // geometry says — a row, not a note (Slice 22's review).
+    report.record(
+      name,
+      "*",
+      "no page exceptions",
+      recorder.exceptions.length === 0,
+      recorder.exceptionSummary(),
+    );
     await cdp
       .send("Target.disposeBrowserContext", { browserContextId })
       .catch(() => undefined);
@@ -266,6 +287,33 @@ function largestScenario(): Scenario & { file: string } {
   return best;
 }
 
+/**
+ * Run every in-page probe once on a blank page (`layout/preflight.ts`), in a
+ * context of its own. A throw ends the run with exit 2 and a message naming the
+ * toolchain — never as a table in which every row failed for the same reason.
+ */
+async function checkProbesRun(cdp: CdpClient): Promise<void> {
+  step("checking the page can run the probes");
+  const { browserContextId } = await cdp.send<{ browserContextId: string }>(
+    "Target.createBrowserContext",
+  );
+  try {
+    const { targetId } = await cdp.send<{ targetId: string }>(
+      "Target.createTarget",
+      { url: "about:blank", browserContextId },
+    );
+    const { sessionId } = await cdp.send<{ sessionId: string }>(
+      "Target.attachToTarget",
+      { targetId, flatten: true },
+    );
+    await preflight(new CdpPage(cdp, sessionId));
+  } finally {
+    await cdp
+      .send("Target.disposeBrowserContext", { browserContextId })
+      .catch(() => undefined);
+  }
+}
+
 // ── teardown, on every path ──────────────────────────────────────────────────
 
 let teardownStarted: Promise<void> | null = null;
@@ -316,8 +364,23 @@ function abort(reason: string, code: number): void {
   });
 }
 
-process.once("SIGINT", () => abort("interrupted (SIGINT)", 130));
-process.once("SIGTERM", () => abort("terminated (SIGTERM)", 143));
+/**
+ * The first SIGINT/SIGTERM aborts: print, bounded teardown, exit. A second one —
+ * the impatient double Ctrl-C — or one that lands while a finished run is already
+ * tearing down, exits AT ONCE: `process.exit` runs the synchronous exit hook
+ * above, which kills the group and removes the profile, and an exit that waits
+ * on nothing cannot be interrupted again. `on`, not `once`: with `once`, the
+ * second signal fell through to Node's default handler, which ends the process
+ * WITHOUT 'exit' handlers — measured in Slice 22's review, each double Ctrl-C
+ * left an 8.5 MB profile in $TMPDIR.
+ */
+function onSignal(reason: string, code: number): void {
+  if (report.isSealed) process.exit(code);
+  abort(reason, code);
+}
+
+process.on("SIGINT", () => onSignal("interrupted (SIGINT)", 130));
+process.on("SIGTERM", () => onSignal("terminated (SIGTERM)", 143));
 process.on("uncaughtException", (err) => abort(`uncaught: ${message(err)}`, 2));
 process.on("unhandledRejection", (err) =>
   abort(`unhandled rejection: ${message(err)}`, 2),
@@ -371,6 +434,9 @@ async function main(): Promise<void> {
   const { product } = await client.send<{ product: string }>(
     "Browser.getVersion",
   );
+  const targets = new Targets(client);
+  await targets.start();
+  await checkProbesRun(client);
   console.log(
     `layout-check · ${product} · ${origin} · largest scenario "${scenario.title}" (${scenario.file}, ${scenario.cars} cars)\n`,
   );
@@ -378,7 +444,7 @@ async function main(): Promise<void> {
   for (const vp of VIEWPORTS) {
     if (report.isSealed) return; // aborted mid-run: the abort owns the exit
     try {
-      await checkViewport(client, vp, origin, scenario);
+      await checkViewport(client, targets, vp, origin, scenario);
     } catch (err) {
       report.record(
         `${vp.width}x${vp.height}`,

@@ -199,7 +199,10 @@ export class CdpPage {
    * `fn` is shipped as its own source text, so it must be SELF-CONTAINED: it may
    * use DOM globals and its argument, and nothing from this module's scope. That
    * constraint is what lets the in-page probes be ordinary typed TypeScript
-   * functions instead of strings nobody typechecks.
+   * functions instead of strings nobody typechecks. The source text is what the
+   * TOOLCHAIN emitted, not what was written: a transform that injects a helper
+   * (`__name`, `__async`) breaks every probe at once, which is why
+   * `preflight.ts` runs each one before the first measurement.
    */
   async evaluate<A, R>(
     fn: (arg: A) => R | Promise<R>,
