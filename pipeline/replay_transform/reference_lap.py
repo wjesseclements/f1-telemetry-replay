@@ -110,7 +110,9 @@ are preferred, because pace is one of the four things the reference sets and a
 Safety-Car lap is ~40% slow. Within a tier the order is the human's: the first listed
 car's earliest lap, then the next car's. Two passes over the same walk, green-only
 first, then any qualifying lap; the second pass is a FALLBACK the report names (a
-window with no status data — the finale asset — lands there by construction).
+window with no status data lands there by construction; no shipped asset does — the
+finale, which carried none before its Slice 24 regeneration, now carries `trackStatus`
+green 0-448.9 s, and its report names HAM lap 48 "green throughout").
 
 The tier is applied FIELD-WIDE, BEFORE car order: a green clean lap on `cars[1]`
 beats a clean lap on `cars[0]` that is not green throughout. That is a ruling (the
@@ -355,10 +357,12 @@ def _closing_m(
     """
     Metres between the car's positions at `from_i` and `to_i`, or None when its
     positions cover no ground over the span. Measured as the LOADER measures it
-    (`referenceLapEnds`, `metresApart`): the car's own bridge over the span, path
-    length against the TRAPEZOID speed integral (`gaps.ts`'s `travelIntegral`), so
-    the mirror and the schema agree to rounding. The span's speeds are never all
-    zero here — check 8 has already refused any sample below `PIT_STOP_MAX_KMH`.
+    (`gaps.ts`'s `referenceLapEnds`, `metresApart`): the car's own bridge over the
+    span, path length against the TRAPEZOID speed integral (`travelIntegral`), so
+    the mirror and the schema agree to rounding — and with them the gap engine,
+    whose ring test reads the same bridge (Slice 24 final review). The span's
+    speeds are never all zero here — check 8 has already refused any sample below
+    `PIT_STOP_MAX_KMH`.
     """
     xs, ys = x[from_i : to_i + 1], y[from_i : to_i + 1]
     vs = speed[from_i : to_i + 1]

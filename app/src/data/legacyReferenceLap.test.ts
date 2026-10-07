@@ -2,7 +2,8 @@
  * legacyReferenceLap.test.ts — the legacy synthesis, proven on the SHIPPED files.
  *
  * Slice 24 made the reference lap explicit (`track.referenceLap`), and a file
- * without one must keep behaving exactly as it did. "Exactly" was checked here
+ * without one must keep the reference SPAN it had — what that does and does not
+ * keep downstream is `engine/referenceLap.ts`'s header. "Exactly" was checked here
  * against the engine that defined the old behaviour: for every committed gallery
  * asset, the span the loader synthesizes was the span `gaps.ts`'s `buildReference`
  * then SEARCHED for (`ProgressIndex.lapSeconds`, i.e. `findLapEnd(cars[0]) / rate`).

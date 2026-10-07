@@ -43,7 +43,8 @@ LOOP_OPEN = "open"
 #: (gaps.ts: the shortest lap `findLapEnd` will believe). No F1 lap is within an
 #: order of magnitude of it (the shortest are ~55 s); what it rejects is nonsense —
 #: a degenerate span, or a LapTime read in minutes. The selector refuses a shorter
-#: candidate by name rather than emitting a file the loader would reject.
+#: candidate by name rather than emitting a file the loader would reject. Compared
+#: against the app's source by `tests/test_reference_lap.py`'s cross-language pin.
 REFERENCE_LAP_MIN_S = 5.0
 
 #: How far apart the reference car's positions at `fromT` and at `toT` may be,
@@ -55,7 +56,8 @@ REFERENCE_LAP_MIN_S = 5.0
 #: unclosed candidate by name rather than emitting a file the loader would reject
 #: (Slice 24 lap-level follow-up: once a declined car's laps are candidates, the
 #: unpinned along-track map of such a car makes this reachable — measured, the 2026
-#: restart window's STR laps 7 and 8 open by ~60 m).
+#: restart window's STR laps 7 and 8 open by ~60 m). Compared against the app's
+#: source by `tests/test_reference_lap.py`'s cross-language pin.
 REFERENCE_LAP_CLOSE_M = 25.0
 
 #: FastF1's merged telemetry lands at roughly 4-10 Hz, so 10 Hz is the finest grid

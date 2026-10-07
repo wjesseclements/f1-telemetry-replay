@@ -21,6 +21,7 @@ import {
   residualAt,
   travelSoFarM,
 } from "./gaps";
+import { parseReplay } from "./load";
 import { withReferenceLap, type UnreferencedReplay } from "./referenceLap";
 import type { ReferenceLap, Replay, Sample } from "./schema";
 
@@ -854,6 +855,66 @@ describe("the reference circuit is the file's own reference lap (Slice 24)", () 
     expect(index.lapUnits).toBe(0);
     // 5 s over the first quarter of the ring, not 14.9 s over the whole half lap.
     expect(index.paceSecondsPerUnit).toBeCloseTo(5 / (LAP_UNITS / 4), 9);
+  });
+
+  it("rings every lap the schema accepts: closure is read through the SPAN's bridge, not the window's", () => {
+    // Slice 24 final review. The schema measures a named lap's closure through the
+    // reference car's bridge over the SPAN (`referenceLapEnds`); the engine used to
+    // re-test it through the car's WHOLE-WINDOW bridge, so speed-channel drift after
+    // the lap could turn an accepted lap into "no ring" — no unwrap, no lapsDown, and
+    // nothing said so. Here lap 1 ends 24.9 m from where it began (inside the 25 m
+    // bound) and the speed channel reads 4% high afterwards — the shipped restart
+    // drifts 2.0% between laps — so the window's bridge says 24.9 units is 25.6 m.
+    const chord = 24.9;
+    const radius = 1000 / (2 * Math.PI);
+    const sweep = 2 * Math.PI - 2 * Math.asin(chord / (2 * radius));
+    // 1 unit per metre over lap 1: its speed integral is its arc.
+    const kmh = ((radius * sweep) / LAP_SECONDS) * 3.6;
+    const samples: Sample[] = Array.from(
+      { length: 3 * PER_LAP + 1 },
+      (_, k) => {
+        const a = (sweep * k) / PER_LAP;
+        return {
+          t: k / RATE,
+          x: radius * Math.cos(a),
+          y: radius * Math.sin(a),
+          speed: k < PER_LAP ? kmh : kmh * 1.04,
+          throttle: 100,
+          brake: 0,
+          gear: 8,
+        };
+      },
+    );
+    const replay = parseReplay({
+      meta: {
+        schemaVersion: 1,
+        year: 2024,
+        event: "Test",
+        session: "R",
+        track: "Test",
+        rotation: 0,
+        sampleRateHz: RATE,
+        duration: samples.length / RATE,
+        units: { speed: "km/h" },
+        loop: "open",
+      },
+      track: {
+        startFinish: { x: samples[0].x, y: samples[0].y, angle: Math.PI / 2 },
+        corners: [],
+        referenceLap: { car: 0, fromT: 0, toT: LAP_SECONDS },
+      },
+      cars: [{ driver: "C0", team: "Test", color: "#888888", samples }],
+    });
+    const index = buildProgressIndex(replay);
+    // The regime that matters, so this cannot pass vacuously: through the WINDOW's
+    // bridge the lap's ends are further apart than MAX_RESIDUAL_M.
+    expect(chord / index.unitsPerMetre).toBeGreaterThan(MAX_RESIDUAL_M);
+    // ...and the lap is still a ring, measured exactly: 200 chords of its arc.
+    expect(index.lapSeconds).toBe(LAP_SECONDS);
+    expect(index.lapUnits).toBeCloseTo(
+      PER_LAP * 2 * radius * Math.sin(sweep / (2 * PER_LAP)),
+      6,
+    );
   });
 
   it("keeps the legacy 'no ring': a span shorter than MIN_LAP_S is not a lap", () => {

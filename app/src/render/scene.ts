@@ -175,7 +175,10 @@ const toPoints = (samples: Replay["cars"][number]["samples"]): Point[] =>
  * with `toT = duration` clamped to the last sample: `closePath` draws the segment
  * back to `fromT`, which on a closed lap IS the wrap to sample 0 (`spanSample`'s
  * rule) and on an open window's held last sample is the same point. So a lap file's
- * `{0, 0, duration}` is exactly the path it always drew.
+ * `{0, 0, duration}` is exactly the path it always drew — but a WINDOW without the
+ * field is not: it gets the legacy span, `cars[0]`'s first lap, where it used to get
+ * `cars[0]`'s whole path, and the centroid that points the corner and start/finish
+ * labels moves with it (`referenceLap.ts`'s header has the measurements).
  */
 export function buildScene(replay: Replay): Scene {
   const { rotation, sampleRateHz } = replay.meta;

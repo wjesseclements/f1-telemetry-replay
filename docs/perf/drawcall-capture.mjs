@@ -240,9 +240,10 @@ function capture(mode, file, cars) {
     // synthesis (the subset's cars[0], first lap) applies. Said out loud: that sweep
     // point's ribbon is not the full file's, which is the one way car count stops
     // being the only variable. Remapping was the alternative and is not one: the car
-    // the field names is not in the subset. Of the gallery assets, only the red flag
-    // names a car other than cars[0] (cars[2], VER) — so `auto` on it with 1 or 2
-    // cars prints the line below.
+    // the field names is not in the subset. No gallery asset currently names a car
+    // past cars[0] — all five reference cars[0]; the red flag's is RUS, 89-175.6 s —
+    // so every subset of them keeps its field, and the line below is reached only by
+    // a hand-made or future file whose reference car is not listed first.
     const reference = json.track.referenceLap;
     if (reference !== undefined && reference.car >= json.cars.length) {
       delete json.track.referenceLap;

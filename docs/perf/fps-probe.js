@@ -51,8 +51,10 @@
  * the field there and the legacy reference (the subset's `cars[0]`, first lap)
  * applies; that point's ribbon is then NOT the full file's, so say so in the table.
  * A file without the field (the gitignored `monza_full_field.json` predates it) is
- * untouched; of the gallery assets only the red flag names a car past `cars[0]`
- * (`cars[2]`), so only its 1- and 2-car subsets lose the field.
+ * untouched, and so is every gallery asset: none currently names a car past
+ * `cars[0]` (the red flag's reference is `cars[0]`, RUS), so every subset of them
+ * keeps its field. The drop is reached only by a hand-made or future file whose
+ * reference car is not listed first.
  *
  *   python3 - <<'PY'
  *   import json

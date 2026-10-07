@@ -13,6 +13,8 @@ fixture builds the `race-window-standing` golden, so the app's schema sees it to
 from __future__ import annotations
 
 import math
+import re
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -398,7 +400,7 @@ def test_with_no_green_lap_anywhere_the_first_clean_lap_is_the_named_fallback():
         [[_lap(1, 0.0, 90.0, race_lap_one=True), _lap(2, 90.0, 180.0)], [_lap(2, 92.0, 182.0)]],
         [_fast(190.0), _fast(190.0)],
         [()] * 2,
-        [],  # a window with no status data — the finale asset's shape
+        [],  # a window with no status data (no shipped asset since Slice 24's regeneration)
         RATE,
     )
     assert (ref.car, ref.number, ref.green) == (0, 2, False)
@@ -589,6 +591,44 @@ def test_a_lap_that_does_not_close_is_passed_over_as_the_loader_would(chord, kep
                 "the 25 m the loader allows",
             ),
         )
+
+
+# --- the cross-language pin ----------------------------------------------------------
+
+#: The app's engine source, from `pipeline/tests/`. The repo is one checkout in CI and
+#: on a human's machine, so reading the other language's file needs no network.
+_ENGINE_SRC = Path(__file__).resolve().parents[2] / "app" / "src" / "engine"
+
+
+def _ts_const(file: str, name: str, value: str) -> str:
+    """The right-hand side of `export const <name> = <value>;` in the app's engine
+    source, matched STRICTLY: exactly one line of exactly that shape. Anything else —
+    a rename, a move, a computed value, a type annotation — fails here by name,
+    rather than letting the pin quietly stop pinning."""
+    path = _ENGINE_SRC / file
+    found = re.findall(
+        rf"^export const {name} = ({value});$", path.read_text(encoding="utf-8"), re.M
+    )
+    assert len(found) == 1, (
+        f"expected exactly one `export const {name} = <{value}>;` line in "
+        f"app/src/engine/{file}, found {len(found)}. The pipeline mirrors it by hand "
+        "(replay_transform/contract.py) and this test is what compares the two: "
+        "update the pattern with the constant, never delete it"
+    )
+    return found[0]
+
+
+def test_the_closure_and_length_bounds_are_the_apps_own_constants():
+    """`REFERENCE_LAP_CLOSE_M` and `REFERENCE_LAP_MIN_S` are mirrored by hand from
+    the app (Slice 24 final review): each side pinned its own literal and nothing
+    compared the two, so a drift would surface only as `validate_output` refusing a
+    real network build. The app's names are aliases — `referenceLap.ts` sets them to
+    `gaps.ts`'s `MAX_RESIDUAL_M` and `MIN_LAP_S` — so both links are read."""
+    number = r"\d+(?:\.\d+)?"
+    assert _ts_const("referenceLap.ts", "REFERENCE_LAP_CLOSE_M", r"\w+") == "MAX_RESIDUAL_M"
+    assert _ts_const("referenceLap.ts", "REFERENCE_LAP_MIN_S", r"\w+") == "MIN_LAP_S"
+    assert float(_ts_const("gaps.ts", "MAX_RESIDUAL_M", number)) == REFERENCE_LAP_CLOSE_M
+    assert float(_ts_const("gaps.ts", "MIN_LAP_S", number)) == REFERENCE_LAP_MIN_S
 
 
 def _str_then_rus(str_positions, str_speed):

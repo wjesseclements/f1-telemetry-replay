@@ -1,7 +1,8 @@
 /**
- * The reference lap's app half (Slice 24): the legacy synthesis that keeps every
- * file without `track.referenceLap` behaving exactly as before, and the schema's
- * acceptance and rejection of a file that carries one.
+ * The reference lap's app half (Slice 24): the legacy synthesis that settles a
+ * file without `track.referenceLap` to the span the engine used to search for (what
+ * that keeps downstream, and what it does not, is `referenceLap.ts`'s header), and
+ * the schema's acceptance and rejection of a file that carries one.
  *
  * Geometry is closed-form, the `gaps.test.ts` doctrine: a circle of 1000 m at
  * 180 km/h is 5 m per 10 Hz step and 200 samples per lap, in position units of ten
@@ -10,15 +11,19 @@
  */
 import { describe, expect, it } from "vitest";
 import sampleLap from "./__fixtures__/sample-lap.json";
-import { MAX_RESIDUAL_M, MIN_LAP_S, buildProgressIndex } from "./gaps";
+import {
+  MAX_RESIDUAL_M,
+  MIN_LAP_S,
+  buildProgressIndex,
+  metresApart,
+  referenceLapEnds,
+} from "./gaps";
 import { ReplayValidationError, parseReplay } from "./load";
 import {
   REFERENCE_LAP_CLOSE_M,
   REFERENCE_LAP_MIN_S,
   START_FINISH_MAX_OFFSET_M,
   legacyReferenceLap,
-  metresApart,
-  referenceLapEnds,
   withReferenceLap,
   type UnreferencedReplay,
 } from "./referenceLap";
@@ -111,7 +116,7 @@ function replayJson({
 const gapsLapSeconds = (json: unknown) =>
   buildProgressIndex(parseReplay(json)).lapSeconds;
 
-describe("legacyReferenceLap — what a file without the field has always meant", () => {
+describe("legacyReferenceLap — what a file without the field is settled to", () => {
   it("is the whole closed loop for a lap, wrap step included (the fixture)", () => {
     const replay = parseReplay(sampleLap);
     expect(replay.track.referenceLap).toEqual({

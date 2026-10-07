@@ -10,12 +10,11 @@
  * are caught instead by `meta.schemaVersion`, which must match SCHEMA_VERSION.
  */
 import { z } from "zod";
+import { metresApart, referenceLapEnds } from "./gaps";
 import {
   REFERENCE_LAP_CLOSE_M,
   REFERENCE_LAP_MIN_S,
   START_FINISH_MAX_OFFSET_M,
-  metresApart,
-  referenceLapEnds,
   withReferenceLap,
 } from "./referenceLap";
 
@@ -203,8 +202,10 @@ const TrackSchema = z.object({
    * See `ReferenceLapSchema`. OPTIONAL on input — every file written before Slice
    * 24, the committed fixture and any hand-built JSON lack it — and REQUIRED on
    * output: `ReplaySchema`'s transform fills an absent one with the LEGACY
-   * reference (`legacyReferenceLap`, exactly the span the engine used before the
-   * field existed), so `z.infer` makes it required and the engine never branches
+   * reference (`legacyReferenceLap`: on an open window the span the gap engine
+   * searched for before the field existed; on a closed lap the whole loop — its
+   * header says what that does and does not preserve), so `z.infer` makes it
+   * required and the engine never branches
    * on `undefined` — the `meta.loop` doctrine. `.default()` cannot say it: the
    * legacy value is computed from `meta` and `cars`, which a track field cannot
    * see. When PRESENT it is validated loudly (the replay-level refinement).
@@ -626,7 +627,9 @@ function referenceLapIssue(
   }
   // The span must CLOSE: one lap ends where it started (review of the contract
   // half). Both positions are named, because which one is wrong is the question
-  // the reader of this message has to answer next.
+  // the reader of this message has to answer next. Measured through the bridge
+  // `gaps.ts`'s `buildReference` tests the ring with — the same `referenceLapEnds`,
+  // the same bound — so a lap accepted here is never a "no ring" there.
   const { start, end, unitsPerMetre } = ends;
   const apart = metresApart(start, end, unitsPerMetre);
   if (apart > REFERENCE_LAP_CLOSE_M) {
