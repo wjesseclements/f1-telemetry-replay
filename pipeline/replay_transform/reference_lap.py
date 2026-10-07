@@ -46,20 +46,62 @@ also marks every in/out lap and every lap with no LapTime `IsAccurate=False`, an
 9. it overlaps none of the car's stuck-channel `dropouts` (Slice 9m) — across one,
    the emitted positions are a BRIDGE the screen laid, not fixes the car reported,
    and the reference lap becomes the ribbon and the gap circuit;
-10. its car's anchor plan was not DECLINED (Slice 24, consumer half) — a car carrying
-   a frame displacement the repair could not cancel has positions KNOWN to be
-   corrupt somewhere (`AnchorPlan.declined`, the 41.7 m guard), and they are
-   inadmissible as the track for the same reason `pit_lane` already excludes that
-   car from the lane geometry (`detect_pit_lane`'s `declined` flag). The whole car,
-   not a lap: a declined relocation is not localised, which is why the anchor plan
-   withholds every loop and pit anchor too. Checked last — the most specific reason
-   a lap fails is still its own, and this one is the car's.
+10. it comes no nearer than `POSITION_FAULT_MARGIN_S` to any of the car's
+   `PositionFault`s — the stretches its emitted positions are KNOWN to be corrupt
+   (`assembly.position_faults`: a declined frame-displacement jump, a reversal the
+   declined plan leaves in place, a run of impossible fixes the fix screen
+   surrendered to). LAP-LEVEL, not car-level (the Slice 24 follow-up): the consumer
+   half excluded every car whose plan was declined anywhere in the window, which on
+   the 2026 assets threw away 10 of 22 red-flag cars and 7 of 21 restart cars, and
+   passed over the red-flag window's first car, RUS, whose one declined jump lies
+   115 s after the lap it was denied. Measured against the field (the other
+   non-declined cars' emitted paths, both 2026 windows), the corruption is LOCAL:
+   it runs at most 4.0 s from a fault, and beyond the margin a declined car leaves
+   the field's line by more than 5 m on at most 0.19% of its moving samples — no
+   more than a clean car does (LAW's lap-1 start: 2.51%). So the exclusion is local
+   too. Named with the fault and its time;
+11. it CLOSES: the car's emitted positions at `fromT` and `toT` lie within
+   `REFERENCE_LAP_CLOSE_M` of each other through its own metre bridge — the loader's
+   check, mirrored so the selector refuses by name what the loader would refuse
+   after the file is written. Lap-level admission is what makes it reachable: a
+   declined car's loop and pit anchors are withheld for the WHOLE car, so its
+   travel->path map is global and its laps can drift along the track (the restart
+   window's STR, declined at t=387 s, opens laps 7 and 8 by ~60 m), and no fault
+   interval can say so. Checked last, after every reason that names a cause.
 
-Speeds and dropouts are read from the EMITTED file, not the source rows, for the
-reason `pit_lane` gives: the report recomputes the choice from the written file alone
-and agrees with the builder by construction. The declined flag is not in the file;
-the report recomputes it from the source rows exactly as the builder did, and hands
-it over the way `pit_lane_report` is handed its declined drivers.
+Speeds, positions and dropouts are read from the EMITTED file, not the source rows,
+for the reason `pit_lane` gives: the report recomputes the choice from the written
+file alone and agrees with the builder by construction. The position faults are not
+in the file; the report recomputes them from the source rows exactly as the builder
+did (`position_faults`, the same pure function on the same inputs), and hands them
+over the way `pit_lane_report` is handed its declined drivers.
+
+THE MARGIN, and what lap-level does NOT see
+-------------------------------------------
+A fault is where a screen caught the corruption, not how far it reaches.
+`POSITION_FAULT_MARGIN_S` (10 s either side) is an ARGUMENT, labelled as one: the
+longest frame displacement this project has measured edge to edge is 6.4 s (2024
+Silverstone R, VER, t=286.5-292.9 s; HAM 4.5 s, NOR 4.2 s), and a declined jump is a
+displacement edge whose partner was never found; the furthest a 2026 declined
+fault's corruption was measured to reach is 4.0 s (RUS, in the red-flag pit lane;
+2.3 s at racing speed). 10 s covers both with headroom and still leaves a car most of
+an ~80-90 s lap per fault. It does not decide either shipped choice: the red-flag
+window's lap is 115 s from RUS's fault, and the restart's car carries none. Of the
+candidates that hold no fault, the nearest to one is red-flag NOR's lap 2, ending
+4.1 s before a reversal NOR's declined plan left in place (t=182.8 s; its jump
+follows at 186.2 s) — passed over; the next nearest, restart BEA lap 8 (10.2 s) and
+red-flag PIA lap 2 (11.4 s), are kept, and every other is 24.9 s or more away.
+
+What a time interval cannot express, and so this rule does not catch: a relocation
+that STAYS. The repair reads a declined single jump as "relocated and stayed", and
+if one ever did, every lap on its displaced side would close (check 11) in the wrong
+frame. None in the corpus does — every 2026 declined car rejoins the field's line
+within 4.0 s — and the car-level rule this replaces was what covered that case. Nor
+does closure bound where a declined lap STARTS along the track, only how far its
+two ends disagree; the line is drawn at that start. Measured on the shipped choice,
+along the track: RUS's lap-2 start sits 7.9 m before the median of the twelve
+anchored cars' own lap-2 starts (VER's, the lap it replaces, sits on it) — inside
+the -8.3..+22.6 m those anchored starts themselves spread over.
 
 WHICH CANDIDATE
 ---------------
@@ -118,9 +160,10 @@ from typing import Any, Mapping, Sequence
 
 import numpy as np
 
-from .contract import REFERENCE_LAP_MIN_S, TelemetryShapeError
+from .contract import REFERENCE_LAP_CLOSE_M, REFERENCE_LAP_MIN_S, TelemetryShapeError
 from .lap_context import in_window_laps
 from .pit_lane import PIT_STOP_MAX_KMH, units_per_metre
+from .placement import KMH_S_PER_METRE
 
 #: The start/finish heading's chord, metres. At racing speed one 10 Hz grid step is
 #: already longer (180 km/h covers exactly 5 m per step; the line is crossed at 250+),
@@ -131,6 +174,12 @@ from .pit_lane import PIT_STOP_MAX_KMH, units_per_metre
 #: identical (the red-flag asset's 0.0). 5 m is five times that noise and still well
 #: inside a straight — a 5 m chord on a 50 m-radius corner turns only 2.9 degrees.
 START_FINISH_HEADING_M = 5.0
+
+#: How far either side of a `PositionFault` its corruption may reach, seconds: a
+#: candidate lap whose span comes within this of a fault is passed over. An argument
+#: rather than a measured empty band — see "THE MARGIN" in the module docstring for
+#: the 6.4 s and 4.0 s it covers and how near the corpus's candidates come to it.
+POSITION_FAULT_MARGIN_S = 10.0
 
 
 class NoReferenceLapError(TelemetryShapeError):
@@ -169,6 +218,26 @@ class LapFacts:
     #: line. `lap_facts` always sets it from the table (an unknown reads False); the
     #: default serves hand-built facts, like the three flags above.
     accurate: bool = True
+
+
+@dataclass(frozen=True)
+class PositionFault:
+    """
+    One stretch of a car's positions the pipeline KNOWS to be corrupt, in window
+    seconds — plain data. `assembly.position_faults` builds these from the screens'
+    own verdicts, so this module never learns what a repair or a screen is.
+    """
+
+    #: What the fault is, as a rejection reason names it ("a <kind> at t=...").
+    kind: str
+    #: Window seconds bounding the fault itself; equal for a single fix.
+    from_s: float
+    to_s: float
+
+    def at(self) -> str:
+        """The fault's time as the report prints it: a point, or a range."""
+        a, b = f"{self.from_s:.1f}", f"{self.to_s:.1f}"
+        return a if a == b else f"{a}-{b}"
 
 
 @dataclass(frozen=True)
@@ -280,11 +349,33 @@ def _grid_span(lap: LapFacts, n: int, rate: float) -> "tuple[int, int] | str":
     return from_i, min(int(round(lap.end_s * rate)), n - 1)
 
 
+def _closing_m(
+    x: np.ndarray, y: np.ndarray, speed: np.ndarray, from_i: int, to_i: int, rate: float
+) -> "float | None":
+    """
+    Metres between the car's positions at `from_i` and `to_i`, or None when its
+    positions cover no ground over the span. Measured as the LOADER measures it
+    (`referenceLapEnds`, `metresApart`): the car's own bridge over the span, path
+    length against the TRAPEZOID speed integral (`gaps.ts`'s `travelIntegral`), so
+    the mirror and the schema agree to rounding. The span's speeds are never all
+    zero here — check 8 has already refused any sample below `PIT_STOP_MAX_KMH`.
+    """
+    xs, ys = x[from_i : to_i + 1], y[from_i : to_i + 1]
+    vs = speed[from_i : to_i + 1]
+    path = float(np.hypot(np.diff(xs), np.diff(ys)).sum())
+    if path == 0.0:
+        return None
+    metres = float(((vs[:-1] + vs[1:]) / 2.0).sum()) / float(rate) / KMH_S_PER_METRE
+    return float(np.hypot(xs[-1] - xs[0], ys[-1] - ys[0])) / (path / metres)
+
+
 def _disqualify(
     lap: LapFacts,
     speed: np.ndarray,
+    x: np.ndarray,
+    y: np.ndarray,
     dropouts: "Sequence[Mapping[str, float]]",
-    declined: bool,
+    faults: "Sequence[PositionFault]",
     rate: float,
 ) -> "tuple[int, int] | str":
     """The lap's grid span when it qualifies, else the FIRST reason it does not."""
@@ -323,10 +414,22 @@ def _disqualify(
                 f"overlaps a stuck-channel dropout at t={drop['fromT']:g}-"
                 f"{drop['toT']:g} s - positions there are bridged, not measured"
             )
-    if declined:
+    # Strict, like the dropouts: a fault exactly the margin away reaches the lap's
+    # boundary sample and no further. Earliest first, so the reason is reproducible.
+    m = POSITION_FAULT_MARGIN_S
+    for fault in sorted(faults, key=lambda f: (f.from_s, f.to_s)):
+        if fault.from_s - m < hi and fault.to_s + m > lo:
+            return (
+                f"within {m:g} s of a {fault.kind} at t={fault.at()} s - positions "
+                "there are known corrupt"
+            )
+    apart = _closing_m(x, y, speed, from_i, to_i, rate)
+    if apart is None:
+        return "its positions cover no ground over it - the channel is frozen"
+    if apart > REFERENCE_LAP_CLOSE_M:
         return (
-            "car carries a declined frame displacement - its positions are known "
-            "corrupt, inadmissible as the track (as for the pit-lane geometry)"
+            f"does not close - it ends {apart:.1f} m from where it began, over the "
+            f"{REFERENCE_LAP_CLOSE_M:g} m the loader allows"
         )
     return from_i, to_i
 
@@ -356,36 +459,43 @@ def select_reference_lap(
     status: "Sequence[Mapping[str, Any]]",
     rate: float,
     *,
-    declined: "Sequence[bool]",
+    positions: "Sequence[tuple[Sequence[float], Sequence[float]]]",
+    faults: "Sequence[Sequence[PositionFault]]",
 ) -> ReferenceLap:
     """
     The window's reference lap — see the module docstring for the rule.
 
-    `drivers`, `laps`, `speeds`, `dropouts` and `declined` are parallel, in `cars`
-    order: each car's in-window `LapFacts` (`lap_facts`), its EMITTED grid speeds, its
-    emitted `dropouts` intervals (empty for a car whose feed never dropped), and
-    whether its anchor plan was declined (`AnchorPlan.declined`). `status` is the
+    `drivers`, `laps`, `speeds`, `dropouts`, `positions` and `faults` are parallel,
+    in `cars` order: each car's in-window `LapFacts` (`lap_facts`), its EMITTED grid
+    speeds, its emitted `dropouts` intervals (empty for a car whose feed never
+    dropped), its EMITTED grid positions as `(x, y)`, and its `PositionFault`s
+    (`assembly.position_faults`; empty for a car with none). `status` is the
     window's emitted `trackStatus` rows. Raises `NoReferenceLapError` when nothing
     qualifies.
 
-    `declined` is keyword-only with no default, the `reference_laps` doctrine: a
-    caller that forgot it would otherwise admit every corrupt car by omission.
+    `positions` and `faults` are keyword-only with no default, the
+    `reference_laps` doctrine: a caller that forgot the faults would admit every
+    corrupt lap by omission, and one that forgot the positions could not check that
+    a lap closes.
     """
-    if not (
-        len(drivers) == len(laps) == len(speeds) == len(dropouts) == len(declined)
-    ):
+    counts = tuple(
+        len(column) for column in (drivers, laps, speeds, dropouts, positions, faults)
+    )
+    if len(set(counts)) != 1:
         raise TelemetryShapeError(
-            f"reference-lap selection needs one lap table, one speed channel, one "
-            f"dropout list and one declined flag per car: got {len(drivers)} drivers, "
-            f"{len(laps)} lap tables, {len(speeds)} speed channels, {len(dropouts)} "
-            f"dropout lists, {len(declined)} declined flags"
+            "reference-lap selection needs one lap table, one speed channel, one "
+            "dropout list, one position channel and one fault list per car: got "
+            "{} drivers, {} lap tables, {} speed channels, {} dropout lists, {} "
+            "position channels, {} fault lists".format(*counts)
         )
     walk = []
     for c, car_laps in enumerate(laps):
         speed = np.asarray(speeds[c], dtype=float)
+        x = np.asarray(positions[c][0], dtype=float)
+        y = np.asarray(positions[c][1], dtype=float)
         for lap in car_laps:
             walk.append(
-                (c, lap, _disqualify(lap, speed, dropouts[c], bool(declined[c]), rate))
+                (c, lap, _disqualify(lap, speed, x, y, dropouts[c], faults[c], rate))
             )
 
     for green_only in (True, False):

@@ -46,6 +46,18 @@ LOOP_OPEN = "open"
 #: candidate by name rather than emitting a file the loader would reject.
 REFERENCE_LAP_MIN_S = 5.0
 
+#: How far apart the reference car's positions at `fromT` and at `toT` may be,
+#: metres: a reference lap must CLOSE, because one lap ends where it started.
+#: Mirrored from `REFERENCE_LAP_CLOSE_M` in referenceLap.ts, which is the engine's
+#: own `MAX_RESIDUAL_M` (gaps.ts: the radius `findLapEnd` uses for "back where it
+#: started"), measured the loader's way — through the car's own metre bridge over
+#: the span, path against the trapezoid speed integral. The selector refuses an
+#: unclosed candidate by name rather than emitting a file the loader would reject
+#: (Slice 24 lap-level follow-up: once a declined car's laps are candidates, the
+#: unpinned along-track map of such a car makes this reachable — measured, the 2026
+#: restart window's STR laps 7 and 8 open by ~60 m).
+REFERENCE_LAP_CLOSE_M = 25.0
+
 #: FastF1's merged telemetry lands at roughly 4-10 Hz, so 10 Hz is the finest grid
 #: that does not invent resolution. It also matches the committed app fixture, which
 #: keeps "what the app was built against" and "what the pipeline emits" the same shape.

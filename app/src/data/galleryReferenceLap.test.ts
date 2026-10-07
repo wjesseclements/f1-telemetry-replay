@@ -10,9 +10,12 @@
  * from `cars[0]`'s first lap (`legacyReferenceLap.test.ts` keeps what that was).
  *
  * Two of them are the defect the slice exists for, now read from a racing lap:
- *  - red flag: the legacy lap ran 92.3 s from RUS's pole slot. RUS carries a
- *    declined frame displacement (t=290.6 s) and so cannot be the reference; the
- *    rule takes VER's lap 2, 87.2 s, timing line to timing line;
+ *  - red flag: the legacy lap ran 92.3 s from RUS's pole slot. The rule takes
+ *    RUS's lap 2, 86.6 s, timing line to timing line. RUS's plan is declined, but
+ *    its one fault (a jump at t=290.6 s, in the pit lane under red) lies 115 s
+ *    after that lap, and the exclusion is lap-level (Slice 24 follow-up; the
+ *    consumer half's car-level rule took VER's lap 2 instead — the re-run moved
+ *    only this file's `referenceLap` and `startFinish`, byte-checked);
  *  - restart: the legacy lap was 166.1 s of formation lap and grid hold; RUS's lap
  *    7 is 86.4 s, so the order key's pace is no longer 1.92x a racing lap's.
  *
@@ -35,7 +38,7 @@ const GALLERY_DIR = join(
 
 /** The pipeline's choice per asset, as regenerated 2026-10-07. */
 const CHOSEN: Record<string, ReferenceLap> = {
-  "monza-2026-red-flag": { car: 2, fromT: 89.9, toT: 177.1 },
+  "monza-2026-red-flag": { car: 0, fromT: 89, toT: 175.6 },
   "monza-2026-restart": { car: 0, fromT: 166.2, toT: 252.6 },
   "silverstone-2024-rain": { car: 0, fromT: 0, toT: 91.6 },
   "silverstone-2024-finale": { car: 0, fromT: 0, toT: 89.6 },

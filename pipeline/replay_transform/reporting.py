@@ -19,7 +19,7 @@ from .repair import FixRejection, FrameDisplacement, ReversalRejection
 from .assembly import AnchorPlan, WindowCar
 from .dead_feed import DEAD_FEED_WINDOW_S, DeadFeedResult
 from .pit_lane import detect_pit_lane
-from .reference_lap import LapFacts, select_reference_lap
+from .reference_lap import LapFacts, PositionFault, select_reference_lap
 from .stuck_channel import StuckResult
 
 def stint_report(driver: str, laps: "Sequence[Mapping[str, Any]]", stints: "Sequence[Mapping[str, Any]]") -> str:
@@ -424,25 +424,25 @@ def reference_lap_report(
     replay: "Mapping[str, Any]",
     reference_laps: "Sequence[Sequence[LapFacts]]",
     *,
-    declined_drivers: "Sequence[str]",
+    faults: "Mapping[str, Sequence[PositionFault]]",
 ) -> str:
     """
-    The reference lap (Slice 24), recomputed FROM THE EMITTED FILE — speeds and
-    track status as written — through the same `select_reference_lap` the builder
-    ran, so the log and the file agree by construction (the `pit_lane_report`
-    doctrine). Silent-never: the chosen car, lap, span and tier always print, every
-    candidate passed over prints with its reason, and a recomputation that disagrees
-    with the file's `track.referenceLap` is the loudest line here.
+    The reference lap (Slice 24), recomputed FROM THE EMITTED FILE — speeds,
+    positions, dropouts and track status as written — through the same
+    `select_reference_lap` the builder ran, so the log and the file agree by
+    construction (the `pit_lane_report` doctrine). Silent-never: the chosen car,
+    lap, span and tier always print, every candidate passed over prints with its
+    reason, and a recomputation that disagrees with the file's `track.referenceLap`
+    is the loudest line here.
 
-    `declined_drivers` is the one fact the file does not carry: the drivers whose
-    anchor plan was declined, recomputed from the source rows exactly as the builder
-    computed them — the same list `pit_lane_report` is handed. Keyword-only and
-    required: an empty default would let a forgotten list re-admit a corrupt car
-    here while the builder had excluded it, and the MISMATCH line would then blame
-    the lap facts.
+    `faults` is the one fact the file does not carry: each driver's
+    `position_faults`, recomputed from the source rows exactly as the builder
+    computed them, keyed by driver. Keyword-only and required, and read with no
+    default per driver: an empty fallback would let a forgotten list re-admit a
+    corrupt lap here while the builder had passed it over, and the MISMATCH line
+    would then blame the lap facts.
     """
     cars = replay["cars"]
-    declined = set(declined_drivers)
     ref = select_reference_lap(
         [str(car["driver"]) for car in cars],
         reference_laps,
@@ -452,7 +452,11 @@ def reference_lap_report(
         [car.get("dropouts", []) for car in cars],
         replay.get("trackStatus", []),
         float(replay["meta"]["sampleRateHz"]),
-        declined=[str(car["driver"]) in declined for car in cars],
+        positions=[
+            ([s["x"] for s in car["samples"]], [s["y"] for s in car["samples"]])
+            for car in cars
+        ],
+        faults=[faults[str(car["driver"])] for car in cars],
     )
     tier = (
         "green throughout"
@@ -475,6 +479,6 @@ def reference_lap_report(
         lines.append(
             "  MISMATCH: the file's track.referenceLap differs from this recomputation - "
             "the builder and the report were not handed the same lap facts or "
-            "declined drivers; trust neither until that is resolved"
+            "position faults; trust neither until that is resolved"
         )
     return "\n".join(lines)

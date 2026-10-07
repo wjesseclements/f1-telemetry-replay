@@ -89,6 +89,9 @@ the whole of `app/src/engine/` are untouched. See `PLAN.md` §Slice 7.
 """
 
 from .assembly import (
+    FAULT_DECLINED_JUMP,
+    FAULT_LEFT_REVERSAL,
+    FAULT_SURRENDERED_RUN,
     AnchorPlan,
     SessionMeta,
     WindowCar,
@@ -97,6 +100,7 @@ from .assembly import (
     build_samples,
     build_window_replay_dict,
     parse_lap_range,
+    position_faults,
     window_anchor_plan,
     window_grid,
 )
@@ -110,6 +114,7 @@ from .contract import (
     SCHEMA_VERSION,
     SPEED_UNIT,
     MissingColumnsError,
+    REFERENCE_LAP_CLOSE_M,
     REFERENCE_LAP_MIN_S,
     ReplayMeta,
     TelemetryShapeError,
@@ -140,10 +145,12 @@ from .lap_context import (
 )
 from .reference_lap import (
     LEGACY_REFERENCE,
+    POSITION_FAULT_MARGIN_S,
     START_FINISH_HEADING_M,
     LapFacts,
     LegacyReference,
     NoReferenceLapError,
+    PositionFault,
     ReferenceLap,
     Rejection,
     lap_facts,

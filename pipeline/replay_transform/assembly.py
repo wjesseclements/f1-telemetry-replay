@@ -22,6 +22,7 @@ from .reference_lap import (
     LEGACY_REFERENCE,
     LapFacts,
     LegacyReference,
+    PositionFault,
     select_reference_lap,
     start_finish_at,
 )
@@ -443,9 +444,10 @@ def build_window_replay_dict(
 
     THE REFERENCE LAP (Slice 24). `reference_laps` is REQUIRED and keyword-only:
     every car's in-window `LapFacts`, in `cars` order. The builder CHOOSES the
-    reference lap (`select_reference_lap`, over the emitted speeds, dropouts and
-    `status`), emits it as `track.referenceLap`, and takes `track.startFinish` from
-    it — the chosen car's position at the lap's start, which is the timing line.
+    reference lap (`select_reference_lap`, over the emitted speeds, positions,
+    dropouts and `status`, and each car's `position_faults`), emits it as
+    `track.referenceLap`, and takes `track.startFinish` from it — the chosen car's
+    position at the lap's start, which is the timing line.
     Nothing qualifying is a loud `NoReferenceLapError`. `build_replay.py` always
     passes the facts.
 
@@ -545,6 +547,7 @@ def build_window_replay_dict(
     built = []
     rejections: "list[tuple[str, FixRejection]]" = []
     declined_by_driver: "dict[str, bool]" = {}
+    faults_by_driver: "dict[str, tuple[PositionFault, ...]]" = {}
     for car, t, ch in per_car:
         speed = car.telemetry["Speed"]
         # Repair before screening, and screen the repaired polyline — see the same
@@ -571,9 +574,15 @@ def build_window_replay_dict(
         # The reversal screen (Slice 9j), under the same guard as the anchors: a car
         # with a DECLINED displacement is a known-corrupt region and gets no
         # surgical edits — its fixes ship exactly as the ratio screen left them.
+        # It still RUNS on such a car, as a detector only: what it would have
+        # removed ships, so the reference-lap selector is told where (Slice 24).
+        reversals = reject_reversals(t, x, y, speed)
         keep = rejection.keep
         if not plan.declined:
-            keep = keep & reject_reversals(t, x, y, speed).keep
+            keep = keep & reversals.keep
+        faults_by_driver[str(car.driver)] = position_faults(
+            t, window[0], plan, repair, rejection, reversals
+        )
         # Parked or moving — the one place a window differs from a lap in how
         # positions are placed. See `covers_ground`.
         if covers_ground(t, x, y, speed):
@@ -621,11 +630,11 @@ def build_window_replay_dict(
                 f"reference_laps needs one lap table per car: got "
                 f"{len(reference_laps)} for {len(built)} cars"
             )
-        # Speeds, dropouts and status as EMITTED, so `reference_lap_report` can
-        # recompute the choice from the written file and agree by construction. A
-        # car whose anchor plan was DECLINED is excluded — its positions are known
-        # corrupt — for the reason it is excluded from the pit-lane geometry below,
-        # and the report is handed the same recomputed facts.
+        # Speeds, positions, dropouts and status as EMITTED, so
+        # `reference_lap_report` can recompute the choice from the written file and
+        # agree by construction. Each car's position faults are passed over LAP BY
+        # LAP — a declined car keeps every lap clear of them (Slice 24 follow-up) —
+        # and the report is handed the same recomputed faults.
         reference = select_reference_lap(
             [str(car.driver) for car, _, _, _ in built],
             reference_laps,
@@ -633,7 +642,11 @@ def build_window_replay_dict(
             [dropouts_by_driver.get(str(car.driver), []) for car, _, _, _ in built],
             status,
             rate,
-            declined=[declined_by_driver[str(car.driver)] for car, _, _, _ in built],
+            positions=[
+                ([s["x"] for s in samples], [s["y"] for s in samples])
+                for _, _, _, samples in built
+            ],
+            faults=[faults_by_driver[str(car.driver)] for car, _, _, _ in built],
         )
         _, ref_x, ref_y, ref_samples = built[reference.car]
         start_finish = start_finish_at(
@@ -769,6 +782,66 @@ class AnchorPlan:
         if not self.declined:
             base += list(self.loop) + list(self.pit)
         return sorted(set(base))
+
+
+#: The `PositionFault.kind` of each fault `position_faults` reports, as the
+#: reference-lap report names them ("within 10 s of a <kind> at t=...").
+FAULT_DECLINED_JUMP = "declined frame-displacement jump"
+FAULT_LEFT_REVERSAL = "reversal the declined plan left in place"
+FAULT_SURRENDERED_RUN = "run of impossible fixes the fix screen kept"
+
+
+def position_faults(
+    t: Any,
+    t0: float,
+    plan: AnchorPlan,
+    repair: FrameDisplacement,
+    rejection: FixRejection,
+    reversals: ReversalRejection,
+) -> "tuple[PositionFault, ...]":
+    """
+    Where one window car's EMITTED positions are known corrupt, in window seconds,
+    earliest first — the plain data `select_reference_lap` passes laps over by
+    (Slice 24 follow-up: the declined exclusion is lap-level, not car-level).
+
+    Every fact here is one the window builder already computed for this car, on the
+    same inputs, and `build_replay.py`'s report recomputes it the same way:
+
+    * a DECLINED plan's jump steps (`FrameDisplacement.jump_times`), each from the
+      row before the step to the row after it — the displacement the repair could
+      not cancel and so left in place;
+    * the reversals the declined plan's withheld screen leaves in place
+      (`reject_reversals` run as a detector: for an undeclined car they were
+      REMOVED and bridged, which is a repair, not a fault);
+    * every run of impossible fixes the fix screen SURRENDERED to and kept
+      (`FixRejection.surrendered`), declined or not — the screen's own admission
+      that the positions there are wrong.
+
+    Rejected fixes are not faults: they were dropped and bridged, like a repaired
+    displacement. Stuck-channel dropouts are not either — they are in the file, and
+    the selector reads them there.
+    """
+    ts = np.asarray(t, dtype=float)
+    faults = []
+    if plan.declined:
+        for jump in repair.jump_times:
+            # The first row strictly after the step's own — the row it jumped TO
+            # (a ratio-flagged step has dt > 0; the clamp is for an adjudicated one,
+            # which is admitted by time and might sit on a repeated row).
+            k = int(np.searchsorted(ts, jump, side="right"))
+            after = float(ts[min(k, len(ts) - 1)])
+            faults.append(
+                PositionFault(FAULT_DECLINED_JUMP, float(jump) - t0, after - t0)
+            )
+        faults += [
+            PositionFault(FAULT_LEFT_REVERSAL, float(r) - t0, float(r) - t0)
+            for r in reversals.rejected_times
+        ]
+    faults += [
+        PositionFault(FAULT_SURRENDERED_RUN, float(a) - t0, float(b) - t0)
+        for a, b, _ in rejection.surrendered
+    ]
+    return tuple(sorted(faults, key=lambda f: (f.from_s, f.to_s, f.kind)))
 
 
 def window_anchor_plan(

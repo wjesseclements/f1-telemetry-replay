@@ -19,25 +19,42 @@ import pytest
 
 import synthetic
 from replay_transform import (
+    FAULT_DECLINED_JUMP,
+    FAULT_LEFT_REVERSAL,
+    FAULT_SURRENDERED_RUN,
     LEGACY_REFERENCE,
     PIT_STOP_MAX_KMH,
+    POSITION_FAULT_MARGIN_S,
+    REFERENCE_LAP_CLOSE_M,
     REFERENCE_LAP_MIN_S,
     SAMPLE_RATE_HZ,
     START_FINISH_HEADING_M,
     STUCK_MIN_ROWS,
+    AnchorPlan,
+    FixRejection,
+    FrameDisplacement,
     LapFacts,
     NoReferenceLapError,
+    PositionFault,
     ReferenceLap,
     Rejection,
+    ReversalRejection,
     TelemetryShapeError,
+    bridge_stuck_channels,
     build_replay_dict,
     build_window_replay_dict,
+    detect_stuck_channels,
     in_window_laps,
     lap_context,
     lap_facts,
+    position_faults,
     reference_lap_report,
+    reject_impossible_fixes,
+    reject_reversals,
+    repair_frame_displacements,
     select_reference_lap,
     start_finish_at,
+    window_anchor_plan,
 )
 
 RATE = SAMPLE_RATE_HZ
@@ -173,13 +190,35 @@ def _fast(seconds: float, kmh: float = 250.0) -> "list[float]":
 GREEN_ALL = [{"status": "green", "fromT": 0.0, "toT": 1000.0}]
 
 
-def _select(drivers, laps, speeds, dropouts, status, rate, declined=None):
-    """`select_reference_lap` with no car declined unless a test says so — the ONE
-    place these tests opt out of the declined screen, by name (its own tests below
-    pass the flags explicitly)."""
+def _closing_positions(laps, n: int) -> "tuple[list[float], list[float]]":
+    """`n` grid positions on which every lap of `laps` CLOSES: a circle traversed
+    once per lap, held at its start between laps. Speeds and positions are separate
+    channels to the selector, so the lap-table tests need only not trip the closure
+    check by accident; its own tests below build positions that do."""
+    t = np.arange(n) / RATE
+    phase = np.zeros(n)
+    for lap in laps:
+        # A lap that ends past the channel is no candidate; its phase would only
+        # overwrite a later lap's.
+        if math.isfinite(lap.end_s) and lap.start_s < lap.end_s < n / RATE:
+            inside = (t >= lap.start_s) & (t < lap.end_s)
+            phase[inside] = (t[inside] - lap.start_s) / (lap.end_s - lap.start_s)
+    angle = 2.0 * math.pi * phase
+    return (1000.0 * np.cos(angle)).tolist(), (1000.0 * np.sin(angle)).tolist()
+
+
+def _select(drivers, laps, speeds, dropouts, status, rate, faults=None, positions=None):
+    """`select_reference_lap` with no position fault and closing positions unless a
+    test says otherwise — the ONE place these tests opt out of both screens, by name
+    (their own tests below pass them explicitly)."""
     return select_reference_lap(
         drivers, laps, speeds, dropouts, status, rate,
-        declined=[False] * len(drivers) if declined is None else declined,
+        positions=(
+            [_closing_positions(l, len(v)) for l, v in zip(laps, speeds)]
+            if positions is None
+            else positions
+        ),
+        faults=[()] * len(drivers) if faults is None else faults,
     )
 
 
@@ -410,58 +449,176 @@ def test_no_lap_table_at_all_fails_loudly_too():
 
 
 @pytest.mark.parametrize(
-    "laps, dropouts, declined",
+    "laps, dropouts, positions, faults",
     [
-        ([()], [(), ()], [False, False]),
-        ([(), ()], [()], [False, False]),
-        ([(), ()], [(), ()], [False]),
+        ([()], [(), ()], 2, 2),
+        ([(), ()], [()], 2, 2),
+        ([(), ()], [(), ()], 1, 2),
+        ([(), ()], [(), ()], 2, 1),
     ],
-    ids=["lap tables", "dropout lists", "declined flags"],
+    ids=["lap tables", "dropout lists", "position channels", "fault lists"],
 )
-def test_selection_needs_one_of_everything_per_car(laps, dropouts, declined):
-    with pytest.raises(TelemetryShapeError, match="one declined flag per car"):
+def test_selection_needs_one_of_everything_per_car(laps, dropouts, positions, faults):
+    with pytest.raises(TelemetryShapeError, match="one fault list per car") as err:
         _select(
             ["AAA", "BBB"], laps, [_fast(9.0)] * 2, dropouts, [], RATE,
-            declined=declined,
+            positions=[([0.0], [0.0])] * positions, faults=[()] * faults,
         )
+    assert "2 drivers" in str(err.value)
 
 
-def test_a_car_whose_anchor_plan_was_declined_is_never_the_reference():
-    """Positions known corrupt (a frame displacement the repair could not cancel)
-    are inadmissible as the track — the ribbon and the gap circuit are traced from
-    this lap — for the reason `pit_lane` excludes the car from the lane geometry.
-    Every one of the car's clean laps is passed over by name, and the next car's
-    lap is chosen; a lap that fails on its own account still says so first."""
+# --- position faults: LAP-level, not car-level (Slice 24 follow-up) ----------------
+
+#: RUS in the shipped red-flag window: lap 1 off the grid, lap 2 89.0-175.6 s, and
+#: the car's ONE declined jump at t=290.6 s — in the pit lane under red, 115 s after
+#: the lap the car-level rule denied it. VER's lap 2 is what that rule chose instead.
+_RUS_LAPS = [_lap(1, 0.0, 88.8, race_lap_one=True), _lap(2, 89.0, 175.6)]
+_VER_LAPS = [_lap(1, 0.0, 89.7, race_lap_one=True), _lap(2, 89.9, 177.1)]
+
+
+def _jump(at: float, to: float) -> PositionFault:
+    return PositionFault(FAULT_DECLINED_JUMP, at, to)
+
+
+def _rus_and_ver(rus_faults):
+    return _select(
+        ["RUS", "VER"], [_RUS_LAPS, _VER_LAPS], [_fast(294.7)] * 2, [()] * 2,
+        GREEN_ALL, RATE, faults=[rus_faults, ()],
+    )
+
+
+def test_a_fault_outside_a_lap_keeps_that_lap():
+    """THE ruling: a car whose plan was declined keeps every lap clear of its
+    faults. The red-flag window's own shape — RUS's lap 2 is the reference."""
+    ref = _rus_and_ver((_jump(290.573, 290.733),))
+    assert (ref.driver, ref.number, ref.from_t, ref.to_t) == ("RUS", 2, 89.0, 175.6)
+    assert [r.number for r in ref.rejected] == [1]
+
+
+def test_a_fault_inside_a_lap_loses_that_lap_by_name():
+    """The same car, the fault moved into the lap: passed over, the fault and its
+    time named, and the next car's lap is the reference."""
+    ref = _rus_and_ver((_jump(133.753, 133.886),))
+    assert (ref.driver, ref.number) == ("VER", 2)
+    assert ref.rejected[1] == Rejection(
+        "RUS",
+        2,
+        f"within {POSITION_FAULT_MARGIN_S:g} s of a {FAULT_DECLINED_JUMP} at "
+        "t=133.8-133.9 s - positions there are known corrupt",
+    )
+
+
+@pytest.mark.parametrize(
+    "fault, kept",
+    [
+        (_jump(79.9, 80.05), False),  # ends 9.95 s before the lap
+        (_jump(79.5, 80.0), True),  # ends exactly the margin before
+        (_jump(185.45, 185.5), False),  # starts 9.95 s after the lap
+        (_jump(185.5, 185.6), True),  # starts exactly the margin after
+    ],
+    ids=["just inside, before", "at the margin, before", "just inside, after",
+         "at the margin, after"],
+)
+def test_the_margin_reaches_either_side_of_a_fault_and_no_further(fault, kept):
+    """`POSITION_FAULT_MARGIN_S` either side, strictly — the dropouts' convention:
+    a fault exactly the margin away reaches the lap's boundary sample and stops.
+    Every boundary here is a binary-exact float, so "exactly" means exactly."""
+    assert POSITION_FAULT_MARGIN_S == 10.0  # the rows above are written against it
     ref = _select(
-        ["NOR", "VER"],
-        [
-            [_lap(25, 0.0, 85.0, pit_in=True), _lap(26, 85.0, 170.0)],
-            [_lap(25, 2.0, 87.0)],
-        ],
-        [_fast(171.0), _fast(171.0)],
-        [()] * 2,
-        GREEN_ALL,
-        RATE,
-        declined=[True, False],
+        ["RUS"], [[_lap(2, 90.0, 175.5), _lap(3, 220.0, 300.0)]], [_fast(310.0)],
+        [()], GREEN_ALL, RATE, faults=[(fault,)],
     )
-    assert (ref.car, ref.driver, ref.number) == (1, "VER", 25)
-    assert ref.rejected == (
-        Rejection("NOR", 25, "in-lap (PitInTime set)"),
-        Rejection(
-            "NOR",
-            26,
-            "car carries a declined frame displacement - its positions are known "
-            "corrupt, inadmissible as the track (as for the pit-lane geometry)",
-        ),
+    assert ref.number == (2 if kept else 3)
+
+
+def test_the_earliest_fault_a_lap_reaches_is_the_one_named():
+    """Faults arrive in any order; the report names the first in time, so a rerun
+    prints the same line."""
+    late = PositionFault(FAULT_SURRENDERED_RUN, 150.2, 151.0)
+    early = PositionFault(FAULT_LEFT_REVERSAL, 120.04, 120.04)
+    ref = _rus_and_ver((late, early))
+    assert ref.rejected[1].reason == (
+        f"within 10 s of a {FAULT_LEFT_REVERSAL} at t=120.0 s - positions there are "
+        "known corrupt"
     )
 
 
-def test_a_field_whose_only_clean_laps_are_declined_fails_loudly():
-    with pytest.raises(NoReferenceLapError, match="declined frame displacement"):
+def test_a_field_whose_every_lap_is_near_a_fault_fails_loudly():
+    with pytest.raises(NoReferenceLapError, match="within 10 s of a declined"):
         _select(
             ["NOR"], [[_lap(26, 0.0, 85.0)]], [_fast(90.0)], [()], GREEN_ALL, RATE,
-            declined=[True],
+            faults=[(_jump(91.0, 91.2),)],
         )
+
+
+# --- the closure mirror (REFERENCE_LAP_CLOSE_M) -------------------------------------
+
+
+def _out_and_back(chord_units: float) -> "tuple[list[float], list[float]]":
+    """801 positions at 36 km/h for 80 s: out 400 samples along x to the turn, back
+    400 to `chord_units` from the start. The path is 800 units whatever the chord,
+    against the 800 m the trapezoid integrates, so the bridge is one unit per metre
+    and the closing chord reads in metres. At a chord of 25 every step is a
+    multiple of 1/32, which binary floats hold exactly — "at the limit" is exact."""
+    turn = (800.0 + chord_units) / 2.0
+    out = np.arange(401) * (turn / 400.0)
+    back = turn - np.arange(1, 401) * ((turn - chord_units) / 400.0)
+    return np.concatenate([out, back]).tolist(), [0.0] * 801
+
+
+@pytest.mark.parametrize(
+    "chord, kept", [(25.0, True), (25.5, False)], ids=["at the limit", "just over"]
+)
+def test_a_lap_that_does_not_close_is_passed_over_as_the_loader_would(chord, kept):
+    """The loader's check, mirrored: a span whose ends lie more than
+    `REFERENCE_LAP_CLOSE_M` apart is not one lap, and the schema refuses it after
+    the file is written. Refused here by name instead, and the next lap chosen."""
+    assert REFERENCE_LAP_CLOSE_M == 25.0
+    ref = _select(
+        ["STR", "RUS"], [[_lap(7, 0.0, 80.0)], [_lap(7, 0.0, 80.0)]],
+        [[36.0] * 801] * 2, [()] * 2, GREEN_ALL, RATE,
+        positions=[_out_and_back(chord), _closing_positions([_lap(7, 0.0, 80.0)], 801)],
+    )
+    assert (ref.driver == "STR") is kept
+    if not kept:
+        assert ref.rejected == (
+            Rejection(
+                "STR",
+                7,
+                f"does not close - it ends {chord:.1f} m from where it began, over "
+                "the 25 m the loader allows",
+            ),
+        )
+
+
+def _str_then_rus(str_positions, str_speed):
+    lap = _lap(7, 0.0, 80.0)
+    return _select(
+        ["STR", "RUS"], [[lap], [lap]], [str_speed, [250.0] * 801], [()] * 2,
+        GREEN_ALL, RATE,
+        positions=[str_positions, _closing_positions([lap], 801)],
+    )
+
+
+def test_the_closure_is_read_through_the_loaders_own_bridge():
+    """Metres the way `referenceLapEnds` reads them: the car's path over the span
+    against the TRAPEZOID speed integral (`gaps.ts`'s `travelIntegral`). A straight
+    run's chord IS its path, so the closure reads the travel exactly — 5552.3 m with
+    the launch sample counted half, where a plain sum of speeds would read 5556.0."""
+    speed = [15.0] + [250.0] * 800
+    ref = _str_then_rus(((np.arange(801) * 7.0).tolist(), [3.0] * 801), speed)
+    assert ref.driver == "RUS"
+    assert ref.rejected[0].reason.startswith("does not close - it ends 5552.3 m ")
+
+
+def test_a_lap_whose_positions_never_move_is_passed_over_by_name():
+    """A position channel frozen under a moving speed channel has no bridge and no
+    lap; the loader calls it "covers no ground". Refused here, by name."""
+    ref = _str_then_rus(([12.0] * 801, [-4.0] * 801), [250.0] * 801)
+    assert (ref.driver, ref.rejected[0].reason) == (
+        "RUS",
+        "its positions cover no ground over it - the channel is frozen",
+    )
 
 
 # --- start_finish_at ----------------------------------------------------------------
@@ -646,48 +803,180 @@ def test_window_builder_hands_the_selector_each_cars_dropouts():
     assert len(replay["cars"][0]["dropouts"]) == 1
     assert "dropouts" not in replay["cars"][1]
     assert replay["track"]["referenceLap"]["car"] == 1
-    report = reference_lap_report(replay, facts, declined_drivers=())
+    report = reference_lap_report(replay, facts, faults=_recomputed_faults(cars))
     assert "passed over AAA lap 2: overlaps a stuck-channel dropout" in report
     assert "cars[1] BBB lap 2:" in report
     assert "MISMATCH" not in report
 
 
-def _relocated_in_lap_one() -> "dict[str, np.ndarray]":
-    """The standing start with one unmatched relocation 15 s in, which stays: the
-    repair cannot cancel it, so the car's anchor plan is DECLINED — the imposition
-    `test_replay_transform`'s declined-guard tests make."""
+def _recomputed_faults(cars) -> "dict[str, tuple[PositionFault, ...]]":
+    """Each car's `position_faults`, recomputed the way `report_window` recomputes
+    them — stuck bridge, repair, fix screen, reversal screen, anchor plan — so a
+    report test hands over exactly what a real run would."""
+    out = {}
+    for car in cars:
+        tel = car.telemetry
+        stuck = detect_stuck_channels(
+            tel["Time"], tel["Speed"], tel["Throttle"], tel["Brake"], tel["X"], tel["Y"]
+        )
+        bridged, anchors = bridge_stuck_channels(tel, stuck)
+        t, v = bridged["Time"], bridged["Speed"]
+        repair = repair_frame_displacements(t, bridged["X"], bridged["Y"], v)
+        plan = window_anchor_plan(t, v, repair, car, _T0, stuck_anchors=anchors)
+        out[car.driver] = position_faults(
+            t,
+            _T0,
+            plan,
+            repair,
+            reject_impossible_fixes(t, repair.x, repair.y, v),
+            reject_reversals(t, repair.x, repair.y, v),
+        )
+    return out
+
+
+def _excursion(at_s: float, metres: float = 40.0, back_s: float = 1.5):
+    """The standing start with a TRANSIENT frame excursion at window second `at_s` —
+    the shape every 2026 declined car measured: one impossible step out, then a
+    return spread over `back_s` that no single step betrays. The repair finds one
+    jump with no partner and DECLINES the plan; positions rejoin the road after.
+    Radial, so the excursion leaves the circle rather than sliding along it."""
     tel = synthetic.standing_start_telemetry(*_WINDOW)
-    t = np.asarray(tel["Time"], dtype=float)
-    x = np.asarray(tel["X"], dtype=float).copy()
-    x[int(np.searchsorted(t, _T0 + 15.0)):] += 5000.0
-    return dict(tel, X=x)
+    tau = np.asarray(tel["Time"], dtype=float) - _T0
+    k = int(np.searchsorted(tau, at_s))
+    reach = np.clip(1.0 - (tau - tau[k]) / back_s, 0.0, 1.0)
+    reach[:k] = 0.0
+    x = np.asarray(tel["X"], dtype=float)
+    y = np.asarray(tel["Y"], dtype=float)
+    out = metres * synthetic.SESSION_UNITS_PER_M * reach / np.hypot(x, y)
+    return dict(tel, X=x * (1.0 + out), Y=y * (1.0 + out))
 
 
-def test_window_builder_never_takes_the_reference_from_a_declined_car():
-    """End to end: AAA's lap 2 is clean by every lap-level test, but AAA carries a
-    declined relocation, so the reference — the ribbon, the gap circuit and the
-    line — moves to BBB's lap 2. The report agrees only when it is handed the same
-    declined drivers `report_window` recomputes; handed none, it is the loudest
-    line it can print."""
+def _declined_excursion_window(at_s: float):
     cars = [
-        synthetic.window_car("AAA", _relocated_in_lap_one()),
+        synthetic.window_car("AAA", _excursion(at_s)),
         synthetic.window_car("BBB", synthetic.standing_start_telemetry(*_WINDOW)),
     ]
     facts = [_standing_facts(), _standing_facts()]
     replay = build_window_replay_dict(
         cars, synthetic.SESSION_META, _WINDOW, reference_laps=facts
     )
+    faults = _recomputed_faults(cars)
+    # The premise, asserted: ONE unpartnered jump, so a declined plan, and every
+    # fault the car carries is the excursion's (its return also reads as a reversal
+    # the withheld screen leaves in place).
+    kinds = [f.kind for f in faults["AAA"]]
+    assert kinds[0] == FAULT_DECLINED_JUMP and kinds.count(FAULT_DECLINED_JUMP) == 1
+    assert all(abs(f.from_s - at_s) < 0.5 for f in faults["AAA"])
+    assert faults["BBB"] == ()
+    return replay, facts, faults
+
+
+def test_window_builder_keeps_a_declined_cars_lap_clear_of_its_fault():
+    """End to end, the ruling: AAA's plan is DECLINED by an excursion 16 s before
+    lap 2 begins — the car-level rule would have handed the reference to BBB. Lap
+    by lap, AAA's lap 2 is clear of it, so AAA (the first car) keeps the reference
+    and the line; the report, handed the recomputed faults, agrees."""
+    replay, facts, faults = _declined_excursion_window(8.0)
+    assert _LAP1_END - 8.0 > POSITION_FAULT_MARGIN_S
+    ref = replay["track"]["referenceLap"]
+    assert ref["car"] == 0
+    at = replay["cars"][0]["samples"][round(ref["fromT"] * RATE)]
+    sf = replay["track"]["startFinish"]
+    assert (sf["x"], sf["y"]) == (at["x"], at["y"])
+    report = reference_lap_report(replay, facts, faults=faults)
+    assert "cars[0] AAA lap 2:" in report and "MISMATCH" not in report
+
+
+def test_window_builder_passes_over_a_lap_its_fault_lies_inside():
+    """The same excursion moved INTO lap 2: AAA's lap 2 is passed over with the
+    fault named, BBB's identical lap is the reference and the line. Handed no
+    faults, the report recomputes AAA's lap as clean and is the loudest line it
+    can print."""
+    replay, facts, faults = _declined_excursion_window(_LAP1_END + 8.0)
     ref = replay["track"]["referenceLap"]
     assert ref["car"] == 1
     at = replay["cars"][1]["samples"][round(ref["fromT"] * RATE)]
     sf = replay["track"]["startFinish"]
     assert (sf["x"], sf["y"]) == (at["x"], at["y"])
 
-    report = reference_lap_report(replay, facts, declined_drivers=["AAA"])
-    assert "passed over AAA lap 2: car carries a declined frame displacement" in report
-    assert "cars[1] BBB lap 2:" in report
-    assert "MISMATCH" not in report
-    assert "MISMATCH" in reference_lap_report(replay, facts, declined_drivers=())
+    report = reference_lap_report(replay, facts, faults=faults)
+    assert (
+        f"passed over AAA lap 2: within 10 s of a {FAULT_DECLINED_JUMP} at t="
+        in report
+    )
+    assert "cars[1] BBB lap 2:" in report and "MISMATCH" not in report
+    assert "MISMATCH" in reference_lap_report(
+        replay, facts, faults={"AAA": (), "BBB": ()}
+    )
+
+
+# --- position_faults ----------------------------------------------------------------
+
+_TS = np.array([100.0, 100.2, 100.4, 100.6, 100.8, 101.0])
+
+
+def _repair(jumps, repaired=False) -> FrameDisplacement:
+    return FrameDisplacement(_TS, _TS, tuple(jumps), repaired, (), 30.0, 30.0, 5.0, None)
+
+
+def _plan(declined: bool) -> AnchorPlan:
+    return AnchorPlan(loop=(), pit=(), stuck=(), declined=declined)
+
+
+def _fixes(surrendered=()) -> FixRejection:
+    return FixRejection(np.ones(len(_TS), bool), (), 1.0, tuple(surrendered), False)
+
+
+_REVERSALS = ReversalRejection(np.ones(len(_TS), bool), (100.6,))
+
+
+def _spans(faults):
+    return [(f.kind, round(f.from_s, 6), round(f.to_s, 6)) for f in faults]
+
+
+def test_position_faults_of_a_declined_plan_name_every_kind_in_window_seconds():
+    """A declined plan: each jump step from its row to the row it jumped to, each
+    reversal the withheld screen would have removed, each surrendered run — rebased
+    onto the window and earliest first, whatever order they arrive in."""
+    faults = position_faults(
+        _TS, 100.0, _plan(True), _repair([100.4, 100.0]),
+        _fixes([(100.8, 101.0, 1.0)]), _REVERSALS,
+    )
+    assert _spans(faults) == [
+        (FAULT_DECLINED_JUMP, 0.0, 0.2),
+        (FAULT_DECLINED_JUMP, 0.4, 0.6),
+        (FAULT_LEFT_REVERSAL, 0.6, 0.6),
+        (FAULT_SURRENDERED_RUN, 0.8, 1.0),
+    ]
+
+
+def test_position_faults_of_an_undeclined_car_are_only_its_surrenders():
+    """No declined plan, no jump or reversal fault: a repaired displacement was
+    translated back and a reversal was removed and bridged — repairs, not faults.
+    A surrender is the fix screen KEEPING bad fixes, and is a fault whoever has it."""
+    repaired = position_faults(
+        _TS, 100.0, _plan(False), _repair([100.2, 100.6], repaired=True),
+        _fixes([(100.2, 100.4, 1.0)]), _REVERSALS,
+    )
+    assert _spans(repaired) == [(FAULT_SURRENDERED_RUN, 0.2, 0.4)]
+    assert position_faults(
+        _TS, 100.0, _plan(False), _repair([]), _fixes(), _REVERSALS
+    ) == ()
+
+
+def test_a_jump_on_the_last_row_ends_there():
+    """An adjudicated step is admitted by its time and could name the last row; its
+    fault then ends where the rows do instead of reading past them."""
+    faults = position_faults(
+        _TS, 100.0, _plan(True), _repair([101.0]), _fixes(), _REVERSALS
+    )
+    assert _spans(faults)[-1] == (FAULT_DECLINED_JUMP, 1.0, 1.0)
+
+
+def test_a_fault_prints_a_point_or_a_range():
+    assert PositionFault("x", 290.57, 290.73).at() == "290.6-290.7"
+    assert PositionFault("x", 120.04, 120.04).at() == "120.0"
+    assert PositionFault("x", 120.01, 120.04).at() == "120.0"
 
 
 # --- the report ---------------------------------------------------------------------
@@ -695,7 +984,7 @@ def test_window_builder_never_takes_the_reference_from_a_declined_car():
 
 def test_reference_lap_report_recomputes_the_choice_from_the_file():
     replay = _standing_window()
-    report = reference_lap_report(replay, [_standing_facts()], declined_drivers=())
+    report = reference_lap_report(replay, [_standing_facts()], faults={"AAA": ()})
     assert "cars[0] AAA lap 2:" in report
     assert "FALLBACK - no qualifying lap is green throughout" in report
     assert "passed over AAA lap 1: race lap 1" in report
@@ -706,7 +995,7 @@ def test_reference_lap_report_recomputes_the_choice_from_the_file():
 def test_reference_lap_report_names_a_green_choice():
     green = [{"status": "green", "fromT": 0.0, "toT": round(_LAP2_END + 0.1, 3)}]
     replay = _standing_window(status=green)
-    report = reference_lap_report(replay, [_standing_facts()], declined_drivers=())
+    report = reference_lap_report(replay, [_standing_facts()], faults={"AAA": ()})
     assert "green throughout" in report and "FALLBACK" not in report
 
 
@@ -714,11 +1003,14 @@ def test_reference_lap_report_is_loudest_when_the_file_disagrees():
     replay = _standing_window()
     replay["track"]["referenceLap"] = dict(replay["track"]["referenceLap"], toT=1.0)
     assert "MISMATCH" in reference_lap_report(
-        replay, [_standing_facts()], declined_drivers=()
+        replay, [_standing_facts()], faults={"AAA": ()}
     )
 
 
-def test_reference_lap_report_requires_the_declined_drivers():
-    """No default: a forgotten list would re-admit a car the builder excluded."""
-    with pytest.raises(TypeError, match="declined_drivers"):
+def test_reference_lap_report_requires_every_cars_faults():
+    """No default, and none per driver: a forgotten list would re-admit a lap the
+    builder passed over, and the MISMATCH line would then blame the lap facts."""
+    with pytest.raises(TypeError, match="faults"):
         reference_lap_report(_standing_window(), [_standing_facts()])
+    with pytest.raises(KeyError, match="AAA"):
+        reference_lap_report(_standing_window(), [_standing_facts()], faults={})

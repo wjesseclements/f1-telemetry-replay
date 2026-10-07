@@ -78,6 +78,7 @@ from replay_transform import (
     reversal_report,
     frame_repair_report,
     window_anchor_plan,
+    position_faults,
     lap_context,
     lap_facts,
     reference_lap_report,
@@ -674,6 +675,7 @@ def report_window(
     print("  position screening:")
     worst_share = 0.0
     declined_drivers = []
+    faults = {}
     for car in cars:
         # Bridge the stuck-channel dropouts FIRST, exactly as the builder does, so every
         # screen below sees the same telemetry the builder screened and the log cannot
@@ -698,9 +700,12 @@ def report_window(
         print(fix_rejection_report(str(car.driver), r, offset=window[0]))
         worst_share = max(worst_share, r.n_rejected / max(len(b_t), 1))
         plan_declined = bool(repair.jump_times) and not repair.repaired
+        # Run on every car, as the builder runs it; APPLIED (and so reported) only
+        # where the plan was not declined — elsewhere it feeds the position faults.
+        reversals = reject_reversals(b_t, repair.x, repair.y, b_v)
         print(reversal_report(
             str(car.driver),
-            None if plan_declined else reject_reversals(b_t, repair.x, repair.y, b_v),
+            None if plan_declined else reversals,
             offset=window[0],
         ))
         # The anchor plan (Slice 9i/9m), recomputed from the same pure function the
@@ -710,6 +715,12 @@ def report_window(
         )
         if plan.declined:
             declined_drivers.append(str(car.driver))
+        # Where this car's emitted positions are known corrupt (Slice 24 follow-up):
+        # the same pure function the builder ran, on the same inputs, so the
+        # reference-lap report below passes over the same laps the builder did.
+        faults[str(car.driver)] = position_faults(
+            b_t, window[0], plan, repair, r, reversals
+        )
         print(anchor_report(str(car.driver), plan))
     if worst_share > REJECTED_FIX_WARN_SHARE:
         print(
@@ -727,14 +738,10 @@ def report_window(
     print(pit_lane_report(replay, declined_drivers))
 
     # The reference lap (Slice 24), recomputed from the EMITTED file with the same
-    # lap facts the builder was handed and the declined-driver facts recomputed
-    # above (a declined car is never the reference): which car, which lap, which
+    # lap facts the builder was handed and the position faults recomputed above (a
+    # lap within reach of one is never the reference): which car, which lap, which
     # span, and why every earlier candidate was passed over.
-    print(
-        reference_lap_report(
-            replay, reference_laps, declined_drivers=declined_drivers
-        )
-    )
+    print(reference_lap_report(replay, reference_laps, faults=faults))
 
     # What was actually WRITTEN, read back off the replay dict rather than
     # recomputed, so the report and the file cannot disagree. A strange session —
