@@ -25,8 +25,9 @@ import type { StatusInterval, TrackStatus } from "./schema";
  * Intervals are treated as CLOSED `[fromT, toT]`, first match wins. The schema
  * forbids overlap, so the only shared instants are adjacent boundaries, where the
  * earlier interval answers — at a transition instant either answer is defensible
- * for one tick, and closed ends are what keep the final interval answering at
- * exactly `t = duration`, where an open window's clock parks.
+ * for one tick. The window's end needs no help from the closed top: the clock
+ * never holds `t = duration` (its domain is `[0, duration)`; a seek to the end
+ * lands on `lastInstant`), and the pipeline writes the final `toT` at `duration`.
  */
 export function statusAt(
   intervals: readonly StatusInterval[],

@@ -49,9 +49,10 @@ scales to a full 20-car race replay (v2) with no frontend rewrite.
 - **Deploy:** GitHub repo connected to **Vercel** via the Vercel for GitHub app.
   Merges to `main` → production; every other branch/PR → preview URL. No deploy
   scripts. Monorepo: set Vercel **Root Directory = `app`** (auto-detects Vite, output
-  `dist`). **GitHub Actions** runs the quality gate (typecheck + lint + test + build)
-  on PRs and `main`; branch protection requires it green before merge, so production
-  is test-gated even though Vercel itself only runs the build. Actions does NOT deploy —
+  `dist`). **GitHub Actions** runs the quality gate (typecheck + lint + format + test +
+  build + the headless-Chrome layout check, then `pytest`) on PRs and `main`; branch
+  protection requires it green before merge, so production is test-gated even though
+  Vercel itself only runs the build. Actions does NOT deploy —
   Vercel owns deployment.
 
 ## Load-bearing design decisions (NON-NEGOTIABLE)
@@ -215,7 +216,8 @@ Notes pinned to sources:
   respected (no ambient motion; starts paused).
 - Cold load to interactive **< 2s** on the committed fixture.
 - **Runs with zero network** for app + tests + CI (committed fixture; no F1 API).
-- CI green (typecheck + lint + test + build) is required before merge.
+- CI green (typecheck + lint + format + test + build + layout check + `pytest`) is required
+  before merge.
 
 ## Continuous delivery
 

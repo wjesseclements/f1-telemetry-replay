@@ -150,7 +150,8 @@ describe("telemetry channel", () => {
      * a function of the clock and the car's static samples. Nothing the HUD draws is a
      * function of a published coordinate any more, so a coordinate must not buy an emit.
      *
-     * This pair CANNOT occur in production — the loop publishes `sampleAt(clock)`, so a
+     * This pair CANNOT occur in production — the loop publishes `sampleAt(replay, clock,
+     * scene.carHeadingHolds)`, a function of the clock once the replay is loaded, so a
      * moved car means a moved clock — which is exactly why the term cost nothing to
      * remove and why removing it changes no real emit count.
      */
@@ -209,5 +210,20 @@ describe("telemetry channel", () => {
     channel.subscribe(after);
     channel.publish(1005, 6, [snapshot({ speed: 250 })]);
     expect(after).toHaveBeenCalledTimes(1);
+  });
+
+  it("carries the loop's wrap count, which a throttled emit cannot lose", () => {
+    // Slice 23 follow-up: `ScenarioEvents` tells a playback wrap from a backward seek
+    // by this count. It only grows, so the emit that does go out after a throttled
+    // one still shows every wrap in between.
+    const { channel } = withListener();
+    expect(EMPTY_FRAME.wraps).toBe(0);
+    channel.publish(1000, 58.3, [snapshot()]); // a publisher that never wraps
+    expect(channel.getSnapshot().wraps).toBe(0);
+
+    channel.publish(1010, 0.1, [snapshot()], 1); // inside the window: throttled
+    expect(channel.getSnapshot().clock).toBe(58.3);
+    channel.publish(1100, 0.4, [snapshot()], 1);
+    expect(channel.getSnapshot()).toMatchObject({ clock: 0.4, wraps: 1 });
   });
 });

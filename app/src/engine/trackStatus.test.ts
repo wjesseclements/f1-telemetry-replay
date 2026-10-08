@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { lastInstant } from "./clock";
 import type { StatusInterval } from "./schema";
 import { statusAt, statusSegments } from "./trackStatus";
 
@@ -29,8 +30,12 @@ describe("statusAt", () => {
     expect(statusAt(INTERVALS, 252.1)).toBe("sc");
   });
 
-  it("still answers at exactly the final toT, where an open window's clock parks", () => {
+  it("answers through the end of the window, its final toT included", () => {
+    // The clock itself never holds t = duration — its domain is [0, duration) and
+    // a seek to "the end" lands on `lastInstant` (Slice 23). The pipeline writes
+    // the final toT AT duration, so the last interval reaches the end regardless.
     expect(statusAt(INTERVALS, 294.8)).toBe("red");
+    expect(statusAt(INTERVALS, lastInstant(294.8, 10))).toBe("red");
   });
 
   it("answers null outside the covered range", () => {

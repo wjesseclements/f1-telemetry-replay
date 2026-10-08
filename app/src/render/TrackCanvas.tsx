@@ -71,6 +71,19 @@ function TrackCanvasImpl({ replay }: TrackCanvasProps) {
    * remount sees the same object and keeps its clock.
    */
   const clockOwnerRef = useRef(replay);
+  /**
+   * How many times PLAYBACK has wrapped the clock. Seeks do not count, and neither
+   * does the reset when a new replay loads. Published with every frame as
+   * `TelemetryFrame.wraps`.
+   *
+   * Only this loop can tell a wrap from a backward seek, because only it knows
+   * which one moved the clock. A ≤30 Hz reader sees only that the clock went
+   * backwards. A wrap means the playhead passed the end of the window, and a mark
+   * in the final grid step can be passed inside one emit gap at 4x (Slice 23
+   * follow-up, `ScenarioEvents`). A ref, not effect-local, so a resize or a
+   * StrictMode remount keeps the count monotone.
+   */
+  const wrapsRef = useRef(0);
 
   // Rotating and bounding every sample is O(samples): once per replay, never per
   // frame.
@@ -158,15 +171,18 @@ function TrackCanvasImpl({ replay }: TrackCanvasProps) {
         // Scaled deltas accumulate; the clock is never derived from an absolute
         // timestamp, so changing speed does not rescale elapsed time. Wrapping is
         // the engine's `wrapClock`, reached through `advanceClock`.
-        clockRef.current = advanceClock(
-          clockRef.current,
-          dt,
-          speedMult,
-          duration,
-        );
+        const next = advanceClock(clockRef.current, dt, speedMult, duration);
+        // The only way forward playback ends up behind where it started is by
+        // wrapping. See `wrapsRef`.
+        if (next < clockRef.current) wrapsRef.current += 1;
+        clockRef.current = next;
       }
 
-      const snapshots = sampleAt(replay, clockRef.current);
+      const snapshots = sampleAt(
+        replay,
+        clockRef.current,
+        scene.carHeadingHolds,
+      );
       drawFrame(
         ctx,
         scene,
@@ -182,7 +198,7 @@ function TrackCanvasImpl({ replay }: TrackCanvasProps) {
       // itself, so nothing here enters React's render path and this component's commit
       // count stays at one. `nowMs` is the rAF timestamp, so the HUD's cadence is
       // measured on the same clock as the frames.
-      telemetry.publish(nowMs, clockRef.current, snapshots);
+      telemetry.publish(nowMs, clockRef.current, snapshots, wrapsRef.current);
     };
 
     rafId = requestAnimationFrame(frame);

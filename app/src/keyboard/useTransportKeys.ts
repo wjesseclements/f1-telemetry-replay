@@ -27,6 +27,7 @@
  * anything published, which makes a burst of presses land exactly where counting says.
  */
 import { useEffect, useRef } from "react";
+import { lastInstant } from "../engine/clock";
 import type { Replay } from "../engine/schema";
 import { cycleFocus } from "../engine/selection";
 import { useTransport } from "../store/transport";
@@ -107,6 +108,10 @@ export function useTransportKeys(replay: Replay | null): void {
   useEffect(() => {
     if (replay === null) return;
     const { duration, sampleRateHz } = replay.meta;
+    // "The end" for End and for the forward clamp alike — and the scrubber's max.
+    // Not `duration`: the loop wraps that to 0, so clamping to it sent every
+    // forward seek near the end to the START (Slice 23).
+    const end = lastInstant(duration, sampleRateHz);
 
     /** Where the clock is, as well as this hook can know. */
     const currentClock = (): number => {
@@ -120,7 +125,7 @@ export function useTransportKeys(replay: Replay | null): void {
     };
 
     const seekTo = (seconds: number) => {
-      const clamped = Math.min(duration, Math.max(0, seconds));
+      const clamped = Math.min(end, Math.max(0, seconds));
       pending.current = {
         target: clamped,
         basedOn: telemetry.getSnapshot().clock,
@@ -194,9 +199,8 @@ export function useTransportKeys(replay: Replay | null): void {
           return;
         case "End":
           event.preventDefault();
-          // One grid step short of the end: `duration` itself wraps to 0, which would
-          // make "End" indistinguishable from "Home".
-          seekTo(duration - 1 / sampleRateHz);
+          // `end`, not `duration`, or End would be indistinguishable from Home.
+          seekTo(end);
           return;
       }
     };

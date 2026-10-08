@@ -13,7 +13,7 @@
  * out of the renderer, and the renderer out of the engine).
  */
 import { COMET_BUCKETS, SPEED_BUCKETS, bucketOf } from "../engine/color";
-import type { CarSnapshot } from "../engine/interpolate";
+import { headingHolds, type CarSnapshot } from "../engine/interpolate";
 import {
   applyTransform,
   centroid,
@@ -71,6 +71,14 @@ export interface Scene {
    * the painter, would put `bucketOf` back on the frame path for every segment.
    */
   carCometBuckets: readonly Uint8Array[];
+  /**
+   * Per car, `headingHolds` — what `sampleAt` needs to keep a stopped car's tick
+   * pointing the way it was going for a stop of any length, or the way it leaves
+   * for a car parked when the replay opens (Slice 23). Not drawn from directly: it
+   * lives here because this is the one structure the render loop already builds
+   * once per replay, and a stop must not cost a scan per frame.
+   */
+  carHeadingHolds: readonly Float64Array[];
   /** Bounds of every car's rotated path — what the viewport is fitted to. */
   bounds: Bounds;
   /** `meta.rotation`, needed per frame to bring car headings into screen space. */
@@ -179,6 +187,9 @@ export function buildScene(replay: Replay): Scene {
     ),
     carCometBuckets: replay.cars.map((car) =>
       Uint8Array.from(car.samples, (s) => bucketOf(s.speed, COMET_BUCKETS)),
+    ),
+    carHeadingHolds: replay.cars.map((car) =>
+      headingHolds(car, replay.meta.sampleRateHz),
     ),
     // Bounds span every car AND the pit lane: today's lanes are made of car
     // samples so they add nothing, but a hand-made file whose lane outreaches

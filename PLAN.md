@@ -538,7 +538,10 @@ small and known; and it should land **before any real-data lap becomes someone's
   is a fact about the DATA, so it now lives in the data: `meta.loop: "closed" | "open"`.
   `sampleCarAt` gains a required 4th parameter and one line
   (`j = loop === "open" ? min(i+1, n-1) : (i+1) % n`); `headingAt` already held the
-  previous direction on a zero-length step, so it was correct for free. `clock.ts`,
+  previous direction on a zero-length step, so it was correct for free. **(Slice 23:
+  only for a stop ONE grid step long** — the fallback looked back a single segment, so
+  a car stopped for more than 0.1 s pointed world-east. Fixed with a per-replay
+  `headingHolds` index; a car parked from the start now points the way it leaves.) `clock.ts`,
   the store, `scene.ts`, `paths.ts`, `trail.ts` and `TrackCanvas.tsx` are **untouched**.
   - **The transport still loops, so the window's end is a HARD CUT** — cars jump back
     to their start positions in one frame, trails reset. Video-loop semantics, stated
@@ -1352,7 +1355,10 @@ the other standing.
     definition throughout, **0.0 % unanswerable, and zero discontinuities**. The
     assumption — that the focused car's lap either side of the window resembles the one
     inside it — is stated, and anchored on that car's own measured lap rather than an
-    invented pace.
+    invented pace. **(Correction, Slice 23:** the code actually walked the REFERENCE
+    car's FIRST lap for every focus car — 166 s on the 2026 restart, so gaps jumped by
+    ~80 s at the window's end. It now walks the focus car's own lap at the edge being
+    left, the only lap that keeps the walk continuous.)
 - **Amendment (this slice) — a projection tie tolerance that looked reasonable and froze
   the answer.** The first version treated candidates within `MAX_RESIDUAL_M` of the
   nearest as tied and broke ties by continuity. For a car running parallel to the
@@ -3951,7 +3957,8 @@ their current hashes) and the fate of CLAUDE.md's 6 MB gallery budget.
     below its mark; the first frame under a new scenario ARMS rather than fires;
     frames describing another replay's cars are dropped whole (the Hud
     stale-frame guard, reused); an event past a rebuilt shorter window clamps to
-    the duration. Firing pauses; "Continue" applies the next scenario through
+    the duration (**Slice 23:** to the LAST INSTANT, `lastInstant` — the clock
+    never holds `duration`, so the original clamp could never fire). Firing pauses; "Continue" applies the next scenario through
     the shared `applyScenario` (extracted from `FeaturedPanel` so two buttons
     cannot drift) and resumes; dismissal stays paused. Focus: into the primary
     action on mount, back to the prior holder or the play/pause toggle
@@ -4812,6 +4819,20 @@ the 2024 pit cycle's swaps reading as moves. The pre-registered 300 ms stands
 untouched — no tune requested. **"NO SIG" ratified** as the compact spelling.
 Push + PR + auto-merge authorised.
 
+### [ ] Slice 25 — short and landscape phones (filed by Slice 23's ruling)
+
+**Filed 2026-10-08 by the human's ruling on Slice 23's phone-strip cap.** Slice 23's
+layout gate covers 375x812, 1280x720 and 1440x900 only, so the two places its cap
+matters most go unmeasured. Two decisions to argue with numbers when it runs:
+- **One floor, not two.** At 375x667 the layout guarantees the track exactly 200 px
+  (`100% − 12.5rem`), but `check:layout` requires max(200 px, 30% of the height) =
+  **200.1 px** — adding the viewport today fails by 0.1 px. The layout and the check
+  must agree on the track's minimum before 375x667 can join the gate.
+- **A landscape layout.** Below `md` the page stacks, so a 667x375 or 740x360 phone gets
+  a 117–126 px track and about one tower row with 22 cars. Likely shape: track and
+  tower side by side when the screen is wide but short (an orientation/height query,
+  not a width breakpoint). Then 667x375 joins the gate.
+
 ### [ ] Slice 20 — colour distinction under the luminance floor
 
 **Filed 2026-09-08 by Slice 17's browser pass.** The floor fixes visibility, not
@@ -5013,7 +5034,7 @@ watch: the `track.pitLane` re-election, and no-label-at-6:19 (on the line is on
 the line). Auto-merge (squash) enabled on the human's instruction. The board
 advances: **18 → 20**.
 
-### [x] Slice 22 — headless-Chrome layout check (the instrument; the fix is Slice 23) (done 2026-10-07)
+### [x] Slice 22 — headless-Chrome layout check (the instrument; the fix is Slice 23) (done 2026-10-07, MERGED 2026-10-08 as #77)
 
 **Filed and built 2026-10-07 on the human's direction, ahead of the board (18 → 20),
 from the whole-project review of that day.** jsdom has no layout engine — every box
@@ -5125,7 +5146,148 @@ FAIL, ≈2.1 s.**
   `--disable-crash-reporter`, `--disable-breakpad`, `--disable-crashpad-for-testing`,
   `--crash-dumps-dir` or `CHROME_HEADLESS=1` changed that, so none is passed.
 
+### [x] Slice 23 — fix the defects visible on the live gallery; gate the layout check (done 2026-10-07, ruled and MERGED 2026-10-08 as #78)
+
+**Filed and built 2026-10-07 on the human's direction ("a short fix slice for items
+1–7"), from the whole-project review's verified findings.** Six of the seven are fixed
+here. **Item 3 — the red-flag start/finish line drawn ~85° off at the pole slot — moved
+to Slice 24 by design:** its root cause is the implicit reference car, and fixing it
+here would have meant regenerating the red-flag asset twice. Every item was reproduced
+first, pinned by a test shown failing on the unfixed code, then fixed; each was
+reviewed adversarially on its own, and the whole slice again as a unit with a
+real-browser look (screenshots at 375x812, 1280x720, 1440x900, plus 375x667, 360x640,
+667x375, 740x360).
+
+- **Item 1 (high) — below `md` a 21–22-car replay squeezed the canvas to 0 px.** The
+  Hud aside was `shrink-0` with no height limit, so the tower took the stacked region,
+  ran under the transport bar, and collapsed the canvas cell with the legend, the panel
+  and the event card in it. Fix: below `md` the aside is capped at
+  `max-h-[max(40%,min(13.75rem,100%-12.5rem))]` of the region between header and
+  transport bar (`md:max-h-none`) and the running-order list scrolls inside it. 40% is
+  the share a full field gets; 13.75rem (220 px) is the floor that keeps the one-car
+  boot readout (measured 219 px) whole on short phones; `100% − 12.5rem` stops that
+  floor pushing the track under 200 px (the layout check's own floor). Measured with
+  22 cars: canvas **0 → 339 px** at 375x812, 0 → 200 at 375x667 and 360x640, 0 → 126 /
+  117 at 667x375 / 740x360. The list is also `relative`: rows' absolutely positioned
+  `sr-only` text had the page as containing block and extended the document (docH 1071
+  at 375x812). **Amendment:** the first version (bare 40%) hid the one-car speed trace
+  behind a scroll at 375x667/360x640, and the suggested unbounded `max(40%,13.75rem)`
+  zeroed the 22-car canvas in landscape again — both measured, both rejected; a jsdom
+  pin on the expression is mutation-checked against each.
+- **Item 4 (medium) — the featured panel and event card centred an overflowing card
+  inside a scroller, so its top was unreachable** (heading and Close clipped at
+  1280x720 and on phones). Fix: `items-start` on the scroller, `my-auto` on the card —
+  centred when it fits, scrolls from its top when it does not.
+- **Item 7 (medium) — `bg-bg/75` and `text-dim/70` compiled to no CSS.** Every Tailwind
+  colour was a bare `var(--c-…)` and Tailwind 3.4 silently drops a modifier it cannot
+  parse, so Slice 13's "plain wash" scrim was transparent and the provenance lines came
+  out brighter than the hook above them. Fix: one `token()` helper —
+  `color-mix(in srgb, var(--c-x) calc(<alpha-value> * 100%), transparent)` — tokens stay
+  hex. The finding's channel-token proposal was rejected after an inventory: the canvas
+  palette (getComputedStyle), SVG strokes, the flag gradient and `body` read the tokens
+  raw, and the draw-call md5 runs on palette.ts's fallbacks so it could not have caught
+  the canvas breaking. Measured: scrim (10,13,18,0.75); 50 of 50 unmodified utilities
+  keep their 8-bit colour; CSS 15.07 → 20.12 kB (gzip 4.03 → 4.27). Floor: Chrome 111 /
+  Safari 16.2 / Firefox 113 — at Vite 8's default target; below it ALL token colours
+  fail, not just the modified ones. Guard: `src/opacityModifiers.test.ts` compiles the
+  real CSS and asserts every opacity-modified token class used in src has a rule.
+- **Item 5 (medium) — seeking to the end landed at the START.** The clock's domain is
+  `[0, duration)` and `wrapClock(duration, duration) === 0`, but the forward clamp and
+  the Scrubber's `max` used `duration`. One definition now: `clock.ts` `lastInstant` —
+  counted in whole grid steps, not `duration - 1/rate`, because 448.9 − 0.1 =
+  448.79999999999995 and Chrome snaps a range max down to its step grid (measured: the
+  scrubber's right edge would have been one step short of End). The test titled
+  "clamps at both ends" had asserted the wrapping value; it now asserts the sample the
+  loop lands on. **Follow-up, extended by measurement:** `ScenarioEvents` clamped a late
+  event to `duration` too, so it could never fire; clamped to `lastInstant` it fired on
+  every seek and at 0.5x/1x but missed at speed (4x on a 30 Hz display: 1 pass in 20)
+  because playback spends one 100 ms/speed step in `[lastInstant, duration)` and the
+  ≤30 Hz detector saw 58.3 then 0.1. The render loop now counts PLAYBACK wraps
+  (`TelemetryFrame.wraps`; never a seek, never a load) and ScenarioEvents treats a
+  higher count as crossing every mark to the end, then seeks the paused frame back onto
+  the mark. Result: 20/20 at every speed and display rate, 0/480 false fires on backward
+  seeks (the naive "any backward step is a wrap" rule false-fired 344/480). The final
+  review found the "never a seek's" test had only forward seeks — a loop counting every
+  downward step passed all 892 tests; a backward seek now pins it.
+- **Item 6 (medium) — stopped cars' heading ticks snapped to world-east.** `headingAt`
+  looked back ONE segment, so any stop over 0.1 s drew atan2(0,0): 771 car-s on the
+  restart (the whole grid sideways at the 1:10 form-up), LEC's wreck for 120 s. Fix:
+  `headingHolds(car, rate)`, a per-replay Float64Array of the held heading built once in
+  `buildScene` (one array read per frame, rule 3; no engine cache, rule 4), a REQUIRED
+  parameter of `sampleCarAt`/`sampleAt` that throws on a length mismatch. **Ruling,
+  extended by measurement:** a car parked from its first sample was to take its first
+  moving segment; measured, quantisation made HAM's first "move" one quantum backwards
+  (175° off), so the leading stop takes the line to where the car is 1 s after it first
+  moves (`DEPARTURE_SECONDS`): every red-flag grid tick within 0.5°. After: 0.0 car-s of
+  east-snapped stops in every gallery file; a wiring test fails if buildScene hands over
+  a dead or reordered array. **Left for a ruling:** the ARRIVAL side still reads the last
+  segment — restart 137 car-s > 15° off (max 22°), rain max 34°; a 1 s arrival line
+  would bring these to ≤ 5°.
+- **Item 2 (high) — window-edge gaps jumped by ~80 s.** Past the window, `timeAtProgress`
+  /`travelAt` walked the REFERENCE car's first lap for every focus car — 166.1 s on the
+  restart (formation + grid hold): focus ANT read RUS −4.05 s at t=421 and −84.54 s at
+  t=422; 15,042 readings were ~80 s out. Fix: walk the FOCUS car's own lap at the edge
+  being left (its first whole lap backwards, its last forwards), seconds and metres from
+  that span, precomputed per car (`ProgressIndex.edgeLaps`); a query stays O(log n). A
+  car with under a lap in the window walks its own pace scaled to one lap. Worst edge
+  step before → after: restart 80.5 → 0.024 s, rain 28.9 → 0.074, finale 1.6 → 0.046,
+  pit cycle 0.9 → 0.005; the red flag's 1.7 s is a pre-existing start-of-window creep.
+  The red flag's "0 → 4,549 large edge gaps" are real SC/red-flag crawl gaps continuing
+  in-window readings of the same size (the old walk had hidden them behind a 38.9 s
+  step). The final review pinned WHICH edge lap is walked (first-at-both,
+  last-at-both and swapped edges each passed the suite before). **Tracked limit:** a
+  pit stop on the focus car's edge lap is replayed — rain, focus HAM (the scenario's
+  default): NOR's walked gap drifts −3.3 → −16.5 s over the last 3.3 s (it read +25.6 s,
+  wrong sign, before). Walking back to a clean lap needs a which-lap-is-clean judgement;
+  filed in the backlog.
+
+**Gating (Slice 22's instrument).** `check:layout` 39/51 → **51/51**; the md+ B-state
+rows are byte-identical before and after. `npm run check` now ends `… && vite build &&
+npm run check:layout`, and CI's `verify` runs it after `npm run build` — so a local
+`npm run check` needs Chrome. **CI measured (PR #78, 2026-10-08): `verify` green, the
+layout check 51/51 on ubuntu-latest** (after Slice 22's cold-start probe fix — the
+first run failed 375x812 A on that race, not on layout).
+
+**Evidence.** `npm run check` green, 0 warn/error lines in the full log; vitest 4.1.10,
+48 files / 892 tests; engine coverage 100% per file; pytest untouched (329). Draw-call
+fixture digests unchanged throughout (closed `cb43a0f8…`, open `e30b5b6e…`); `auto`
+calls/frame unchanged on every gallery file (only tick coordinates move). `hud-tick` and
+`drawcall-capture` run on the new `sampleAt` signature. Final review: 18 mutants, all
+caught after the backward-seek pin.
+
+**Rulings (human, 2026-10-08, after reviewing the preview; recorded before merge).**
+1. **The 1 s departure line for cars parked from the start — ACCEPTED.** The literal
+   first-segment ruling measured worse (HAM 175° off on the red flag's landing frame);
+   the extension stands.
+2. **The wrap count and the seek-back onto a late event's mark — ACCEPTED as built.**
+   The asymmetry is deliberate: a forward seek is the viewer choosing where to be, so
+   the frame stays where it landed; a playback wrap lands on the window's start, an
+   accident of looping, so the frame returns to the moment the card narrates.
+3. **The phone strip's cap and its numbers — ACCEPTED** (22-car canvas 252 → 200 px at
+   375x667). Short and landscape phones go to a follow-up slice — **Slice 25**, filed
+   on the board.
+4. **`color-mix()` behind every colour — ACCEPTED** (floor Chrome 111 / Safari 16.2 /
+   Firefox 113, Vite 8's default target).
+5. **The 75% scrim behind the event card too — ACCEPTED** (it dims the canvas's RED
+   FLAG chip while the card is open, as Slice 13 specified).
+6. **The provenance line — RAISED from 70% to 90% (`text-dim/90`).** At 70% it measured
+   3.45:1 on `bg-panel2`, below WCAG AA for 10 px text — the first time Slice 13's design
+   had rendered. Three options were compared side by side on the real card markup and
+   CSS: 70% (3.45:1), 90% (**4.82:1**), full `text-dim` (5.65:1, the hook's own colour).
+   90% passes AA and still sits a step below the hook, so the provenance recedes as
+   designed. Applied in this slice (the provenance and note lines in `FeaturedPanel`).
+
 ## Backlog (ideas — not committed)
+- **The focus car's edge lap can hold a pit stop (Slice 23's tracked limit).** Past the
+  window, gaps walk the focus car's own edge lap; when that lap contains its stop, the
+  walk replays it (rain, focus HAM: NOR −3.3 → −16.5 s over the last 3.3 s). Walking
+  back to the nearest clean lap keeps continuity but needs a which-lap-is-clean
+  judgement — Slice 16's pit-lane geometry and Slice 24's clean-lap rules are the
+  candidates.
+- **Heading on ARRIVAL at a stop reads the last, quantised segment** (Slice 23): restart
+  137 car-s > 15° off (max 22°), rain max 34°. A 1 s arrival line, mirroring the
+  departure line, measured ≤ 5°; the open window's final held step must keep its last
+  segment (a 1 s line through a corner lags the car by up to 33°).
 - **Fixture asymmetry overhaul** — rebuild the committed fixture with no symmetries,
   distinct angles, and no near-cancellations, so it can express handedness,
   orientation, and angle-sensitivity defect classes. **Four blindness instances

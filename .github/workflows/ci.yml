@@ -50,6 +50,11 @@ jobs:
       # goldens are committed JSON.
       - run: npm run test -- --run --coverage
       - run: npm run build
+      # The layout measured in a real browser (Slice 22), against the build the
+      # step above just wrote: jsdom has no layout engine, so this is the only
+      # gate that sees a 0 px canvas or a dialog heading out of reach. It uses
+      # the runner's preinstalled Chrome and stays offline inside it.
+      - run: npm run check:layout
 
       # --- pipeline -----------------------------------------------------------
       # These live INSIDE `verify` rather than in a job of their own, deliberately.

@@ -24,6 +24,7 @@
  * here, so playback continues from wherever the thumb was let go.
  */
 import { useEffect, useState } from "react";
+import { lastInstant } from "../engine/clock";
 import { formatLapTime } from "../engine/format";
 import type { StatusSegment } from "../engine/trackStatus";
 import { segmentGradient } from "./flagTint";
@@ -86,7 +87,11 @@ export function Scrubber({
     <input
       type="range"
       min={0}
-      max={duration}
+      // The last instant, not `duration`: the loop wraps `duration` to 0, so a
+      // drag off the right edge, or End on the focused slider, showed the START
+      // (Slice 23). In playback's final grid step the clock runs past this max;
+      // the browser clamps the value and the thumb rests on the right edge.
+      max={lastInstant(duration, sampleRateHz)}
       // From an off-grid clock the first arrow press snaps to the grid (17.79 -> 17.80)
       // rather than stepping a full 0.1; presses after that step normally. Deliberate —
       // the grid is the only position the engine can resolve. Verified in Chrome.

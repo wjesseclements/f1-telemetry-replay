@@ -10,6 +10,7 @@
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loadFixtureReplay } from "../data/fixture";
+import { wrapClock } from "../engine/interpolate";
 import { parseReplay } from "../engine/load";
 import { useTransport } from "../store/transport";
 import { telemetry } from "../telemetry/channel";
@@ -50,6 +51,20 @@ const publishClock = (clock: number) => {
 };
 
 const seekTarget = () => useTransport.getState().seekTarget;
+
+/** The fixture's last sample — "the end", in the data's own terms. */
+const LAST_INDEX = replay.cars[0].samples.length - 1;
+
+/**
+ * The sample the render loop shows for the pending seek. The loop applies a seek
+ * as `wrapClock(seekTarget, duration)` (TrackCanvas, pinned there by "wraps a seek
+ * past the end"), and indexes as `clock * sampleRateHz` (rule 3).
+ */
+const landedIndex = () => {
+  const target = seekTarget();
+  if (target === null) throw new Error("no seek was issued");
+  return Math.floor(wrapClock(target, duration) * sampleRateHz);
+};
 
 beforeEach(() => {
   telemetry.reset();
@@ -159,19 +174,28 @@ describe("seeking", () => {
     fireEvent.keyDown(window, { key: "End" });
     // `duration` itself wraps to 0, which would make End indistinguishable from Home.
     expect(seekTarget()).toBeCloseTo(duration - 1 / sampleRateHz, 9);
-    expect(seekTarget()).not.toBe(0);
+    expect(landedIndex()).toBe(LAST_INDEX);
   });
 
+  // Asserted on where the LOOP lands, not on the raw `seekTarget`: the loop folds
+  // every seek through `wrapClock`, and this test used to pass on a target of
+  // exactly `duration` — which lands on index 0, the start (Slice 23).
   it("clamps at both ends instead of seeking outside the lap", () => {
     render(<Harness />);
     publishClock(0.2);
     fireEvent.keyDown(window, { key: "ArrowLeft", shiftKey: true });
-    expect(seekTarget()).toBe(0);
+    expect(landedIndex()).toBe(0);
 
-    useTransport.getState().consumeSeek();
-    publishClock(duration - 0.2);
-    fireEvent.keyDown(window, { key: "ArrowRight", shiftKey: true });
-    expect(seekTarget()).toBe(duration);
+    for (const press of [
+      { key: "ArrowRight", shiftKey: true },
+      { key: "PageUp" },
+      { key: "ArrowRight" },
+    ]) {
+      useTransport.getState().consumeSeek();
+      publishClock(duration - 0.2);
+      fireEvent.keyDown(window, press);
+      expect(landedIndex()).toBe(LAST_INDEX);
+    }
   });
 
   it("does not compound staleness under key repeat", () => {

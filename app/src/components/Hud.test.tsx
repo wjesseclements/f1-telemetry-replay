@@ -286,6 +286,38 @@ describe("Hud accessibility", () => {
   });
 });
 
+describe("Hud layout containment (Slice 23)", () => {
+  it("keeps the rows' screen-reader text inside the scrolling list", () => {
+    // Every row carries `sr-only` text, and `sr-only` is `position: absolute`. With
+    // no positioned ancestor its containing block is the whole page, so the rows
+    // scrolled out of the list still extended the DOCUMENT: 1070 px tall at
+    // 1280x720 with 22 cars, a page that scrolled 350 px into blank space. A
+    // positioned list contains them in its own scroll range. jsdom cannot measure
+    // that, so this pins the containing block; the geometry is the layout check's.
+    renderHud(replay);
+    expect(screen.getByRole("list", { name: "Running order" })).toHaveClass(
+      "relative",
+      "overflow-y-auto",
+    );
+  });
+
+  it("caps the strip with a floor, and bounds the floor by the track", () => {
+    // Each term was measured failing on its own (headless Chrome, stacked layout):
+    // the bare `40%` cut the one-car fixture's 219 px strip to 178 px at 375x667,
+    // hiding its speed trace behind a scroll; `max(40%, 13.75rem)` fixed that and
+    // took a 22-car track back to 0 px at 667x375 and 740x360, the very defect the
+    // cap exists for. jsdom has no layout and the gated layout check measures
+    // neither viewport, so this pins the expression; the reasoning is in Hud.tsx.
+    renderHud(replay);
+    expect(
+      screen.getByRole("complementary", { name: "Telemetry" }),
+    ).toHaveClass(
+      "max-h-[max(40%,min(13.75rem,100%-12.5rem))]",
+      "md:max-h-none",
+    );
+  });
+});
+
 /**
  * Signature coupling — the trap this closes.
  *
@@ -395,9 +427,10 @@ describe("HUD / signature coupling", () => {
  * SINCE SLICE 9d A GAP IS A FUNCTION OF THE REPLAY AND THE CLOCK, not of the published
  * snapshot. `gaps.ts` reads each car's precomputed progress around a shared circuit, so
  * these tests set up the DATA rather than injecting a position into a frame. In
- * production the two agree by construction — the snapshot IS `sampleAt(replay, clock)`,
- * published with that same clock — but a test can no longer move one without the other,
- * and should not be able to.
+ * production the two agree by construction — the snapshot IS `sampleAt(replay, clock,
+ * scene.carHeadingHolds)`, whose holds are built from that same replay, published with
+ * that same clock — but a test can no longer move one without the other, and should not
+ * be able to.
  *
  * The second car is the fixture's own lap shifted by exactly 20 samples, so at 10 Hz it
  * is 2.000 s AHEAD of the first at every clock: the expected gaps are exact by

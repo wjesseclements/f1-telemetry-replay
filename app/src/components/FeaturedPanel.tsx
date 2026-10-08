@@ -89,9 +89,16 @@ export function FeaturedPanel({ onClose, id }: FeaturedPanelProps) {
       aria-labelledby={headingId}
       id={id}
       // A wash, not a blur: the fixture animating behind this is the point.
-      className="absolute inset-0 z-10 flex items-center justify-center overflow-y-auto bg-bg/75 p-4"
+      //
+      // Centred SAFELY (Slice 23): `items-start` here, `my-auto` on the card —
+      // never `items-center`. A centred card taller than this scroller overflows
+      // above its top edge as much as below, and overflow above is outside the
+      // scroll range: the heading and Close sat out of reach at 1280x720 and on
+      // every phone. Auto margins centre the card when it fits and collapse to 0
+      // when it does not, so it scrolls from its top. EventCard shares the idiom.
+      className="absolute inset-0 z-10 flex items-start justify-center overflow-y-auto bg-bg/75 p-4"
     >
-      <div className="w-full max-w-md rounded-lg border border-line bg-panel p-4 shadow-xl">
+      <div className="my-auto w-full max-w-md rounded-lg border border-line bg-panel p-4 shadow-xl">
         <div className="mb-3 flex items-baseline justify-between gap-3">
           <h2
             id={headingId}
@@ -124,7 +131,11 @@ export function FeaturedPanel({ onClose, id }: FeaturedPanelProps) {
                 <span className="mt-1 block font-mono text-[11px] leading-relaxed text-dim">
                   {busy === scenario.id ? "Loading…" : scenario.hook}
                 </span>
-                <span className="mt-1 block font-mono text-[10px] text-dim/70">
+                {/* 90%, not Slice 13's 70%: once the modifier compiled (Slice 23),
+                    70% measured 3.45:1 on panel2 — under WCAG AA for 10 px text.
+                    90% is 4.82:1 and still a step below the hook's 5.65:1, so the
+                    provenance recedes as designed (ruled 2026-10-08). */}
+                <span className="mt-1 block font-mono text-[10px] text-dim/90">
                   {scenario.provenance.session} · laps{" "}
                   {scenario.provenance.laps} ·{" "}
                   {scenario.provenance.drivers.join(" ")}
@@ -134,7 +145,7 @@ export function FeaturedPanel({ onClose, id }: FeaturedPanelProps) {
                     visitor is about to watch. Absent on scenarios with nothing
                     to disclose — no branch beyond the optional field itself. */}
                 {scenario.provenance.note !== undefined && (
-                  <span className="mt-1 block font-mono text-[10px] italic leading-relaxed text-dim/70">
+                  <span className="mt-1 block font-mono text-[10px] italic leading-relaxed text-dim/90">
                     {scenario.provenance.note}
                   </span>
                 )}

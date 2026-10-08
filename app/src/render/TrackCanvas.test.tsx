@@ -39,6 +39,7 @@ import { sampleAt } from "../engine/interpolate";
 import { parseReplay } from "../engine/load";
 import { loadFixtureReplay } from "../data/fixture";
 import { useTransport } from "../store/transport";
+import { telemetry } from "../telemetry/channel";
 import {
   installCanvasEnvironment,
   installRafDriver,
@@ -65,7 +66,7 @@ const fit = fitTransform(scene.bounds, WIDTH, HEIGHT, PAD_PX);
 
 /** Where the marker for `car` belongs on screen at a given clock. */
 function expectedMarker(clock: number): Point {
-  const snapshots = sampleAt(replay, clock);
+  const snapshots = sampleAt(replay, clock, scene.carHeadingHolds);
   const [rotated] = toScreenPoints(snapshots, replay.meta.rotation);
   return applyTransform(rotated, fit);
 }
@@ -350,6 +351,46 @@ describe("TrackCanvas", () => {
     useTransport.getState().seek(-0.25);
     raf.tick(16);
     expectMarkerAt(replay.meta.duration - 0.25);
+  });
+
+  it("counts PLAYBACK wraps in the published frame — never a seek's, never a load's", () => {
+    // Slice 23 follow-up: a ≤30 Hz reader sees the clock go backwards and cannot
+    // tell a wrap (which passed through the end) from a backward seek (which did
+    // not). Only this loop knows which one moved the clock.
+    telemetry.reset(); // the channel is a singleton; a stale cadence would throttle
+    const { rerender } = render(<TrackCanvas replay={replay} />);
+    raf.tick();
+    const frame = () => telemetry.getSnapshot();
+
+    useTransport.getState().seek(replay.meta.duration + 0.25); // a seek that wraps
+    raf.tick(100);
+    expect(frame().clock).toBeCloseTo(0.25, 9);
+    expect(frame().wraps).toBe(0);
+
+    useTransport.getState().seek(replay.meta.duration - 0.05); // and back up
+    raf.tick(100);
+    expect(frame().wraps).toBe(0);
+
+    raf.tick(100); // playback carries it 0.05 s past the end
+    expect(frame().clock).toBeCloseTo(0.05, 9);
+    expect(frame().wraps).toBe(1);
+
+    // A BACKWARD seek moves the clock down exactly as a wrap does, and must not
+    // count as one — the seeks above are both forward, so without this a loop that
+    // counted every downward step passed the suite (Slice 23's final review).
+    useTransport.getState().seek(30);
+    raf.tick(100);
+    useTransport.getState().seek(10);
+    raf.tick(100);
+    expect(frame().clock).toBe(10);
+    expect(frame().wraps).toBe(1);
+
+    // A new replay restarts the clock at 0, which is a reset, not a wrap.
+    raf.tick(100);
+    rerender(<TrackCanvas replay={structuredClone(replay)} />);
+    raf.tick(100);
+    expect(frame().clock).toBe(0);
+    expect(frame().wraps).toBe(1);
   });
 
   it("points the heading tick along the direction of travel ON SCREEN", () => {
@@ -702,7 +743,7 @@ describe("TrackCanvas trail", () => {
     raf.tick(0); // repaint at the new size without advancing the clock
 
     const refit = fitTransform(scene.bounds, 1000, 700, PAD_PX);
-    const snapshots = sampleAt(replay, 0.2);
+    const snapshots = sampleAt(replay, 0.2, scene.carHeadingHolds);
     const want = applyTransform(
       toScreenPoints(snapshots, replay.meta.rotation)[0],
       refit,
@@ -939,7 +980,11 @@ describe("TrackCanvas in an open window", () => {
       (c) => c.method === "stroke" && c.lineWidth === TRAIL_WIDTH && !c.path,
     );
     // The head is stroked last, and takes the bucket of the sample it leaves.
-    const index = sampleAt(openReplay, 20)[0].index;
+    const index = sampleAt(
+      openReplay,
+      20,
+      buildScene(openReplay).carHeadingHolds,
+    )[0].index;
     const speed = car.samples[index].speed;
     expect(comet[comet.length - 1].strokeStyle).toBe(
       bucketColor(bucketOf(speed, COMET_BUCKETS), COMET_BUCKETS),
@@ -1044,5 +1089,91 @@ describe("TrackCanvas retirement (Slice 9l)", () => {
     raf.tick();
 
     expect(wakeStrokes(lastFrame(recording)).length).toBeGreaterThan(0);
+  });
+});
+
+describe("TrackCanvas stopped car (Slice 23)", () => {
+  /**
+   * The wiring test for `scene.carHeadingHolds`. The engine tests pin `headingHolds`
+   * and `sampleCarAt`; nothing pinned that the index `buildScene` hands the loop is
+   * the real one, in car order. The Slice 23 review swapped it for a dead index
+   * (then an all -1 `Int32Array`; today's equivalent is all zeros, world-east) and
+   * every render, component and App test still passed — the fixture never stops, so
+   * no canvas test ever drew a stopped car. This one draws one, deep enough into its
+   * stop that only the index can say which way it points. Both mutations — dead, and
+   * the right arrays in reversed car order — fail it (Slice 23 follow-up).
+   */
+  const OTHER_COLOR = "#ff8000";
+  /** Car 0 parks AT this sample, for 4 s — forty grid steps, not one. */
+  const PARK_AT = 200;
+  const PARK_STEPS = 40;
+  /** Twenty steps into the stop: far past what a one-step look-back could reach. */
+  const CLOCK = (PARK_AT + 20 + 0.5) / replay.meta.sampleRateHz;
+
+  /**
+   * Car 0 is the fixture's lap frozen at sample `PARK_AT` for `PARK_STEPS` steps
+   * (then rejoining its own line — test geometry, not physics). Car 1 is the fixture
+   * driving straight through, so a holds array handed over in the wrong car ORDER is
+   * a moving car's index read on a parked one — which the length guard cannot see,
+   * every car in a window being the same length.
+   */
+  const parkedPair = parseReplay(
+    {
+      ...replay,
+      cars: [
+        {
+          ...car,
+          samples: car.samples.map((s, k) =>
+            k > PARK_AT && k <= PARK_AT + PARK_STEPS
+              ? { ...s, x: car.samples[PARK_AT].x, y: car.samples[PARK_AT].y }
+              : s,
+          ),
+        },
+        { ...car, driver: "SEC", color: OTHER_COLOR },
+      ],
+    },
+    "parked-pair",
+  );
+
+  it("points the parked car's tick along its last move, not world-east", () => {
+    useTransport.setState({
+      replay: parkedPair,
+      isPlaying: false,
+      seekTarget: CLOCK,
+    });
+    render(<TrackCanvas replay={parkedPair} />);
+    raf.tick();
+    raf.tick(); // paused draw path: seek applied, frame painted
+
+    // The last move, PARK_AT - 1 -> PARK_AT, carried through the same rotation and
+    // fit the marker is: the direction the car was visibly travelling when it stopped.
+    const pairFit = fitTransform(
+      buildScene(parkedPair).bounds,
+      WIDTH,
+      HEIGHT,
+      PAD_PX,
+    );
+    const [before, at] = toScreenPoints(
+      [car.samples[PARK_AT - 1], car.samples[PARK_AT]],
+      replay.meta.rotation,
+    ).map((p) => applyTransform(p, pairFit));
+    const lastMove = angleOf(before, at);
+
+    const tick = headingTick(lastFrame(recording));
+    expect(tick.from.x).toBeCloseTo(at.x, 6); // it is the parked car's tick
+    expect(tick.from.y).toBeCloseTo(at.y, 6);
+    expect(angleOf(tick.from, tick.to)).toBeCloseTo(lastMove, 6);
+
+    // …and the wrong answer is genuinely different here, so the assertion has
+    // something to catch: a dead index draws heading 0, the world x-axis, on screen.
+    const [o, east] = toScreenPoints(
+      [
+        { x: 0, y: 0 },
+        { x: 1, y: 0 },
+      ],
+      replay.meta.rotation,
+    );
+    const off = Math.abs(lastMove - angleOf(o, east));
+    expect(Math.min(off, 2 * Math.PI - off)).toBeGreaterThan(0.5);
   });
 });

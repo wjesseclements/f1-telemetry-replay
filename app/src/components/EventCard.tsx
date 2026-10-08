@@ -92,9 +92,11 @@ export function EventCard({ event, next, onClose }: EventCardProps) {
       aria-modal="false"
       aria-labelledby={headingId}
       // A wash, not a blur: the paused frame behind this is what the card is about.
-      className="absolute inset-0 z-10 flex items-center justify-center overflow-y-auto bg-bg/75 p-4"
+      // `items-start` + the card's `my-auto`, never `items-center`: centred when it
+      // fits, scrolling from its top when it does not (FeaturedPanel says why).
+      className="absolute inset-0 z-10 flex items-start justify-center overflow-y-auto bg-bg/75 p-4"
     >
-      <div className="w-full max-w-md rounded-lg border border-line bg-panel p-4 shadow-xl">
+      <div className="my-auto w-full max-w-md rounded-lg border border-line bg-panel p-4 shadow-xl">
         <div className="mb-2 flex items-baseline justify-between gap-3">
           <h2
             id={headingId}

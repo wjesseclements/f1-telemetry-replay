@@ -212,7 +212,11 @@ describe("lapped cars — reported, and signed both ways", () => {
     // cars ahead of it are a lap up. A `+`-only implementation renders this as nonsense.
     const gap = gapTo(lapped, 1, 0, 60)!;
     expect(gap.lapsDown).toBe(-1);
-    expect(gap.seconds).toBeLessThan(0);
+    // C1 reaches C0's t=60 point (3 laps) at t=120: 60 s, 1500 m of its own at 25 m/s.
+    // That is past the window's end, so it is walked by C1's OWN 40 s lap — Slice 23.
+    // Walked by the reference's 20 s lap it read -40 s; only the sign was pinned then.
+    expect(gap.seconds).toBeCloseTo(-60, 4);
+    expect(gap.metres).toBeCloseTo(-1500, 3);
   });
 
   it("counts more than one lap, in both directions", () => {
@@ -399,6 +403,110 @@ describe("the seam where arc L meets arc 0", () => {
       previous = gap.seconds;
     }
     expect(answered).toBeGreaterThan(0);
+  });
+});
+
+describe("past a window edge, the walk is the FOCUSED car's own lap (Slice 23)", () => {
+  /**
+   * Every fixture above either laps in 20 s throughout or pinned only a sign past the
+   * window's edge, so a walk anchored on the wrong car's lap could not show. The shipped
+   * restart scenario did: its reference's first "lap" holds the formation and the grid
+   * hold — 166.1 s against ~86 s racing laps — and every focus car was walked by it.
+   * Focus ANT read RUS -4.05 s at t=421 and -84.54 s at t=422.
+   *
+   * The same shape on the test circuit: a reference held for 10 s inside its first lap
+   * (a 30 s first lap), and three cars with no hold — the focus C1, C2 two seconds ahead
+   * of it and C3 two seconds behind. Their true gaps are +/-2 s and +/-100 m at every
+   * clock, including where `t*` leaves the window. Focused in its turn, the held car is
+   * the one whose own first and last laps differ, which pins WHICH of its laps is walked.
+   */
+  const HOLD_FROM = 40;
+  const HOLD = 100; // samples: 10 s parked at ring sample 40
+  const course = ring(4);
+  const held = ring(3).map((s, k) => {
+    if (k < HOLD_FROM) return s;
+    const parked = k > HOLD_FROM && k < HOLD_FROM + HOLD;
+    const source = course[Math.max(HOLD_FROM, k - HOLD)];
+    return { ...source, t: s.t, speed: parked ? 0 : 180 };
+  });
+  const index = buildProgressIndex(
+    replayOf(held, ring(3), ring(3, 20), ring(3, -20)),
+  );
+
+  it("has the inflated reference lap this is about", () => {
+    // The precondition, pinned: without it the two tests below pass on the old code.
+    expect(index.lapSeconds).toBeCloseTo(30, 6);
+  });
+
+  it("does not step when t* runs past the window's END", () => {
+    // From 57.9 s on, C1 reaches C2's point only after the window closes (59.9 s).
+    for (let k = 550; k <= 599; k++) {
+      const gap = gapTo(index, 1, 2, k / RATE)!;
+      expect(gap.seconds).toBeCloseTo(-2, 6);
+      expect(gap.metres).toBeCloseTo(-100, 4);
+    }
+  });
+
+  it("does not step when t* runs back before the window's START", () => {
+    // Until 2 s, C1 was at C3's point before the window opened.
+    for (let k = 0; k <= 40; k++) {
+      const gap = gapTo(index, 1, 3, k / RATE)!;
+      expect(gap.seconds).toBeCloseTo(2, 6);
+      expect(gap.metres).toBeCloseTo(100, 4);
+    }
+  });
+
+  it("walks the HELD car by its lap AT the edge it leaves, not its first at both", () => {
+    // The same fixture with the held car focused. Every focus above laps identically at
+    // both edges, so none of them can tell "its own lap" from "its own lap at THIS edge"
+    // — and the second half is the half that fixed the restart, where every car's first
+    // lap holds the formation and the grid (RUS 166.1 s first, 86.4 s last). The focus's
+    // own FIRST lap at both edges, its LAST at both, and the two edges swapped each
+    // passed the whole suite before this test (Slice 23 review). On the shipped restart
+    // the first brings the step back: focus ANT reads RUS -4.05 s at t=421 and -72.60 s
+    // at t=422, and the worst one-tick step at the window's end is 83.5 s. The END half
+    // below catches it, the START half catches the last-at-both, and both the swap.
+    // The precondition: C0's own laps differ, 30 s (the hold) first and 20 s last.
+    const own = index.edgeLaps[0]!;
+    expect(own.before.seconds).toBeCloseTo(30, 6);
+    expect(own.after.seconds).toBeCloseTo(20, 6);
+
+    // END: past the hold C1 runs 100 samples (10 s, 500 m) ahead of C0, and from 50 s
+    // on C0 reaches C1's point only after the window closes. Walking it on by its 30 s
+    // first lap reads -20 s.
+    for (let k = 450; k <= 599; k++) {
+      const gap = gapTo(index, 0, 1, k / RATE)!;
+      expect(gap.seconds).toBeCloseTo(-10, 6);
+      expect(gap.metres).toBeCloseTo(-500, 4);
+    }
+    // START: C3 starts 2 s (100 m) behind, and until 2 s C0 was at C3's point before
+    // the window opened. Walking it back by its 20 s last lap reads -8 s.
+    for (let k = 0; k <= 30; k++) {
+      const gap = gapTo(index, 0, 3, k / RATE)!;
+      expect(gap.seconds).toBeCloseTo(2, 6);
+      expect(gap.metres).toBeCloseTo(100, 4);
+    }
+  });
+
+  it("walks a focus that never completes a lap by its own pace, not the reference's", () => {
+    // A 1.2-lap window, the common case for a short race window: the reference closes
+    // its 20 s lap, but a focus at 3/4 pace covers 0.9 of one, so it has no whole lap
+    // of its own to measure. Its own pace says a lap takes 26.67 s. C2 runs 300 m behind
+    // it at the same pace: 8 s and 300 m, which the walk past the window start must
+    // reproduce. On the reference's 20 s it read 1.33 s.
+    const slow = (shift: number): Sample[] =>
+      ring(1.2).map((s, k) => {
+        const a = (2 * Math.PI * (0.75 * k + shift)) / PER_LAP;
+        const r = 1000 / (2 * Math.PI);
+        return { ...s, x: r * Math.cos(a), y: r * Math.sin(a), speed: 135 };
+      });
+    const short = buildProgressIndex(replayOf(ring(1.2), slow(0), slow(-60)));
+    expect(short.lapSeconds).toBeCloseTo(20, 6);
+    for (const now of [0, 1, 2.5, 5]) {
+      const gap = gapTo(short, 1, 2, now)!;
+      expect(gap.seconds).toBeCloseTo(8, 3);
+      expect(gap.metres).toBeCloseTo(300, 1);
+    }
   });
 });
 
