@@ -71,6 +71,6 @@ clean, accurate, green-preferred laps and read by the gap circuit, the tower's p
 and the ribbon; all five gallery assets regenerated offline, changing only that field,
 two start/finish lines — the red flag's moves off the pole slot onto the timing line,
 the seventh defect — and the finale's long-standing `trackStatus` drift; the restart's
-pace lap goes 166.1 → 86.4 s) is PR #79, awaiting the human's rulings. Then **Slice 18**
+pace lap goes 166.1 → 86.4 s) is PR #79, its seven decisions all ruled (2026-10-08). Then **Slice 18**
 per the board: 18 → 20, with the backlog's headline **fixture asymmetry overhaul**
 behind them. The finale's `trackStatus` drift closes with Slice 24's regeneration.

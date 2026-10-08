@@ -5277,7 +5277,7 @@ caught after the backward-seek pin.
    90% passes AA and still sits a step below the hook, so the provenance recedes as
    designed. Applied in this slice (the provenance and note lines in `FeaturedPanel`).
 
-### [x] Slice 24 — make the reference lap explicit in the contract (done 2026-10-07)
+### [x] Slice 24 — make the reference lap explicit in the contract (done 2026-10-07, ruled 2026-10-08)
 
 **Filed and built 2026-10-07 on the human's direction, from the whole-project review.
 One root cause, four symptoms.** `cars[0]` — whoever was typed first in `--drivers` —
@@ -5389,19 +5389,34 @@ null); a field-less open window's ribbon is now cars[0]'s FIRST LAP, not its who
 with it — the gitignored `monza_full_field.json` behind Slice 12's fps baseline is such
 a file.
 
-**Decisions this slice makes that no human has ruled on** (the PR sits for review): the
-green tier applied field-wide before car order; lap-level exclusion making a DECLINED car
-(RUS) the red flag's reference — nothing bounds where a declined car's lap starts along
-the track (RUS's lap-2 start sits 7.9 m before the anchored cars' median, inside their
-own −8.3..+22.6 m spread); the 10 s margin (argued, not a measured empty band); shipping
-the finale's `trackStatus` drift in this PR; the restart tower's now-true hysteresis
-holding rows out of gap order roughly twice as long in progress terms (HUL +1.225 above
-TSU +1.191 at 2:50); the corner-8 label flipping sides on the restart as the label
-centroid moves.
+**Rulings (human, 2026-10-08, after a walkthrough of each decision; recorded before
+merge).** All seven ACCEPTED as built:
+1. **The green tier applied field-wide before car order.** A green-throughout lap on any
+   car beats a non-green lap on the first-listed car: the line and circuit are the same
+   whichever car drives them, and pace is the one thing a slow lap corrupts. All five
+   gallery assets choose `cars[0]` regardless.
+2. **Lap-level exclusion making RUS — a car with a declined placement plan — the red
+   flag's reference.** RUS's lap 2 ends 115 s before its only fault and closes at
+   2.8 m (the car-level rule's VER lap closed at 14.3 m and discarded 10 of 22 cars).
+   The field-anchored timing-line guard for declined cars' laps stays in the backlog.
+3. **`POSITION_FAULT_MARGIN_S` = 10 s** — argued, not a measured empty band, but any
+   margin from 4.1 to 10.2 s selects the same laps, and the report names the reason
+   whenever it rejects one.
+4. **The finale's `trackStatus` ships in this PR** — real data the committed file was
+   missing, not hand-editable out of a regenerated asset without breaking provenance.
+5. **The restart tower's now-true hysteresis** — rows hold within the 0.05 s dead band
+   (HUL +1.225 above TSU +1.191 at 2:50) as `ORDER_HYSTERESIS_S` was sized to; the 166 s
+   reference lap had been halving it (reorders 319 → 283, swaps within 3 s 37 → 22).
+6. **The corner-8 label flipping sides on the restart** — cosmetic, a consequence of the
+   one-lap ribbon's centroid.
+7. **Files without the field behave as measured above, and Slice 12's fps baseline is
+   NOT re-taken:** the ribbon is one retained Path2D stroked twice per frame whatever
+   its length, so per-frame call structure is unchanged and fewer points only make the
+   stroke cheaper — the old baseline stays a valid upper bound.
 
 **Still open:** `pit_lane`'s racing line still comes from `cars[0]`'s lap table — moving
 it changes `track.pitLane` bytes, so it needs its own slice; a field-anchored
-timing-line check for declined cars' laps; whether to re-take Slice 12's fps baseline.
+timing-line check for declined cars' laps (both in the backlog).
 
 ## Backlog (ideas — not committed)
 - **`pit_lane`'s racing line still comes from `cars[0]`'s lap table** (Slice 24's last
