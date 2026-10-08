@@ -318,6 +318,56 @@ describe("Hud layout containment (Slice 23)", () => {
       "side:max-h-none",
     );
   });
+
+  it("becomes a sidebar at `side:`, and `md:` only resizes it", () => {
+    // Slice 25. `side:` (md, or a screen 5:4 or wider) is the layout's one switch,
+    // so every class that makes this a sidebar carries it and a phone on its side
+    // cannot end up half switched. Below md the sidebar is 256 px with `py-2`: the
+    // width window in which the wrapped readout's rows hold still whatever the
+    // speed, and the padding that leaves a 667x375 list room for its 227 px
+    // block (both measured; Hud.tsx). From md it is 224 px with `p-4`, as before.
+    // jsdom applies no media query, so this pins the classes; the layout check
+    // measures what they do, and `layoutVariants.test.ts` that `md:` wins.
+    renderHud(replay);
+    const aside = screen.getByRole("complementary", { name: "Telemetry" });
+    expect(aside).toHaveClass(
+      "side:max-h-none",
+      "side:w-64",
+      "side:py-2",
+      "side:border-l",
+      "side:border-t-0",
+    );
+    expect([...aside.classList].filter((c) => c.startsWith("md:"))).toEqual([
+      "md:w-56",
+      "md:p-4",
+    ]);
+  });
+
+  it("turns the focused readout into a column at `md:`, never at `side:`", () => {
+    // Slice 25. Below md the sidebar keeps the strip's WRAPPING readout: the
+    // column readout measured 300–333 px tall on a phone on its side, in a
+    // 231–283 px list, so it was never whole and its speed trace never showed.
+    // So the readout switches at `md:` while the layout around it switches at
+    // `side:`, and nothing inside it may switch at `side:`.
+    const { container } = renderHud(replay);
+    const readout = container.querySelector("dl");
+    expect(readout).toHaveClass(
+      "md:flex-col",
+      "md:flex-nowrap",
+      "md:items-stretch",
+      "md:gap-3",
+    );
+    const pedal = screen
+      .getByRole("meter", { name: "Throttle" })
+      .closest("dd")?.parentElement;
+    expect(pedal).toHaveClass("md:w-full", "md:flex-none");
+    const inside = [readout!, ...readout!.querySelectorAll("*")];
+    expect(
+      inside.flatMap((el) =>
+        [...el.classList].filter((c) => c.startsWith("side:")),
+      ),
+    ).toEqual([]);
+  });
 });
 
 /**

@@ -266,9 +266,26 @@ export function Hud({ replay }: HudProps) {
     // and the track wins: the one-car list is 192 of 194 px, the track 200. A
     // screen 5:4 or wider never stacks (`side:`, `tailwind.config.js`), and the
     // sidebar needs no cap (`side:max-h-none`): its row bounds it.
+    //
+    // The sidebar has two widths. From `md` it is 224 px (`md:w-56 md:p-4`) with
+    // CarEntry's column readout, as before. Below `md` (a phone on its side, a
+    // short window) it is `side:w-64 side:py-2` and keeps the strip's WRAPPING
+    // readout, because CarEntry switches its readout at `md:`, not `side:`. The
+    // column readout measured 300–333 px tall there, in a 231–283 px list, so it
+    // was never whole and its speed trace never showed. 256 px is the middle of
+    // the window in which the wrapped readout's rows do not depend on the SPEED
+    // shown, measured seeking through whole replays: from 240 to 272 px the
+    // focused block holds at 227 px (speed and gear / the pedals / the pills).
+    // From 288 px a one- or two-digit speed pulls THROTTLE up onto the first row,
+    // so at 320 px a 22-car focused block jumped 194 <-> 227 px each time the car
+    // crossed 100 km/h, moving every row under it; at 224 px the pedals no longer
+    // share a row. `py-2` because a 667x375 phone's region is 246 px: `p-3` left
+    // the list 222 px for that 227 px block. Tailwind prints `md:` after `side:`,
+    // so `md:w-56` and `md:p-4` win from 768 px up (pinned in
+    // `layoutVariants.test.ts`).
     <aside
       aria-label="Telemetry"
-      className="flex max-h-[max(40%,min(13.75rem,100%-max(12.5rem,30dvh)))] shrink-0 flex-col border-t border-line bg-panel p-3 side:max-h-none side:w-56 side:border-l side:border-t-0 side:p-4"
+      className="flex max-h-[max(40%,min(13.75rem,100%-max(12.5rem,30dvh)))] shrink-0 flex-col border-t border-line bg-panel p-3 side:max-h-none side:w-64 side:border-l side:border-t-0 side:py-2 md:w-56 md:p-4"
     >
       {/* `overflow-y-auto` + `min-h-0` because twenty cars are taller than any
           sidebar or strip: the list shrinks to what the aside allows and scrolls,

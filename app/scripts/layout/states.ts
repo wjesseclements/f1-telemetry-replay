@@ -91,11 +91,13 @@ const CANVAS_MIN_HEIGHT_FRAC = 0.3;
 const CANVAS_SNAP_PX = 1;
 /**
  * The canvas's minimum share of the viewport's width. The side-by-side layout
- * gives the HUD a fixed `side:w-56` (224 px) column. That takes under half of
- * any viewport 448 px wide or more. Every `md` viewport is that wide. A 5:4
- * screen narrower than that is under 359 px tall, smaller than any phone held
- * sideways (the smallest, 568x320, leaves 344 px of track). Stacked, the canvas
- * is full width. Under half means a sidebar has grown into the track.
+ * gives the HUD a fixed column: 224 px from `md` (`md:w-56`), which is under half
+ * of every `md` viewport, and 256 px below it (`side:w-64`, a screen 5:4 or
+ * wider; Slice 25), which is under half of any viewport 512 px wide or more. The
+ * smallest phone held sideways, 568x320, leaves 312 px of track. A 5:4 window
+ * narrower than 512 px (so under 410 px tall) would fail here; no phone is that
+ * shape and no gated viewport is. Stacked, the canvas is full width. Under half
+ * means a sidebar has grown into the track.
  */
 const CANVAS_MIN_WIDTH_FRAC = 0.5;
 /**
