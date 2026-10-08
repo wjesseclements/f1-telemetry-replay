@@ -30,47 +30,29 @@ plans, the Slice 16 pit-lane detector, and — new in Slice 9k — a STRUCTURAL
 ADJUDICATION input: a named, per-session ruling can hand the frame-displacement
 repair an out-jump the ratio gate cannot see, and the machinery's own unchanged
 cancellation test still decides.
-Quality state on the Slice 9k branch: `npm run check` green with 821 tests and 0
-warnings (zero app-code changes — the slice is pipeline + one asset); 329 pytest
-with 100% lines + branches on every module; drawcall baselines untouched (canvas
-and fixture untouched).
+Since the 2026-10-07 whole-project review, a headless-Chrome layout check gates every
+build (Slice 22), the six defects visible on the live gallery are fixed (Slice 23), and
+the reference lap is explicit in the contract — `track.referenceLap`, chosen by the
+pipeline and read by the gap circuit, the tower's pace and the ribbon (Slice 24).
+Quality state on `main`: `npm run check` green with 960 tests and 0 warnings, engine
+coverage 100% per file, the layout check 51/51 locally and on ubuntu-latest; 401 pytest
+with 100% lines + branches on every module; draw-call fixture digests unchanged since
+Slice 16.
 
-**What is open, and what is blocked.** **Slice 9k is DONE and ACCEPTED**
-(2026-09-12, watch PASS — NOR rated 99%, new baseline VER 97 / HAM 97 / NOR 99,
-9i's severity ranking retired). NOR's declined 41.7 m relocation was adjudicated
-against Slice 16's geometry, read-only and pre-registered, and the answer was
-decisive — with a reframe: the flagged jump is the RETURN of a bounded
-displacement whose out step (30.3 m at 1.96× its own allowance) hid under the
-ratio-3 gate, so once that step is admitted on the geometry's evidence the pair
-CANCELS under the standard test (13.6 m of 18.8 m allowed) and the standard
-translation runs — no bespoke repair path exists. Results: NOR's held-out
-placement 38.9/47.6 → 11.8/9.6 m (the instrument's noise floor), reversal
-7 → 0 windows over 2.0, the HAM-NOR S/F gap error 0.59 → 0.07 s (9h's broken
-correlation repaired by fixing, as its entry predicted), HAM and VER
-byte-identical, all other assets untouched. One pre-registered deviation,
-flagged and both RATIFIED: `track.pitLane` re-elected to NOR's (longest)
-traversal — same lane, 0–3.8 m from VER's — and no label at 6:19 (the repaired
-car is on the racing line there; PIT runs ≈6:30–6:57). The watch confirmed the
-zigzag gone and the entry clean. Before it, **Slice 16 was ACCEPTED**
-(2026-09-11, PR #73, re-watch PASS): pit-lane geometry end to end,
-envelope-joined ends ratified. **The board: 18 → 20.** **Nothing is blocked**;
-the standing constraint remains: `build_replay.py` runs only from the human's
-home network (CLAUDE.md Gotchas).
+**What is open, and what is blocked.** **Slices 22, 23 and 24 are MERGED**
+(2026-10-08, #77 → #78 → #79), inserted ahead of the board on the human's direction
+after the review, and all thirteen of their decisions were ruled by the human before
+merge (PLAN records each). Slice 24 regenerated all five gallery assets offline from
+the FastF1 cache, changing only `track.referenceLap`, two start/finish lines (the red
+flag's moves off the pole slot onto the timing line) and the finale's missing
+`trackStatus`. Open, by ruling: **Slice 25** (short and landscape phones: reconcile the
+layout's 200 px track floor with the check's 30% rule, which disagree by 0.1 px at
+375x667, then a landscape layout). In the backlog: a pit stop on the focus car's edge
+lap is replayed (rain, focus HAM), heading noise on arrival at a stop, `pit_lane`'s
+racing line still from `cars[0]`, a timing-line guard for declined cars' reference
+laps, and the fixture asymmetry overhaul. **Nothing is blocked**; the standing
+constraint remains: `build_replay.py` fetches only from the human's home network
+(CLAUDE.md Gotchas) — offline rebuilds from the FastF1 cache work on that machine.
 
-**What happens next.** The 2026-10-07 whole-project review inserted three slices
-ahead of the board, on the human's direction. **Slice 22** (a headless-Chrome layout
-check, `npm run check:layout`) is merged (#77). **Slice 23** is merged (#78, 2026-10-08)
-with all six of its decisions ruled: six of the seven defects visible on the live
-gallery fixed — the phone canvas collapsing under a full field, the clipped gallery
-panel, seek-to-end landing at the start, stopped cars pointing east, ~80 s window-edge
-gap jumps, the scrim that never rendered — the provenance line raised to 90% for WCAG
-AA, and the layout check gated in `npm run check` and CI (51/51 on ubuntu-latest).
-Its ruling filed **Slice 25** (short and landscape phones) on the board. **Slice 24**
-(the reference lap made explicit: `track.referenceLap`, chosen by the pipeline from
-clean, accurate, green-preferred laps and read by the gap circuit, the tower's pace
-and the ribbon; all five gallery assets regenerated offline, changing only that field,
-two start/finish lines — the red flag's moves off the pole slot onto the timing line,
-the seventh defect — and the finale's long-standing `trackStatus` drift; the restart's
-pace lap goes 166.1 → 86.4 s) is PR #79, its seven decisions all ruled (2026-10-08). Then **Slice 18**
-per the board: 18 → 20, with the backlog's headline **fixture asymmetry overhaul**
-behind them. The finale's `trackStatus` drift closes with Slice 24's regeneration.
+**What happens next.** **The board: 18 → 20**, with Slice 25 filed beside them (not yet
+ranked against them by the human) and the fixture asymmetry overhaul behind them.

@@ -5277,7 +5277,7 @@ caught after the backward-seek pin.
    90% passes AA and still sits a step below the hook, so the provenance recedes as
    designed. Applied in this slice (the provenance and note lines in `FeaturedPanel`).
 
-### [x] Slice 24 — make the reference lap explicit in the contract (done 2026-10-07, ruled 2026-10-08)
+### [x] Slice 24 — make the reference lap explicit in the contract (done 2026-10-07, ruled and MERGED 2026-10-08 as #79)
 
 **Filed and built 2026-10-07 on the human's direction, from the whole-project review.
 One root cause, four symptoms.** `cars[0]` — whoever was typed first in `--drivers` —
