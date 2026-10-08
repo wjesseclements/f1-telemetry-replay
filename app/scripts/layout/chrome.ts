@@ -181,7 +181,10 @@ export function chromeArgs(
 /**
  * `--no-sandbox` on a Linux CI runner, and NOWHERE else.
  *
- * UNVERIFIED until the first CI run — this is a prediction, not a measurement.
+ * Measured on the first CI runs (2026-10-08, Chrome 154.0.8037.57 on ubuntu-latest):
+ * Chrome launches with it and the check runs 51/51. Whether the flag is REQUIRED
+ * there was not tested — the reasoning below is why it was added, and dropping it
+ * is one CI run away from an answer.
  * Ubuntu 24.04 (GitHub's ubuntu-latest) restricts unprivileged user namespaces
  * through AppArmor, and Chrome's Linux sandbox is built on them, so Chrome may
  * refuse to start there; if it does, the launch error carries Chrome's stderr
