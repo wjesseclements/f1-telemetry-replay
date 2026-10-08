@@ -76,13 +76,26 @@ const CANVAS_MIN_HEIGHT_PX = 200;
  * …and at least this share of the viewport's height (244 px on a 812 px phone).
  * The fixed floor alone would let a tall screen pass with the HUD owning most of
  * it; the track is the product, so it keeps at least ~a third of the height.
+ * The stacked strip's cap is bounded by both terms (`Hud.tsx`, Slice 25), so the
+ * layout and this check enforce the same floor.
  */
 const CANVAS_MIN_HEIGHT_FRAC = 0.3;
 /**
+ * How far under its floor the canvas may measure: up to 1 px, not including 1.
+ * `TrackCanvas` sizes the canvas from its cell's `clientHeight`, which is the
+ * cell snapped to whole CSS px. A cell that meets the floor exactly can draw a
+ * canvas just under it. At 375x667 the floor is 30% = 200.1 px, the cell is
+ * 200.1 px, and the canvas is 200 px. A floor in whole px (200) still needs a
+ * whole 200.
+ */
+const CANVAS_SNAP_PX = 1;
+/**
  * The canvas's minimum share of the viewport's width. The side-by-side layout
- * gives the HUD a fixed `md:w-56` (224 px) column, which never takes half of any
- * viewport at or above the 768 px breakpoint; stacked, the canvas is full-width.
- * Under half means a sidebar has grown into the track.
+ * gives the HUD a fixed `side:w-56` (224 px) column. That takes under half of
+ * any viewport 448 px wide or more. Every `md` viewport is that wide. A 5:4
+ * screen narrower than that is under 359 px tall, smaller than any phone held
+ * sideways (the smallest, 568x320, leaves 344 px of track). Stacked, the canvas
+ * is full width. Under half means a sidebar has grown into the track.
  */
 const CANVAS_MIN_WIDTH_FRAC = 0.5;
 /**
@@ -325,12 +338,18 @@ export async function stateB(
       `expected exactly one canvas, found ${probe.canvasCount}`,
     );
   } else {
+    const height = probe.canvas.height;
+    const pass = height > minHeight - CANVAS_SNAP_PX;
     record(
       ctx,
       "B",
       "canvas height",
-      probe.canvas.height >= minHeight,
-      `${probe.canvas.height.toFixed(1)} px (min ${minHeight.toFixed(1)})`,
+      pass,
+      `${height.toFixed(1)} px (min ${minHeight.toFixed(1)})` +
+        // Only on the rows the snap decided, so no other row's text changes.
+        (pass && height < minHeight
+          ? ` · within the ${CANVAS_SNAP_PX} px snap`
+          : ""),
     );
     record(
       ctx,

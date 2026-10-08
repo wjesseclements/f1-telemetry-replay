@@ -66,8 +66,14 @@ export default function App({ bootstrapError = null }: AppProps) {
         <h1 className="font-mono text-sm font-bold tracking-[0.2em]">
           TELEMETRY REPLAY
         </h1>
+        {/* On a wide screen (`wide:`, 5:4 and up) this line takes whatever the
+            row leaves and truncates its tail, so the header stays one row. The
+            tail is the driver list, and the tower already lists every driver.
+            Wrapped, 22 drivers cost the track 52–68 px of a 360–412 px landscape
+            phone (Slice 25). `flex-1` has a zero basis, so this never wraps the
+            row itself. The controls still wrap when they alone cannot fit. */}
         {replay !== null && (
-          <p className="font-mono text-xs text-dim">
+          <p className="font-mono text-xs text-dim wide:min-w-0 wide:flex-1 wide:truncate">
             {replay.meta.event} · {replay.meta.session} ·{" "}
             {replay.cars.map((car) => car.driver).join(" ")}
           </p>
@@ -96,11 +102,13 @@ export default function App({ bootstrapError = null }: AppProps) {
         </div>
       ) : replay !== null ? (
         <>
-          {/* The track and the numbers sit side by side when there is width for it
-              and stack when there is not. `min-h-0`/`min-w-0` on the canvas cell in
-              BOTH directions: a flex item defaults to its content's minimum size, and
-              the canvas would otherwise refuse to shrink and push the HUD off screen. */}
-          <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+          {/* The track and the numbers sit side by side (`side:`) when there is
+              width for the sidebar or the screen is wide rather than tall (5:4 and
+              up, `tailwind.config.js`), and stack otherwise. `min-h-0`/`min-w-0` on
+              the canvas cell in BOTH directions: a flex item defaults to its
+              content's minimum size, and the canvas would otherwise refuse to shrink
+              and push the HUD off screen. */}
+          <div className="flex min-h-0 flex-1 flex-col side:flex-row">
             <div className="relative min-h-0 min-w-0 flex-1">
               {/* The canvas is memoised, so mounting and unmounting the panel
                   beside it does not re-render it — the replay animates behind the

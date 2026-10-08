@@ -372,7 +372,7 @@ describe("TRACE_SECONDS", () => {
      * into ~192 CSS px — thirty per pixel — and every braking zone became noise.
      *
      * Pinned at the DRAWING BOX, which is a proxy: `TRACE_W` user units stretch to the
-     * sidebar's real width (~192 CSS px at `md:w-56` less `p-4`), so this is the same
+     * sidebar's real width (~192 CSS px at `side:w-56` less `p-4`), so this is the same
      * order, not the same number. The real bar is the human's eye at that width; this
      * exists so the constant cannot drift back into the defect in silence, which is
      * exactly what `TAIL_SECONDS` did until Slice 9b's follow-up pinned it.

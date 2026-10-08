@@ -38,8 +38,8 @@
  *     rather than a bug to fix: giving the name back means a wider sidebar, and the
  *     swatch is what identifies the team in a row.
  *  2. **`gap_m` is next**, if twenty rows get tight — and Slice 15's vs pill called
- *     this in: at the sidebar's fixed `md:w-56` the pill and the metres column never
- *     both fit, so `gap_m` is `md:hidden` there (it still renders in the sub-`md`
+ *     this in: at the sidebar's fixed `side:w-56` the pill and the metres column never
+ *     both fit, so `gap_m` is `side:hidden` there (it still renders in the stacked
  *     full-width strip). Enforced by flex as well as promised: `gap_m` is the compact
  *     row's one shrinkable column, so at any unanticipated width it truncates away
  *     before anything else moves. Giving it back means a wider sidebar, knowingly.
@@ -269,10 +269,10 @@ export function CarEntry({
             /*
               The surrender order, enforced rather than promised, twice over:
 
-               - `md:hidden` on `gap_m`: at the sidebar's fixed `md:w-56` the vs pill
+               - `side:hidden` on `gap_m`: at the sidebar's fixed `side:w-56` the vs pill
                  and the metres column can NEVER both fit (measured — the leftover is
                  a "1…" stub that reads as broken data), so metres is dropped outright
-                 there, per the header's list. Below `md` the tower is a full-width
+                 there, per the header's list. Stacked, the tower is a full-width
                  strip with room for both, and metres comes back.
                - the flex belt: `gap_s` is `shrink-0` (it never goes) and `gap_m` is
                  the row's ONE shrinkable item (`min-w-0 shrink truncate` behind the
@@ -287,7 +287,7 @@ export function CarEntry({
                   gap === null ? 0 : gap.lapsDown,
                 )}
               </span>
-              <span className="w-11 min-w-0 shrink truncate text-right font-mono text-[10px] tabular-nums text-dim md:hidden">
+              <span className="w-11 min-w-0 shrink truncate text-right font-mono text-[10px] tabular-nums text-dim side:hidden">
                 {formatGapMetres(gap === null ? null : gap.metres)}
               </span>
             </span>
@@ -321,7 +321,7 @@ export function CarEntry({
           dropout={dropout}
         />
       )}
-      {/* `w-full` so the trace takes its own row in the sub-`md` strip, where the
+      {/* `w-full` so the trace takes its own row in the stacked strip, where the
           readout wraps horizontally; in the sidebar it fills the column. */}
       {focused && trace !== undefined && (
         <div className="mt-3 w-full">{trace}</div>
@@ -368,7 +368,7 @@ function CarReadout({
   dropout: boolean;
 }) {
   return (
-    <dl className="m-0 mt-2 flex flex-1 flex-row flex-wrap items-center gap-x-5 gap-y-3 md:flex-col md:flex-nowrap md:items-stretch md:gap-3">
+    <dl className="m-0 mt-2 flex flex-1 flex-row flex-wrap items-center gap-x-5 gap-y-3 side:flex-col side:flex-nowrap side:items-stretch side:gap-3">
       {/* The unit lives INSIDE the `<dd>`. A `<dl>` may only contain `dt`/`dd` groups
           and wrapper `<div>`s, and a wrapper may only hold `dt`/`dd` — a loose
           `<span>` made this an invalid definition list (Lighthouse `definition-list`,
@@ -458,8 +458,8 @@ function Pedal({
   const percent = fraction === null ? 0 : Math.round(fraction * 100);
   return (
     // A bar needs width to mean anything, so it claims a minimum and grows into what
-    // is left. In the stacked sidebar `md:w-full` puts it back to full width.
-    <div className="min-w-[6rem] flex-1 md:w-full md:flex-none">
+    // is left. In the stacked sidebar `side:w-full` puts it back to full width.
+    <div className="min-w-[6rem] flex-1 side:w-full side:flex-none">
       <dt className="mb-1 font-mono text-[10px] uppercase tracking-widest text-dim">
         {label}
       </dt>

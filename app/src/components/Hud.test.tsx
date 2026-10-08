@@ -301,19 +301,21 @@ describe("Hud layout containment (Slice 23)", () => {
     );
   });
 
-  it("caps the strip with a floor, and bounds the floor by the track", () => {
+  it("caps the strip with a floor, and bounds the floor by the track's minimum", () => {
     // Each term was measured failing on its own (headless Chrome, stacked layout):
     // the bare `40%` cut the one-car fixture's 219 px strip to 178 px at 375x667,
     // hiding its speed trace behind a scroll; `max(40%, 13.75rem)` fixed that and
     // took a 22-car track back to 0 px at 667x375 and 740x360, the very defect the
-    // cap exists for. jsdom has no layout and the gated layout check measures
-    // neither viewport, so this pins the expression; the reasoning is in Hud.tsx.
+    // cap exists for. The bound is the layout check's canvas floor, term for term
+    // (Slice 25): with only `12.5rem` the track came out 0.1 px under it at
+    // 375x667. jsdom has no layout, so this pins the expression. The layout check
+    // measures the geometry, and Hud.tsx has the reasoning.
     renderHud(replay);
     expect(
       screen.getByRole("complementary", { name: "Telemetry" }),
     ).toHaveClass(
-      "max-h-[max(40%,min(13.75rem,100%-12.5rem))]",
-      "md:max-h-none",
+      "max-h-[max(40%,min(13.75rem,100%-max(12.5rem,30dvh)))]",
+      "side:max-h-none",
     );
   });
 });
