@@ -158,7 +158,11 @@ export function probeLayout(sel: Selectors): LayoutProbe {
 
   return {
     viewport: { width: window.innerWidth, height: window.innerHeight },
-    scrollWidth: document.documentElement.scrollWidth,
+    // `documentElement` is null for a moment after `Page.navigate`, while the new
+    // document has no root yet — the first CI run (cold ubuntu-latest) polled into
+    // exactly that window and threw. 0 here, with every element null, reads as
+    // "not ready" and `waitFor` keeps polling.
+    scrollWidth: document.documentElement?.scrollWidth ?? 0,
     header: box(document.querySelector(sel.header)),
     transport: box(document.querySelector(sel.transport)),
     aside: box(document.querySelector(sel.aside)),
