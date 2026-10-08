@@ -63,8 +63,8 @@ check, `npm run check:layout`) and **Slice 23** (six of the seven defects visibl
 the live gallery fixed — the phone canvas collapsing under a full field, the clipped
 gallery panel, seek-to-end landing at the start, stopped cars pointing east, ~80 s
 window-edge gap jumps, the scrim that never rendered — and the layout check gated in
-`npm run check` and CI) are done on their branches and await the human's review; CI's
-Chrome `--no-sandbox` on ubuntu-latest is unverified until the first `verify` run.
+`npm run check` and CI) are done and open as stacked PRs #77 → #78 → #79, CI green on all three (the
+layout check runs 51/51 on ubuntu-latest), awaiting the human's review.
 **Slice 24** makes the reference lap explicit in the contract (the seventh defect, the
 red-flag start/finish line, is its symptom). Then **Slice 18** per the board: 18 → 20,
 with the backlog's headline **fixture asymmetry overhaul** behind them. Housekeeping unchanged:
