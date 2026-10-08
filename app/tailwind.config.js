@@ -45,6 +45,17 @@ const token = (name) =>
  */
 const WIDE = "(min-aspect-ratio: 5/4)";
 
+/**
+ * A screen at most 43.75rem (700 px) tall (Slice 25): the short portrait phones,
+ * 375x667 and 360x640, which `WIDE` misses. The header's meta line lists every
+ * driver, so a full field wrapped the header to 106–138 px there, and the track
+ * paid for it: one line took 375x667 with 22 cars from 200 to 256 px of track,
+ * and made 360x640's one-car readout whole (measured on candidate C). 375x812 and
+ * 390x844 are taller, and keep the wrapping line. Short desktop windows (1366x657)
+ * match too, but they are already `WIDE`.
+ */
+const SHORT = "(max-height: 43.75rem)";
+
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
@@ -85,14 +96,17 @@ export default {
     // switches off Tailwind's `min-*` and `max-*` variants project-wide.
     plugin(({ addVariant }) => {
       // Track and tower side by side: wide enough for the 224 px sidebar (`md`),
-      // or a wide shape at any width. Every class of that layout uses this one
-      // query, so they switch together. A `md:` class would miss landscape phones.
+      // or a wide shape at any width. Every class that makes the layout side by
+      // side uses this one query, so they switch together; a `md:` copy would
+      // miss landscape phones. `md:` only resizes the sidebar and turns its
+      // readout into a column from 768 px up (Hud.tsx, CarEntry.tsx).
       addVariant(
         "side",
         `@media (min-width: ${defaultTheme.screens.md}), ${WIDE}`,
       );
-      // The header keeps to one row (App.tsx).
-      addVariant("wide", `@media ${WIDE}`);
+      // The header's meta line keeps to one line (App.tsx): on a wide screen OR
+      // a short one. One variant, so the two cases cannot drift apart.
+      addVariant("onerow", `@media ${WIDE}, ${SHORT}`);
     }),
   ],
 };

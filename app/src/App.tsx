@@ -66,14 +66,17 @@ export default function App({ bootstrapError = null }: AppProps) {
         <h1 className="font-mono text-sm font-bold tracking-[0.2em]">
           TELEMETRY REPLAY
         </h1>
-        {/* On a wide screen (`wide:`, 5:4 and up) this line takes whatever the
-            row leaves and truncates its tail, so the header stays one row. The
-            tail is the driver list, and the tower already lists every driver.
+        {/* On a wide screen (5:4 and up) or a short one (at most 700 px tall),
+            `onerow:` in tailwind.config.js, this line takes whatever the title's
+            row leaves and truncates its tail. The tail is the driver list, the
+            tower already lists every driver, and the full line stays in the DOM.
             Wrapped, 22 drivers cost the track 52–68 px of a 360–412 px landscape
-            phone (Slice 25). `flex-1` has a zero basis, so this never wraps the
-            row itself. The controls still wrap when they alone cannot fit. */}
+            phone and 56 px of a 375x667 one (Slice 25). `min-w-24` keeps it from
+            being squeezed to "M…": with under 6rem left beside the title it
+            moves to a line of its own instead. The controls still wrap when they
+            alone cannot fit. */}
         {replay !== null && (
-          <p className="font-mono text-xs text-dim wide:min-w-0 wide:flex-1 wide:truncate">
+          <p className="font-mono text-xs text-dim onerow:min-w-24 onerow:flex-1 onerow:truncate">
             {replay.meta.event} · {replay.meta.session} ·{" "}
             {replay.cars.map((car) => car.driver).join(" ")}
           </p>

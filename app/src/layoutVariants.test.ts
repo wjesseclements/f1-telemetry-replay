@@ -2,10 +2,11 @@
  * layoutVariants.test.ts — the side-by-side layout's variants compile, in order.
  *
  * Slice 25. The page puts the track and the tower side by side at `md` OR on a
- * screen 5:4 or wider (`side:`, `tailwind.config.js`), and keeps the header to one
- * row on a wide screen (`wide:`). jsdom evaluates no media query, so no component
- * test can tell which layout a screen gets. The layout check measures a handful of
- * viewports. The compiled stylesheet shows what each variant means at every size.
+ * screen 5:4 or wider (`side:`, `tailwind.config.js`), and keeps the header's
+ * meta line to one line on a wide or short screen (`onerow:`). jsdom evaluates no
+ * media query, so no component test can tell which layout a screen gets. The
+ * layout check measures a handful of viewports. The compiled stylesheet shows
+ * what each variant means at every size.
  * `?inline` returns `index.css` compiled by the real pipeline, as in
  * `opacityModifiers.test.ts`. Which classes carry which variant is pinned on the
  * rendered elements (`Hud.test.tsx`).
@@ -41,8 +42,10 @@ describe("the side-by-side layout's variants", () => {
     );
   });
 
-  it("compiles `wide:` to a screen 5:4 or wider, at any width", () => {
-    expect(mediaFor(".wide\\:truncate")).toBe("(min-aspect-ratio:5/4)");
+  it("compiles `onerow:` to a screen 5:4 or wider OR at most 700 px tall", () => {
+    expect(mediaFor(".onerow\\:truncate")).toBe(
+      "(min-aspect-ratio:5/4),(max-height:43.75rem)",
+    );
   });
 
   it("lets the `md` sidebar's size win over the sidebar's below `md`", () => {
