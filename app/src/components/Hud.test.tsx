@@ -309,9 +309,11 @@ describe("Hud layout containment (Slice 23)", () => {
     // cap exists for. The bound is the layout check's own canvas floor (Slice
     // 25), + 1px for the canvas's whole-px sizing: with only `12.5rem` the track
     // came out 0.1 px under it at 375x667, and with a bare `30dvh` the canvas
-    // still measured 200.0 against 200.1. The gate measures 375x667 and fails
-    // on either; it cannot see the strip's own height, so this pins the
-    // expression. Hud.tsx has the reasoning.
+    // still measured 200.0 against 200.1 (Slice 25's f95f20e run: 201.0 strict
+    // with the +1px). Since the one-line header (`onerow:`) no gated viewport
+    // binds this bound any more — 375x667 now has a 256 px track — and reverting
+    // it to `100%-12.5rem` passes check:layout 119/119 (measured), so THIS class
+    // pin is its only guard. Hud.tsx has the reasoning.
     renderHud(replay);
     expect(
       screen.getByRole("complementary", { name: "Telemetry" }),

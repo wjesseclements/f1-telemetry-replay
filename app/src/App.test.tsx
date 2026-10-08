@@ -86,11 +86,11 @@ describe("App", () => {
   it("keeps the replay's meta line to one line on a wide or short screen, all of it in the DOM", () => {
     // Slice 25: every driver code is in this line, so a full field wrapped the
     // header to 106–138 px and the track paid for it (22 cars: 200 px of track at
-    // 375x667 and on landscape phones). `onerow:` is a screen 5:4 or wider OR at
-    // most 700 px tall, so 375x812 and 390x844 keep the wrapping line. The
-    // ellipsis is visual only: the whole line stays in the DOM. jsdom applies no
-    // media query, so this pins the classes; the layout check measures the
-    // geometry, and `layoutVariants.test.ts` the compiled query.
+    // 375x667, 117–127 px stacked on landscape phones). `onerow:` is a screen 5:4
+    // or wider OR at most 700 px tall, so 375x812 and 390x844 keep the wrapping
+    // line. The ellipsis is visual only: the whole line stays in the DOM. jsdom
+    // applies no media query, so this pins the classes; the layout check measures
+    // the geometry, and `layoutVariants.test.ts` the compiled query.
     useTransport.setState({ replay });
     render(<App />);
     const line = screen.getByText(

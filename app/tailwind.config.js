@@ -32,8 +32,11 @@ const token = (name) =>
  * 126 px and the tower 59. Stacked against side by side below `md`, with the same
  * header in both, the circuit draws larger side by side at every width once the
  * screen is 5:4 or wider. The worst case is the gallery's widest circuit (Monza,
- * 2:1 on screen) at 767 px. At 5:4 it draws 451 px wide side by side against 410
- * stacked. At 6:5 stacking wins, 460 against 451. A rounder circuit crosses over
+ * 2:1 on screen) at 767 px, beside the 256 px sub-md sidebar: at 5:4 it draws 419
+ * px wide side by side against 410 stacked; at 6:5 stacking wins, 460 against 419;
+ * the crossover is about 1.24 (measured through buildScene and fitTransform). With
+ * candidate B's 224 px sidebar the 5:4 margin was 41 px; the shipped 256 px one keeps
+ * 9. A rounder circuit crosses over
  * sooner (the 1-car fixture already wins at 1:1). The tower always gains, because
  * side by side it gets the region's whole height instead of a 40% strip.
  *
