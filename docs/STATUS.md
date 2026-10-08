@@ -63,14 +63,13 @@ check, `npm run check:layout`) and **Slice 23** (six of the seven defects visibl
 the live gallery fixed — the phone canvas collapsing under a full field, the clipped
 gallery panel, seek-to-end landing at the start, stopped cars pointing east, ~80 s
 window-edge gap jumps, the scrim that never rendered — and the layout check gated in
-`npm run check` and CI) are done on their branches and await the human's review; CI's
-Chrome `--no-sandbox` on ubuntu-latest is unverified until the first `verify` run.
-**Slice 24** (done on its branch, stacked on 23) makes the reference lap explicit:
+`npm run check` and CI) and **Slice 24** (the reference lap made explicit:
 `track.referenceLap`, chosen by the pipeline from clean, accurate, green-preferred
 laps and read by the gap circuit, the tower's pace and the ribbon; all five gallery
-assets were regenerated offline, changing only that field, two start/finish lines
-(the red flag's moves off the pole slot onto the timing line — the seventh defect) and
-the finale's long-standing `trackStatus` drift. The restart's pace lap goes 166.1 →
-86.4 s. Then **Slice 18** per the board: 18 → 20, with the backlog's headline
-**fixture asymmetry overhaul** behind them. The finale's `trackStatus` drift closes with
-Slice 24's regeneration.
+assets regenerated offline, changing only that field, two start/finish lines — the
+red flag's moves off the pole slot onto the timing line, the seventh defect — and the
+finale's long-standing `trackStatus` drift; the restart's pace lap goes 166.1 → 86.4 s)
+are done and open as stacked PRs #77 → #78 → #79, CI green on all three (the layout
+check runs 51/51 on ubuntu-latest), awaiting the human's review. Then **Slice 18** per
+the board: 18 → 20, with the backlog's headline **fixture asymmetry overhaul** behind
+them. The finale's `trackStatus` drift closes with Slice 24's regeneration.

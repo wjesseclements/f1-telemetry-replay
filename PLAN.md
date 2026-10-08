@@ -5073,7 +5073,12 @@ named failure. **Exit codes:** 0 every row passed; 1 the run finished with a FAI
 row (layout, a state not reached, an off-origin request, a page exception, a harness
 fault mid-run); 2 the run did not finish (no build, no Chrome, probes cannot run,
 the cap); 130/143 interrupted. **CI only:** `--no-sandbox` when `CI=true` on Linux,
-UNVERIFIED until the first CI run (Ubuntu 24.04's AppArmor userns restriction).
+added for Ubuntu 24.04's AppArmor userns restriction; **measured on the first CI
+runs (2026-10-08, Chrome 154.0.8037.57 on ubuntu-latest): Chrome launches and the
+check runs 51/51** — whether the flag is required there is untested. That first run
+also failed 375x812 A once: polled straight after `Page.navigate` on a cold machine,
+the probe caught the document with no root (`documentElement` null) and threw; it now
+reads that window as "not ready" (`probe.test.ts` reproduces the TypeError).
 
 **Offline inside the browser — three layers, two of which enforce.** (1) The
 background-networking flags only REDUCE Chrome's own traffic: a net-log on Chrome
@@ -5225,8 +5230,9 @@ real-browser look (screenshots at 375x812, 1280x720, 1440x900, plus 375x667, 360
 **Gating (Slice 22's instrument).** `check:layout` 39/51 → **51/51**; the md+ B-state
 rows are byte-identical before and after. `npm run check` now ends `… && vite build &&
 npm run check:layout`, and CI's `verify` runs it after `npm run build` — so a local
-`npm run check` needs Chrome, and **CI's `--no-sandbox` on ubuntu-latest is UNVERIFIED
-until this PR's first `verify` run.**
+`npm run check` needs Chrome. **CI measured (PR #78, 2026-10-08): `verify` green, the
+layout check 51/51 on ubuntu-latest** (after Slice 22's cold-start probe fix — the
+first run failed 375x812 A on that race, not on layout).
 
 **Evidence.** `npm run check` green, 0 warn/error lines in the full log; vitest 4.1.10,
 48 files / 892 tests; engine coverage 100% per file; pytest untouched (329). Draw-call
