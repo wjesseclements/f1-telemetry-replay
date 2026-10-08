@@ -131,7 +131,11 @@ export function FeaturedPanel({ onClose, id }: FeaturedPanelProps) {
                 <span className="mt-1 block font-mono text-[11px] leading-relaxed text-dim">
                   {busy === scenario.id ? "Loading…" : scenario.hook}
                 </span>
-                <span className="mt-1 block font-mono text-[10px] text-dim/70">
+                {/* 90%, not Slice 13's 70%: once the modifier compiled (Slice 23),
+                    70% measured 3.45:1 on panel2 — under WCAG AA for 10 px text.
+                    90% is 4.82:1 and still a step below the hook's 5.65:1, so the
+                    provenance recedes as designed (ruled 2026-10-08). */}
+                <span className="mt-1 block font-mono text-[10px] text-dim/90">
                   {scenario.provenance.session} · laps{" "}
                   {scenario.provenance.laps} ·{" "}
                   {scenario.provenance.drivers.join(" ")}
@@ -141,7 +145,7 @@ export function FeaturedPanel({ onClose, id }: FeaturedPanelProps) {
                     visitor is about to watch. Absent on scenarios with nothing
                     to disclose — no branch beyond the optional field itself. */}
                 {scenario.provenance.note !== undefined && (
-                  <span className="mt-1 block font-mono text-[10px] italic leading-relaxed text-dim/70">
+                  <span className="mt-1 block font-mono text-[10px] italic leading-relaxed text-dim/90">
                     {scenario.provenance.note}
                   </span>
                 )}

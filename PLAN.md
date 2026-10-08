@@ -4819,6 +4819,20 @@ the 2024 pit cycle's swaps reading as moves. The pre-registered 300 ms stands
 untouched — no tune requested. **"NO SIG" ratified** as the compact spelling.
 Push + PR + auto-merge authorised.
 
+### [ ] Slice 25 — short and landscape phones (filed by Slice 23's ruling)
+
+**Filed 2026-10-08 by the human's ruling on Slice 23's phone-strip cap.** Slice 23's
+layout gate covers 375x812, 1280x720 and 1440x900 only, so the two places its cap
+matters most go unmeasured. Two decisions to argue with numbers when it runs:
+- **One floor, not two.** At 375x667 the layout guarantees the track exactly 200 px
+  (`100% − 12.5rem`), but `check:layout` requires max(200 px, 30% of the height) =
+  **200.1 px** — adding the viewport today fails by 0.1 px. The layout and the check
+  must agree on the track's minimum before 375x667 can join the gate.
+- **A landscape layout.** Below `md` the page stacks, so a 667x375 or 740x360 phone gets
+  a 117–126 px track and about one tower row with 22 cars. Likely shape: track and
+  tower side by side when the screen is wide but short (an orientation/height query,
+  not a width breakpoint). Then 667x375 joins the gate.
+
 ### [ ] Slice 20 — colour distinction under the luminance floor
 
 **Filed 2026-09-08 by Slice 17's browser pass.** The floor fixes visibility, not
@@ -5020,7 +5034,7 @@ watch: the `track.pitLane` re-election, and no-label-at-6:19 (on the line is on
 the line). Auto-merge (squash) enabled on the human's instruction. The board
 advances: **18 → 20**.
 
-### [x] Slice 22 — headless-Chrome layout check (the instrument; the fix is Slice 23) (done 2026-10-07)
+### [x] Slice 22 — headless-Chrome layout check (the instrument; the fix is Slice 23) (done 2026-10-07, MERGED 2026-10-08 as #77)
 
 **Filed and built 2026-10-07 on the human's direction, ahead of the board (18 → 20),
 from the whole-project review of that day.** jsdom has no layout engine — every box
@@ -5132,7 +5146,7 @@ FAIL, ≈2.1 s.**
   `--disable-crash-reporter`, `--disable-breakpad`, `--disable-crashpad-for-testing`,
   `--crash-dumps-dir` or `CHROME_HEADLESS=1` changed that, so none is passed.
 
-### [x] Slice 23 — fix the defects visible on the live gallery; gate the layout check (done 2026-10-07)
+### [x] Slice 23 — fix the defects visible on the live gallery; gate the layout check (done 2026-10-07, ruled and MERGED 2026-10-08 as #78)
 
 **Filed and built 2026-10-07 on the human's direction ("a short fix slice for items
 1–7"), from the whole-project review's verified findings.** Six of the seven are fixed
@@ -5241,16 +5255,27 @@ calls/frame unchanged on every gallery file (only tick coordinates move). `hud-t
 `drawcall-capture` run on the new `sampleAt` signature. Final review: 18 mutants, all
 caught after the backward-seek pin.
 
-**Decisions this slice makes that no human has ruled on** (the PR sits for review):
-the 1 s departure line; the wrap count and the seek-back onto a late event's mark (a
-forward seek across a mark leaves the frame where it landed, so the frame under the card
-depends on how the mark was crossed); the Hud floor's numbers and the 22-car canvas cost
-on short phones (252 → 200 px at 375x667); `color-mix()` as the floor for every colour;
-the scrim now actually rendering behind the event card too (it dims the canvas's RED
-FLAG chip while the card is open); and the provenance line at `text-dim/70` measuring
-**3.44:1** on `bg-panel2` — the first time Slice 13's design has rendered, and below WCAG
-AA for 10 px text. Landscape phones remain cramped (canvas 117–126 px, one tower row),
-and the gated viewports include neither a short nor a landscape phone.
+**Rulings (human, 2026-10-08, after reviewing the preview; recorded before merge).**
+1. **The 1 s departure line for cars parked from the start — ACCEPTED.** The literal
+   first-segment ruling measured worse (HAM 175° off on the red flag's landing frame);
+   the extension stands.
+2. **The wrap count and the seek-back onto a late event's mark — ACCEPTED as built.**
+   The asymmetry is deliberate: a forward seek is the viewer choosing where to be, so
+   the frame stays where it landed; a playback wrap lands on the window's start, an
+   accident of looping, so the frame returns to the moment the card narrates.
+3. **The phone strip's cap and its numbers — ACCEPTED** (22-car canvas 252 → 200 px at
+   375x667). Short and landscape phones go to a follow-up slice — **Slice 25**, filed
+   on the board.
+4. **`color-mix()` behind every colour — ACCEPTED** (floor Chrome 111 / Safari 16.2 /
+   Firefox 113, Vite 8's default target).
+5. **The 75% scrim behind the event card too — ACCEPTED** (it dims the canvas's RED
+   FLAG chip while the card is open, as Slice 13 specified).
+6. **The provenance line — RAISED from 70% to 90% (`text-dim/90`).** At 70% it measured
+   3.45:1 on `bg-panel2`, below WCAG AA for 10 px text — the first time Slice 13's design
+   had rendered. Three options were compared side by side on the real card markup and
+   CSS: 70% (3.45:1), 90% (**4.82:1**), full `text-dim` (5.65:1, the hook's own colour).
+   90% passes AA and still sits a step below the hook, so the provenance recedes as
+   designed. Applied in this slice (the provenance and note lines in `FeaturedPanel`).
 
 ### [x] Slice 24 — make the reference lap explicit in the contract (done 2026-10-07)
 
@@ -5395,8 +5420,6 @@ timing-line check for declined cars' laps; whether to re-take Slice 12's fps bas
   137 car-s > 15° off (max 22°), rain max 34°. A 1 s arrival line, mirroring the
   departure line, measured ≤ 5°; the open window's final held step must keep its last
   segment (a 1 s line through a corner lags the car by up to 33°).
-- **Short and landscape phones are outside the layout gate** (Slice 23): add 375x667 and
-  667x375 to `check:layout`; landscape gets a 117–126 px track and one tower row today.
 - **Fixture asymmetry overhaul** — rebuild the committed fixture with no symmetries,
   distinct angles, and no near-cancellations, so it can express handedness,
   orientation, and angle-sensitivity defect classes. **Four blindness instances

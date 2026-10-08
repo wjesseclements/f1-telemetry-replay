@@ -2,12 +2,13 @@
  * opacityModifiers.test.ts — every opacity-modified colour class compiles to CSS.
  *
  * Slice 23 (review item 7): `bg-bg/75` — the 75% wash behind the gallery panel and
- * the event card (Slice 13: "a plain wash, no backdrop blur") — and `text-dim/70` —
+ * the event card (Slice 13: "a plain wash, no backdrop blur") — and text-dim at 70% —
  * the provenance lines meant to recede — compiled to NOTHING. Every colour in
  * `tailwind.config.js` was a bare `var(--c-…)`, Tailwind 3 cannot put an alpha into
  * a colour it cannot parse, and it drops such a class without a word: no rule, no
  * warning. The panel sat on the full-brightness track, the provenance out-shone the
- * line above it, and nothing anywhere said so.
+ * line above it, and nothing anywhere said so. (Once it compiled, 70% measured
+ * 3.45:1 — under WCAG AA — and was ruled up to 90%, 4.82:1, on 2026-10-08.)
  *
  * jsdom applies no stylesheet, so no component test can see a missing rule. The
  * stylesheet itself can: `?inline` returns `index.css` compiled by the real pipeline
@@ -30,7 +31,7 @@ const SOURCES = import.meta.glob<string>(
 
 /**
  * A colour utility with an opacity modifier, numeric or arbitrary: `bg-bg/75`,
- * `text-dim/70`. Matched as the BASE class — a variant prefix is left off, because
+ * `text-dim/90`. Matched as the BASE class — a variant prefix is left off, because
  * a variant compiles only if its base does. Fractions on non-colour utilities
  * (widths, insets) and arbitrary values (`text-[10px]`) do not match.
  */
@@ -64,7 +65,7 @@ describe("opacity-modified colour classes", () => {
     const arbitrary = "text-dim" + "/[0.7]";
     const sample = [
       "bg-bg/75",
-      "hover:" + "text-dim/70",
+      "hover:" + "text-dim/90",
       arbitrary,
       "w-" + "1/2",
       "text-[10px]",
@@ -72,7 +73,7 @@ describe("opacity-modified colour classes", () => {
     ].join(" ");
     expect(modifiedColorClasses(sample)).toEqual([
       "bg-bg/75",
-      "text-dim/70",
+      "text-dim/90",
       arbitrary,
     ]);
   });
