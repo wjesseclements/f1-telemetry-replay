@@ -239,7 +239,7 @@ export function Hud({ replay }: HudProps) {
     // the stacked region between the header and the transport bar — the list
     // scrolls inside whatever it resolves to:
     //
-    //     max(40%, min(13.75rem, 100% - max(12.5rem, 30dvh)))
+    //     max(40%, min(13.75rem, 100% - max(12.5rem, 30dvh + 1px)))
     //
     //  - 40%, the cap. Uncapped, a full field took the whole region: the canvas
     //    measured 0 px at 375x812 and the strip ran on under the transport bar.
@@ -249,23 +249,27 @@ export function Hud({ replay }: HudProps) {
     //    of its lap, + `p-3` + the border); 40% alone cut it to 178 px at 375x667
     //    and hid the speed trace behind a scroll. At 375x667 the same floor holds
     //    a full field's focused readout whole too (a 195 px list).
-    //  - 100% - max(12.5rem, 30dvh), the floor's bound: the floor never pushes
-    //    the track under the track's own minimum, which is 200 px, or 30% of the
-    //    screen's height on a screen taller than 667 px. That is the layout
-    //    check's canvas floor, term for term (Slice 25: one floor, not two). With
-    //    only the 200 px half, a taller header lets the track fall below the
-    //    floor. Measured with 22 cars and the picker's "loaded" line at 375x690:
-    //    204 px against a 207 px floor. Both terms give 207. Unbounded, the floor
-    //    is taller than a short region's whole height: 22 cars measured the
-    //    canvas at 0 px at 667x375 and 740x360 when those stacked.
+    //  - 100% - max(12.5rem, 30dvh + 1px), the floor's bound: the floor never
+    //    takes the track under the layout check's canvas floor, max(200 px, 30%
+    //    of the viewport's height). It is the SAME floor (Slice 25: one floor,
+    //    not two; `scripts/layout/states.ts` says so from its side), and the
+    //    check's rule stays strict. With only the 200 px half, 22 cars at 375x667
+    //    left the track 200.0 px against the check's 200.1, and a taller header
+    //    (the picker's "loaded" line at 375x690) left it 204 against 207. The 1px
+    //    is the canvas's: TrackCanvas sizes it from its cell's `clientHeight`, a
+    //    whole-px snap that can lose up to 1 px, and with the bound at a bare
+    //    30dvh the cell measured 200.1 and the canvas 200.0. Only the fractional
+    //    term needs it (12.5rem is whole), so 360x640, where 30% is 192 px, is
+    //    untouched. Unbounded, the floor is taller than a short region's whole
+    //    height: 22 cars measured the canvas at 0 px at 667x375 and 740x360 when
+    //    those stacked.
     //
     // Measured: 375x812 and taller are as the bare 40% left them (a three-car
-    // window scrolls its last ~48 px). At 375x667 the one-car strip is whole, and
-    // 22 cars leave the track's cell 200.1 px. The canvas snaps that to 200 whole
-    // px, which the check allows. At 360x640 (30% is 192 px) the two floors meet
-    // and the track wins: the one-car list is 192 of 194 px, the track 200. A
-    // screen 5:4 or wider never stacks (`side:`, `tailwind.config.js`), and the
-    // sidebar needs no cap (`side:max-h-none`): its row bounds it.
+    // window scrolls its last ~48 px). At 375x667 the one-car strip is whole. At
+    // 360x640 the two floors meet and the track wins: the one-car list is 192 of
+    // 194 px, the track 200. A screen 5:4 or wider never stacks (`side:`,
+    // `tailwind.config.js`), and the sidebar needs no cap (`side:max-h-none`):
+    // its row bounds it.
     //
     // The sidebar has two widths. From `md` it is 224 px (`md:w-56 md:p-4`) with
     // CarEntry's column readout, as before. Below `md` (a phone on its side, a
@@ -285,7 +289,7 @@ export function Hud({ replay }: HudProps) {
     // `layoutVariants.test.ts`).
     <aside
       aria-label="Telemetry"
-      className="flex max-h-[max(40%,min(13.75rem,100%-max(12.5rem,30dvh)))] shrink-0 flex-col border-t border-line bg-panel p-3 side:max-h-none side:w-64 side:border-l side:border-t-0 side:py-2 md:w-56 md:p-4"
+      className="flex max-h-[max(40%,min(13.75rem,100%-max(12.5rem,30dvh+1px)))] shrink-0 flex-col border-t border-line bg-panel p-3 side:max-h-none side:w-64 side:border-l side:border-t-0 side:py-2 md:w-56 md:p-4"
     >
       {/* `overflow-y-auto` + `min-h-0` because twenty cars are taller than any
           sidebar or strip: the list shrinks to what the aside allows and scrolls,

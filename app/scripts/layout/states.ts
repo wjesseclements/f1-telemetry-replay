@@ -76,19 +76,17 @@ const CANVAS_MIN_HEIGHT_PX = 200;
  * …and at least this share of the viewport's height (244 px on a 812 px phone).
  * The fixed floor alone would let a tall screen pass with the HUD owning most of
  * it; the track is the product, so it keeps at least ~a third of the height.
- * The stacked strip's cap is bounded by both terms (`Hud.tsx`, Slice 25), so the
- * layout and this check enforce the same floor.
+ *
+ * ONE floor (Slice 25): the stacked strip's cap in `src/components/Hud.tsx`
+ * reserves exactly max(CANVAS_MIN_HEIGHT_PX, CANVAS_MIN_HEIGHT_FRAC of the
+ * height) for the track, as `max(12.5rem, 30dvh + 1px)`. Change one, change
+ * both. The layout meets this rule; the rule was not loosened to meet the
+ * layout. The 1px is the canvas's own: `TrackCanvas` sizes it from its cell's
+ * whole-px `clientHeight`, and with a bare `30dvh` the cell measured 200.1 px at
+ * 375x667 and the canvas 200.0. If the canvas is ever sized from fractional
+ * boxes, the 1px becomes 1 px of strip given away for nothing; drop it then.
  */
 const CANVAS_MIN_HEIGHT_FRAC = 0.3;
-/**
- * How far under its floor the canvas may measure: up to 1 px, not including 1.
- * `TrackCanvas` sizes the canvas from its cell's `clientHeight`, which is the
- * cell snapped to whole CSS px. A cell that meets the floor exactly can draw a
- * canvas just under it. At 375x667 the floor is 30% = 200.1 px, the cell is
- * 200.1 px, and the canvas is 200 px. A floor in whole px (200) still needs a
- * whole 200.
- */
-const CANVAS_SNAP_PX = 1;
 /**
  * The canvas's minimum share of the viewport's width. The side-by-side layout
  * gives the HUD a fixed column: 224 px from `md` (`md:w-56`), which is under half
@@ -340,18 +338,12 @@ export async function stateB(
       `expected exactly one canvas, found ${probe.canvasCount}`,
     );
   } else {
-    const height = probe.canvas.height;
-    const pass = height > minHeight - CANVAS_SNAP_PX;
     record(
       ctx,
       "B",
       "canvas height",
-      pass,
-      `${height.toFixed(1)} px (min ${minHeight.toFixed(1)})` +
-        // Only on the rows the snap decided, so no other row's text changes.
-        (pass && height < minHeight
-          ? ` · within the ${CANVAS_SNAP_PX} px snap`
-          : ""),
+      probe.canvas.height >= minHeight,
+      `${probe.canvas.height.toFixed(1)} px (min ${minHeight.toFixed(1)})`,
     );
     record(
       ctx,
