@@ -56,6 +56,19 @@ from FastF1 data. PRD.md holds the detail; this file holds the law.
   is right. Its header carries the procedure and the measured noise floor; Slice 9h's
   PLAN entry carries the baseline to compare a re-run against. Same family as the three
   above: outside `app/`, no gate adopts it.
+- Measure the **layout in a real browser**, which jsdom cannot (every jsdom box is
+  0x0): `cd app && npm run build && npm run check:layout`. It drives the system Chrome
+  headless over the DevTools Protocol (zero dependencies; `CHROME_PATH` overrides)
+  against the built `dist/`, at 375x812, 1280x720 and 1440x900, through first load,
+  the largest gallery scenario loaded by its card, and the gallery reopened; every
+  assertion prints PASS/FAIL with what it measured. Offline inside the browser too:
+  every host but loopback is unresolvable (`--host-resolver-rules` +
+  `--no-proxy-server`), and any request off the preview origin — page, workers,
+  frames — is a FAIL, as is an uncaught page exception. Exit 1 = the run finished
+  with a FAIL row (read the table); 2 = it did not finish (no build, no Chrome, the
+  90 s cap — read the ABORTED line). About 2 s. **Not yet in `npm run check`**: it
+  fails by design on the two layout defects Slice 23 fixes; Slice 22's PLAN entry
+  carries the failing baseline.
 
 ## Architecture rules (non-negotiable — see PRD §Load-bearing decisions)
 

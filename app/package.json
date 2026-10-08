@@ -15,7 +15,8 @@
     "test": "vitest",
     "check": "npm run typecheck && npm run lint && npm run format:check && npm run test -- --run --coverage && vite build",
     "format:check": "prettier --check \"{src,scripts}/**/*.{ts,tsx}\"",
-    "validate:replay": "vite-node scripts/validate-replay.ts --"
+    "validate:replay": "vite-node scripts/validate-replay.ts --",
+    "check:layout": "vite-node scripts/layout-check.ts"
   },
   "dependencies": {
     "react": "^18.3.1",
