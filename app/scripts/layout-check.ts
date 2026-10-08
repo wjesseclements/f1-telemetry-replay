@@ -4,7 +4,7 @@
  * jsdom has no layout engine: every box it reports is 0x0, so the app's tests can
  * prove WHAT renders but never WHERE. This drives the system's headless Chrome
  * over the DevTools Protocol against the BUILT app (`dist/`, served by Vite's own
- * `preview()`) and asserts the geometric facts a visitor depends on, at five
+ * `preview()`) and asserts the geometric facts a visitor depends on, at seven
  * viewports (`VIEWPORTS`) and in three states (`layout/states.ts`):
  *
  *   A  first load — the gallery panel open over the committed fixture;
@@ -76,21 +76,26 @@ const CHROME_LAUNCH_MS = 15_000;
 const TEARDOWN_STEP_MS = 2_000;
 
 // ── viewports ────────────────────────────────────────────────────────────────
-// Phone, short laptop, desktop. CSS px. Slice 25 added the short phone and the
-// landscape phone, where the stacked strip's floor and the side-by-side switch
-// (`side:` in `tailwind.config.js`: `md`, or a screen 5:4 or wider) matter most.
+// Phone, short laptop, desktop. CSS px. Then Slice 25's four, APPENDED so the
+// first three print exactly as before: the short portrait phones 375x667 (where
+// the stacked strip's floor meets the track's) and 360x640 (the narrowest, and
+// the shortest the one-line header, `onerow:`, serves), and the landscape phones
+// 667x375 and 740x360 (the shortest common one), which go side by side (`side:`
+// in `tailwind.config.js`: `md`, or a screen 5:4 or wider).
 const VIEWPORTS: readonly { width: number; height: number }[] = [
   { width: 375, height: 812 },
   { width: 1280, height: 720 },
   { width: 1440, height: 900 },
   { width: 375, height: 667 },
   { width: 667, height: 375 },
+  { width: 740, height: 360 },
+  { width: 360, height: 640 },
 ];
 /**
  * Below this width the emulated device is a phone (`mobile: true`: meta-viewport
  * honoured, overlay scrollbars). 768 is Tailwind's `md`. The app switches to side
- * by side there, or at 5:4 and wider at any width, so 667x375 is a phone
- * emulated side by side.
+ * by side there, or at 5:4 and wider at any width, so 667x375 and 740x360 are
+ * phones emulated side by side.
  */
 const MOBILE_BELOW_PX = 768;
 
