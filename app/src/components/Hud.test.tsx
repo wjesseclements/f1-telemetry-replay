@@ -301,20 +301,76 @@ describe("Hud layout containment (Slice 23)", () => {
     );
   });
 
-  it("caps the strip with a floor, and bounds the floor by the track", () => {
+  it("caps the strip with a floor, and bounds the floor by the track's minimum", () => {
     // Each term was measured failing on its own (headless Chrome, stacked layout):
     // the bare `40%` cut the one-car fixture's 219 px strip to 178 px at 375x667,
     // hiding its speed trace behind a scroll; `max(40%, 13.75rem)` fixed that and
     // took a 22-car track back to 0 px at 667x375 and 740x360, the very defect the
-    // cap exists for. jsdom has no layout and the gated layout check measures
-    // neither viewport, so this pins the expression; the reasoning is in Hud.tsx.
+    // cap exists for. The bound is the layout check's own canvas floor (Slice
+    // 25), + 1px for the canvas's whole-px sizing: with only `12.5rem` the track
+    // came out 0.1 px under it at 375x667, and with a bare `30dvh` the canvas
+    // still measured 200.0 against 200.1 (Slice 25's f95f20e run: 201.0 strict
+    // with the +1px). Since the one-line header (`onerow:`) no gated viewport
+    // binds this bound any more — 375x667 now has a 256 px track — and reverting
+    // it to `100%-12.5rem` passes check:layout 119/119 (measured), so THIS class
+    // pin is its only guard. Hud.tsx has the reasoning.
     renderHud(replay);
     expect(
       screen.getByRole("complementary", { name: "Telemetry" }),
     ).toHaveClass(
-      "max-h-[max(40%,min(13.75rem,100%-12.5rem))]",
-      "md:max-h-none",
+      "max-h-[max(40%,min(13.75rem,100%-max(12.5rem,30dvh+1px)))]",
+      "side:max-h-none",
     );
+  });
+
+  it("becomes a sidebar at `side:`, and `md:` only resizes it", () => {
+    // Slice 25. `side:` (md, or a screen 5:4 or wider) is the layout's one switch,
+    // so every class that makes this a sidebar carries it and a phone on its side
+    // cannot end up half switched. Below md the sidebar is 256 px with `py-2`: the
+    // width window in which the wrapped readout's rows hold still whatever the
+    // speed, and the padding that leaves a 667x375 list room for its 227 px
+    // block (both measured; Hud.tsx). From md it is 224 px with `p-4`, as before.
+    // jsdom applies no media query, so this pins the classes; the layout check
+    // measures what they do, and `layoutVariants.test.ts` that `md:` wins.
+    renderHud(replay);
+    const aside = screen.getByRole("complementary", { name: "Telemetry" });
+    expect(aside).toHaveClass(
+      "side:max-h-none",
+      "side:w-64",
+      "side:py-2",
+      "side:border-l",
+      "side:border-t-0",
+    );
+    expect([...aside.classList].filter((c) => c.startsWith("md:"))).toEqual([
+      "md:w-56",
+      "md:p-4",
+    ]);
+  });
+
+  it("turns the focused readout into a column at `md:`, never at `side:`", () => {
+    // Slice 25. Below md the sidebar keeps the strip's WRAPPING readout: the
+    // column readout measured 300–333 px tall on a phone on its side, in a
+    // 231–283 px list, so it was never whole and its speed trace never showed.
+    // So the readout switches at `md:` while the layout around it switches at
+    // `side:`, and nothing inside it may switch at `side:`.
+    const { container } = renderHud(replay);
+    const readout = container.querySelector("dl");
+    expect(readout).toHaveClass(
+      "md:flex-col",
+      "md:flex-nowrap",
+      "md:items-stretch",
+      "md:gap-3",
+    );
+    const pedal = screen
+      .getByRole("meter", { name: "Throttle" })
+      .closest("dd")?.parentElement;
+    expect(pedal).toHaveClass("md:w-full", "md:flex-none");
+    const inside = [readout!, ...readout!.querySelectorAll("*")];
+    expect(
+      inside.flatMap((el) =>
+        [...el.classList].filter((c) => c.startsWith("side:")),
+      ),
+    ).toEqual([]);
   });
 });
 

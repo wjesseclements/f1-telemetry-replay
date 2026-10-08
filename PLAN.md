@@ -4819,20 +4819,6 @@ the 2024 pit cycle's swaps reading as moves. The pre-registered 300 ms stands
 untouched — no tune requested. **"NO SIG" ratified** as the compact spelling.
 Push + PR + auto-merge authorised.
 
-### [ ] Slice 25 — short and landscape phones (filed by Slice 23's ruling)
-
-**Filed 2026-10-08 by the human's ruling on Slice 23's phone-strip cap.** Slice 23's
-layout gate covers 375x812, 1280x720 and 1440x900 only, so the two places its cap
-matters most go unmeasured. Two decisions to argue with numbers when it runs:
-- **One floor, not two.** At 375x667 the layout guarantees the track exactly 200 px
-  (`100% − 12.5rem`), but `check:layout` requires max(200 px, 30% of the height) =
-  **200.1 px** — adding the viewport today fails by 0.1 px. The layout and the check
-  must agree on the track's minimum before 375x667 can join the gate.
-- **A landscape layout.** Below `md` the page stacks, so a 667x375 or 740x360 phone gets
-  a 117–126 px track and about one tower row with 22 cars. Likely shape: track and
-  tower side by side when the screen is wide but short (an orientation/height query,
-  not a width breakpoint). Then 667x375 joins the gate.
-
 ### [ ] Slice 20 — colour distinction under the luminance floor
 
 **Filed 2026-09-08 by Slice 17's browser pass.** The floor fixes visibility, not
@@ -5418,7 +5404,177 @@ merge).** All seven ACCEPTED as built:
 it changes `track.pitLane` bytes, so it needs its own slice; a field-anchored
 timing-line check for declined cars' laps (both in the backlog).
 
+### [x] Slice 25 — short and landscape phones (done 2026-10-08)
+
+**Filed 2026-10-08 by the human's ruling on Slice 23's phone-strip cap. Designed as
+three candidates and a judged synthesis, then built as ruled the same day.**
+
+Slice 23's gate measured 375x812, 1280x720 and 1440x900 only. Below `md` the page
+stacked whatever its shape, so a phone on its side got a 117–158 px track and less than
+one tower row with 22 cars. At 375x667 the layout and the check disagreed about the
+track's floor by 0.1 px.
+
+Three candidates were built and measured with one shared instrument: 33 cells, 11
+viewports × 3 scenarios, every value diffed against main.
+- **A**: a `landscape-short` sidebar, plus the floor fix.
+- **B**: side by side on any screen 5:4 or wider, plus a one-row header.
+- **C**: keep the stack, use height variants, hide the trace and compare.
+
+A judge reproduced all three. It added 12 robustness sizes, computed the drawn circuit
+through the shipped `buildScene` and `fitTransform`, and measured a synthesis, **S1**:
+B's trigger and header with A's sub-md sidebar readout. S1 scored 8.5, against B 7.5, A
+6.5 and C 3.5. C was rejected: landscape stayed at 151–167 px, 568x320 regressed 95 → 48
+px, and it hid compare on every screen up to 480 px tall.
+
+**Rulings (human, 2026-10-08, recorded before building).** All seven recommendations
+accepted:
+1. **Build S1:** candidate B's trigger and header, plus candidate A's sub-md sidebar
+   readout. The aside is `side:w-64 side:py-2 md:w-56 md:p-4`. CarEntry's readout `<dl>`
+   and Pedal go back on `md:`, so the sidebar below md keeps the wrapping readout.
+   `gap_m` stays `side:hidden`.
+2. **Trigger:** side by side whenever the screen is 5:4 or wider, at any width. `side:`
+   = `(min-width:768px),(min-aspect-ratio:5/4)`, registered with plugin `addVariant`,
+   never `theme.screens`. A raw screen disables Tailwind's `min-*`/`max-*` variants
+   project-wide; that was measured.
+3. **Header:** the event · session · drivers line keeps to ONE row with an ellipsis on
+   5:4+ screens.
+4. **Also on short portrait phones:** one row when the screen is ≤ 43.75rem (700 px)
+   tall. This is ONE variant, `onerow:` =
+   `(min-aspect-ratio:5/4),(max-height:43.75rem)`, so the two cases cannot drift. C's
+   `min-w-24` keeps a narrow header from squeezing the line to "M…". The full text stays
+   in the DOM.
+5. **Floor:** candidate A's fix. The stacked strip's bound becomes `100% - max(12.5rem,
+   30dvh + 1px)`. The +1px is the measured whole-px `clientHeight` snap of the canvas
+   cell. The check's rule stays strict and UNCHANGED, so B's CANVAS_SNAP_PX is dropped.
+   states.ts records that the two are one floor.
+6. **Gate:** 375x667, 667x375, 740x360 and 360x640 join `check:layout`'s VIEWPORTS,
+   APPENDED after the existing three so the old rows print first and stay
+   byte-identical. Every new row must pass, or the reason is reported; nothing gets
+   loosened.
+7. **Compare stays available everywhere** (no hiding features by height). The 22-car
+   focused readout still being cut on phones is a filed follow-up (scroll the focused
+   car into view on focus change), not built here.
+
+**What was built.** Five commits; the PR squashes them.
+- **The side-by-side trigger** (B, 4950414). `side:` in `tailwind.config.js` carries
+  every class that makes the page side by side: App's row and the aside's cap, border
+  and width. Why 5:4: below md, with the same header in both layouts, side by side draws
+  the gallery's widest circuit (Monza, 2:1 on screen) at least as large as stacking at
+  every width from 5:4 up. The binding case is 767 px wide beside the shipped 256 px
+  sub-md sidebar: 419 against 410 px at 5:4, while at 6:5 stacking wins, 460 against
+  419; the crossover is about 1.24. (Candidate B's 224 px sidebar had a 41 px margin at
+  5:4; S1's keeps 9 — the final review caught the first draft quoting B's numbers.)
+  Every portrait screen stays stacked exactly as before.
+- **The sub-md sidebar** (S1, 30c20b5). It is 256 px with `py-2`, and keeps the strip's
+  wrapping readout because CarEntry switches its readout to a column at `md:`, not
+  `side:`.
+  - Under B, the 224 px column readout measured 300–333 px tall in a 231–283 px list:
+    never whole, its trace never shown.
+  - A measured the window: from 240 to 272 px wide, the wrapped focused block holds at
+    227 px whatever the speed. At 320 px it jumps 194 ↔ 227 px each time the car crosses
+    100 km/h, and at 224 px the pedals stop sharing a row.
+  - Tailwind prints screen variants after plugin ones, so `md:w-56 md:p-4` win from 768
+    px up. That order is pinned in `layoutVariants.test.ts`.
+- **One floor** (A, f95f20e). See ruling 5. At 375x667 with 22 cars it printed "201.0 px
+  (min 200.1)", a plain PASS. B's "200.0 (min 200.1) · within the 1 px snap" is gone.
+  Only the fractional term carries the 1px (12.5rem is whole), so 360x640 was untouched.
+  If the canvas is ever sized from fractional boxes, the 1px becomes 1 px of strip given
+  away, and the comment says to drop it then. **Since the one-line header, the bound
+  binds at no gated viewport** (375x667's track is 256 px, not 200): reverting it to
+  `100%-12.5rem` still passes `check:layout` 119/119 (measured), so the class pin in
+  `Hud.test.tsx` is its only guard — the final review caught a comment claiming the gate
+  covered it.
+- **One header line** (B + C, 4506614). `onerow:min-w-24 onerow:flex-1 onerow:truncate`.
+  C's `basis-0` adds nothing over `flex-1` (`flex: 1 1 0%`). B's `wide:` is removed.
+- **The gate** (B + 24d1670). Seven viewports, the four new ones appended. 360x640 can
+  join only because the one-line header is in: on main its first-load last card is not
+  reachable.
+
+**Evidence.**
+- **`npm run check` is green.** 0 warn/error lines in the full log. Vitest 4.1.10, 55
+  files, 966 tests. Engine coverage 100% per file. pytest untouched (401).
+- **`check:layout` is 119/119 in about 4.1–4.4 s** (51/51 in about 2.2 s on main). The
+  51 rows at 375x812, 1280x720 and 1440x900 are byte-identical to main's once the port
+  is normalised (sha256 3bc0039a…). The new 7-viewport gate run against main's build
+  fails 8 rows: 375x667 canvas; 667x375 canvas, panel C and last card; 740x360 canvas,
+  panel C and last card; 360x640 last card.
+- **The shared matrix against main** (digest 7e39bea8…, reproduced on two runs) shows
+  312 differing values. **1280x720 and 1440x900 are UNCHANGED. 375x812 and 390x844 are
+  UNCHANGED, header included**: 812 and 844 are taller than 700 px, so `onerow:` does
+  not apply. 0 values got worse than main.
+- **Cell by cell** (track px, then drawn circuit):
+  - 22 cars at 667x375: 126 stacked (circuit 68x34) → 411x278 side by side (circuit
+    **319x160**). Focused LEC cut 157/157 → 33/227. Reopened panel 126 → **278**.
+  - 22 cars at 740x360: 117 (50x25) → 484x263 (**342x171**). LEC cut 48. Panel 117 →
+    **263**.
+  - 22 cars at 760x360: 127 → 263 (**342x171**).
+  - 22 cars at 375x667: 200 → **256** (216x108 → 283x142).
+  - 22 cars at 360x640: 200 → **229**.
+  - 844x390 and 915x412 with 22 cars: 241 → 293 and 255 → 315, from the header alone.
+    Their 1–3-car cells are unchanged.
+  - The fixture at 375x667: 225 → **257**.
+  - The fixture at 360x640: 200 → 230, the one-car readout now whole (list 192 → 194 of
+    194) with its trace.
+  - The fixture at 667x375: 148 stacked → 411x278 side by side, readout and trace whole.
+  - **Every 1–3-car readout and speed trace is whole at 667x375, 740x360 and 760x360: 6
+    of 6 cells (main: 0).**
+  - The first-load panel is 148–158 → 263–278 px on every landscape phone below md.
+- **Robustness, 13 sizes outside the gate:**
+  - 568x320: 22-car circuit 0x0 → 134x67, panels 74–95 → 159.
+  - 600x480: side by side, every readout whole.
+  - 700x500, 720x540 and 760x600: side by side, every readout whole.
+  - 1280x480, 1366x657 and 507x768: unchanged.
+  - 1024x600 and 1024x768: only the 22-car header changes (82 → 54, line truncated).
+  - 457x412: stays stacked; 22 cars go 109 → 133 from the header.
+- **Draw-call fixture digests unchanged** (closed `cb43a0f8…`, open `e30b5b6e…`,
+  captured before the first edit and after the last). The canvas code is untouched.
+
+**Amendments, flagged.**
+- **The no-squeeze header (ruling 4) costs the narrowest windows a row.** At 568x320 and
+  600x480, reserving 6rem pushes "Load replay JSON" to a second header row: header 54 →
+  86 px, so the track is 32 px shorter than the judge's S1. At 568x320 that is 191 → 159
+  px, and the 22-car circuit 198x99 → 134x67. S1 showed "Monz…" there instead. It is
+  still far ahead of main (0x0 → 134x67). From 640 px wide, every landscape phone keeps
+  one row. Built as ruled; open for a ruling if the human prefers the squeeze on those
+  windows.
+- **The WIDE half of `onerow:` is invisible to the gate:** every gated landscape phone
+  is also ≤ 700 px tall, so the SHORT half alone would keep it 119/119;
+  `layoutVariants.test.ts` pins the compiled query.
+- **The most common landscape phones (844x390, 915x412) are ≥ 768 wide,** so they get
+  the md 224 px column readout: even the 1-car readout is cut 39/17 px and its trace not
+  shown — unchanged from main and outside the rulings; filed in the backlog.
+- **360x640's first-load "last card reachable" passes by 4 px** locally (card top 86.0,
+  clip 82.0). It has not yet run on CI's ubuntu-latest. If CI fails it, drop the
+  viewport rather than loosen the rule.
+- **B's "no `md:` in any shipped source" test is replaced** by narrower pins:
+  - on the rendered aside, every sidebar class is `side:`, and `md:` only resizes it
+    (`md:w-56`, `md:p-4`);
+  - inside the focused readout, the column is `md:` and nothing is `side:`;
+  - in the compiled CSS, `onerow:` maps to its media query and the md sizes print after
+    the sub-md ones.
+  Each is mutation-checked.
+- **Still open:**
+  - Near-square split-screen halves (457x412) stay stacked.
+  - A 5:4 window narrower than 512 px would put the canvas under half its width (no
+    phone is that shape; none is gated).
+  - The meta line truncates on md+ 5:4 screens with a full field (1024x768: after
+    "TSU…").
+  - The 22-car focused readout is still cut: 33–48 px on landscape phones, 67 at 375x667
+    and 360x640, 61 and 44 at 812–844 portrait.
+  - iOS Safari's dynamic toolbar was not exercised.
+
+**Follow-ups filed in the backlog:** scroll the focused car into view on focus change
+(ruling 7); the md column readout on landscape phones 768 px and wider.
+
 ## Backlog (ideas — not committed)
+- **Scroll the focused car into view on focus change** (Slice 25's ruling 7). A full
+  field's focused readout is still cut on every phone — 33–48 px on landscape phones,
+  61–67 px on portrait — because it sorts wherever its car runs and the list does not
+  follow it.
+- **The md column readout on landscape phones 768 px and wider** (Slice 25): 844x390
+  and 915x412 — the most common landscape phones — get the 224 px column readout, so
+  even a 1-car readout is cut 39/17 px and its speed trace never shows. Unchanged from
+  main; the sub-md wrapping readout (Slice 25's 256 px sidebar) is the candidate.
 - **`pit_lane`'s racing line still comes from `cars[0]`'s lap table** (Slice 24's last
   implicit cars[0]-as-reference consumer): move it to `track.referenceLap`. It changes
   `track.pitLane` bytes, so it needs its own asset regeneration and watch.
