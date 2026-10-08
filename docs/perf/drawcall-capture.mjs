@@ -36,6 +36,11 @@
  *   cd app && npx vite-node ../docs/perf/drawcall-capture.mjs \
  *       auto public/data/monza_full_field.json 19
  *
+ * A subset that leaves out the file's reference car (`track.referenceLap.car >= N`,
+ * Slice 24) cannot keep the field — it names a car that is no longer there — so the
+ * run drops it, falls back to the legacy reference, and prints a `reference DROPPED`
+ * line, because that point's ribbon is then not the full file's.
+ *
  * `auto` takes the mode from the file's own `meta.loop`. The mean per-frame call count
  * it prints is directly comparable to the per-frame table `fps-probe.js` produces in a
  * browser, and that is the point of having it here: **the draw-call half of a
@@ -216,14 +221,35 @@ function capture(mode, file, cars) {
   const json = JSON.parse(
     readFileSync(file === undefined ? fileURLToPath(FIXTURE) : file, "utf8"),
   );
+  /** The file's reference lap, when the car subset had to drop it. */
+  let dropped = null;
   // The ONLY difference between the two fixture modes: same fixture, same geometry,
   // same clock — a different painter for the focused car (Slice 9b). `auto` leaves the
   // file's own `meta.loop` alone, which is the only honest choice for a real file.
   if (mode !== "auto") json.meta.loop = mode;
   // The car-count sweep, taken the way `fps-probe.js` documents it: subsets off ONE
-  // file, so every point shares a window, a duration and `cars[0]` — and therefore the
-  // same ribbon, bounds, fit and corner chrome. Car count is the only variable.
-  if (cars !== undefined) json.cars = json.cars.slice(0, cars);
+  // file, so every point shares a window, a duration and its reference lap — and
+  // therefore the same ribbon, bounds, fit and corner chrome. Car count is the only
+  // variable.
+  if (cars !== undefined) {
+    json.cars = json.cars.slice(0, cars);
+    // `track.referenceLap` names its car BY INDEX (Slice 24). A prefix keeps every
+    // index below `cars`, so the field survives whenever its car does. When the
+    // subset drops the reference car there is nothing to remap the field TO, and
+    // keeping it would fail validation — so it is deleted, and the loader's legacy
+    // synthesis (the subset's cars[0], first lap) applies. Said out loud: that sweep
+    // point's ribbon is not the full file's, which is the one way car count stops
+    // being the only variable. Remapping was the alternative and is not one: the car
+    // the field names is not in the subset. No gallery asset currently names a car
+    // past cars[0] — all five reference cars[0]; the red flag's is RUS, 89-175.6 s —
+    // so every subset of them keeps its field, and the line below is reached only by
+    // a hand-made or future file whose reference car is not listed first.
+    const reference = json.track.referenceLap;
+    if (reference !== undefined && reference.car >= json.cars.length) {
+      delete json.track.referenceLap;
+      dropped = reference;
+    }
+  }
   const replay = parseReplay(json);
 
   globalThis.Path2D = HashingPath2D;
@@ -259,6 +285,7 @@ function capture(mode, file, cars) {
     paths2d: HashingPath2D.constructed,
     counts: [...counts].sort(),
     finalClock: clock,
+    dropped,
   };
 }
 
@@ -273,6 +300,13 @@ if (mode !== "closed" && mode !== "open" && mode !== "auto") {
 const result = capture(mode, file, cars);
 const perFrame = (n) => (n / FRAMES).toFixed(2);
 console.log(`mode          ${result.mode}  (${result.cars} car(s))`);
+if (result.dropped !== null) {
+  const { car, fromT, toT } = result.dropped;
+  console.log(
+    `reference     DROPPED — the file's cars[${car}] ${fromT}-${toT} s is not in the ` +
+      `first ${result.cars}; the legacy reference applies, so this ribbon is not the full file's`,
+  );
+}
 console.log(
   `frames        ${FRAMES} x ${FRAME_MS}ms  (final clock ${result.finalClock.toFixed(3)}s)`,
 );

@@ -31,6 +31,55 @@ def normalise_compound(value: Any) -> str:
     return UNKNOWN_COMPOUND
 
 
+def in_window_laps(
+    numbers: "Sequence[Any]",
+    starts_s: "Sequence[float]",
+    lap_times_s: "Sequence[float]",
+    window: "tuple[float, float]",
+) -> "list[int]":
+    """
+    Row indices of the laps whose interval intersects `window`, in order — the ONE
+    rule for "a lap in this window", shared by `lap_context` (the file's `laps`)
+    and `reference_lap.lap_facts` (the reference-lap candidates), so the laps the
+    selector considers are exactly the laps the file carries.
+
+    A lap's end is its start plus its LapTime; when LapTime is missing (a
+    retirement, a red flag) the next placeable lap's start stands in, and a missing
+    end on the last lap keeps the lap — a car that never finished its final lap was
+    still on it. Rows with a missing LapStartTime are dropped: a lap that cannot be
+    placed on the clock cannot answer `lapAt`. The table must be strictly
+    increasing in LapNumber and LapStartTime over its placeable rows.
+    """
+    t0, t1 = float(window[0]), float(window[1])
+    starts = np.asarray(starts_s, dtype=float)
+    times = np.asarray(lap_times_s, dtype=float)
+    if not (len(numbers) == len(starts) == len(times)):
+        raise TelemetryShapeError(
+            "lap table columns disagree about the number of laps"
+        )
+
+    idx = [int(i) for i in np.flatnonzero(np.isfinite(starts))]
+    if any(
+        starts[b] <= starts[a] or int(numbers[b]) <= int(numbers[a])
+        for a, b in zip(idx, idx[1:])
+    ):
+        raise TelemetryShapeError(
+            "lap table must be strictly increasing in LapNumber and LapStartTime"
+        )
+
+    kept: "list[int]" = []
+    for pos, i in enumerate(idx):
+        if np.isfinite(times[i]):
+            end = float(starts[i] + times[i])
+        elif pos + 1 < len(idx):
+            end = float(starts[idx[pos + 1]])
+        else:
+            end = math.inf
+        if starts[i] < t1 and end > t0:
+            kept.append(i)
+    return kept
+
+
 def lap_context(
     numbers: "Sequence[Any]",
     starts_s: "Sequence[float]",
@@ -50,10 +99,8 @@ def lap_context(
     non-reference car: its lap-in-progress at t0 began before the window, and the
     true value is emitted rather than a clamp that would lie about the lap.
 
-    A lap is kept when its interval intersects the window. A lap's end is its
-    start plus its LapTime; when LapTime is missing (a retirement, a red flag)
-    the next lap's start stands in, and a missing end on the last lap keeps the
-    lap — a car that never finished its final lap was still on it.
+    A lap is kept when its interval intersects the window — `in_window_laps`,
+    which owns the rule (missing LapTime, missing LapStartTime, ordering).
 
     Stints are inferred from Compound and TyreLife, the columns the schema's
     fields come from: a new stint starts where the compound changes, or where
@@ -62,41 +109,19 @@ def lap_context(
     (verified against 2024 Silverstone R: a fresh set's first lap reads 1), while
     the displayed age counts laps COMPLETED on the set — and is omitted when
     TyreLife is missing: an unknown age is not a fresh set.
-
-    Rows with a missing LapStartTime are dropped first: a lap that cannot be
-    placed on the clock cannot answer `lapAt`.
     """
-    t0, t1 = float(window[0]), float(window[1])
     starts = np.asarray(starts_s, dtype=float)
-    times = np.asarray(lap_times_s, dtype=float)
     lives = np.asarray(tyre_lives, dtype=float)
-    if not (len(numbers) == len(starts) == len(times) == len(compounds) == len(lives)):
+    if not (len(numbers) == len(starts) == len(compounds) == len(lives)):
         raise TelemetryShapeError(
             "lap table columns disagree about the number of laps"
         )
 
-    placeable = np.isfinite(starts)
-    idx = [int(i) for i in np.flatnonzero(placeable)]
-    if any(
-        starts[b] <= starts[a] or int(numbers[b]) <= int(numbers[a])
-        for a, b in zip(idx, idx[1:])
-    ):
-        raise TelemetryShapeError(
-            "lap table must be strictly increasing in LapNumber and LapStartTime"
-        )
-
-    kept: "list[tuple[int, float, str, float]]" = []
-    for pos, i in enumerate(idx):
-        if np.isfinite(times[i]):
-            end = float(starts[i] + times[i])
-        elif pos + 1 < len(idx):
-            end = float(starts[idx[pos + 1]])
-        else:
-            end = math.inf
-        if starts[i] < t1 and end > t0:
-            kept.append(
-                (int(numbers[i]), float(starts[i]), normalise_compound(compounds[i]), float(lives[i]))
-            )
+    kept: "list[tuple[int, float, str, float]]" = [
+        (int(numbers[i]), float(starts[i]), normalise_compound(compounds[i]), float(lives[i]))
+        for i in in_window_laps(numbers, starts_s, lap_times_s, window)
+    ]
+    t0 = float(window[0])
 
     laps = [{"number": n, "startT": round(start - t0, 3)} for n, start, _, _ in kept]
 

@@ -24,12 +24,16 @@
  *
  * So the ambiguity is removed instead of folded:
  *
- *  1. **The reference geometry is ONE LAP of `cars[0]`**, not the whole window. On one
- *     lap an arc-position is in `[0, L)` and is unambiguous. (Measured the hard way:
- *     against the full three-lap path the nearest-segment search hops between laps and
- *     a car's "laps completed" over a three-lap window came back as **18.1**.)
- *     `buildScene` already takes the track ribbon from `cars[0]` on the same grounds —
- *     every car in a replay drives the same circuit, so one lap is the track.
+ *  1. **The reference geometry is ONE LAP — `track.referenceLap`**, not the whole
+ *     window. On one lap an arc-position is in `[0, L)` and is unambiguous. (Measured
+ *     the hard way: against the full three-lap path the nearest-segment search hops
+ *     between laps and a car's "laps completed" over a three-lap window came back as
+ *     **18.1**.) `buildScene` takes the track ribbon from the same lap on the same
+ *     grounds — every car in a replay drives the same circuit, so one lap is the
+ *     track. Until Slice 24 that lap was IMPLICIT: `cars[0]`'s first, whatever it held
+ *     — on the shipped restart a 166.1 s lap of formation and grid hold, on the red
+ *     flag a lap measured from the pole slot. It is now the file's own, chosen by rule
+ *     in the pipeline, and arc 0 is where that lap starts: the timing line.
  *  2. **Every car's arc-position is unwrapped into cumulative progress `P`**, once, at
  *     load: a lap counter ticks whenever the arc jumps back by more than `L/2`.
  *  3. **The field's lap offsets are seeded at `t = 0` by cutting the ring at its largest
@@ -91,7 +95,8 @@
  *    car that never moved, or a gap so large that neither direction of the query lands
  *    inside the window.
  */
-import type { Replay } from "./schema";
+import { referenceSpan, spanSample, type ReferenceSpan } from "./referenceSpan";
+import type { ReferenceLap, Replay } from "./schema";
 
 /**
  * km/h × s → m. The schema pins `meta.units.speed` to km/h on both sides of the
@@ -117,7 +122,7 @@ export const MAX_RESIDUAL_M = 25;
  * sooner than this is the car still leaving the same cell, not a lap. No F1 circuit is
  * close.
  */
-const MIN_LAP_S = 5;
+export const MIN_LAP_S = 5;
 
 /**
  * How much larger the field's largest empty arc must be than the next largest before the
@@ -169,8 +174,9 @@ export interface EdgeLaps {
 /** Every car's cumulative progress around one shared circuit. Built once per replay. */
 export interface ProgressIndex {
   /**
-   * One lap of the reference circuit, in position units — `0` when the reference car
-   * never returns to its start, i.e. the window is shorter than a lap.
+   * One lap of the reference circuit, in position units: the arc length of
+   * `track.referenceLap` — `0` when that span is not a lap, i.e. the window is shorter
+   * than one (see `buildReference` for the only spans that can say so).
    *
    * Zero is the "no ring" case and it disables exactly two things: the unwrap (there is
    * nothing to wrap around) and the lapped-car report (nobody can be a lap down inside
@@ -178,13 +184,27 @@ export interface ProgressIndex {
    */
   readonly lapUnits: number;
   /**
-   * One lap of the reference car, in seconds — `0` alongside a zero `lapUnits`. The pace
-   * the tower's sort key converts at (`paceSecondsPerUnit`).
+   * The reference lap in seconds, `toT − fromT` — `0` alongside a zero `lapUnits`.
    *
    * NOT the lap a window-edge lookup walks, which until Slice 23 it was, for every focus
-   * car: see `edgeLaps`.
+   * car: see `edgeLaps`. Its one reader is the order key's pace,
+   * `paceSecondsPerUnit`.
    */
   readonly lapSeconds: number;
+  /**
+   * Seconds per progress unit at the reference lap's pace: what the tower's sort key
+   * converts a progress deficit at (`progressKeyAt`). `lapSeconds / lapUnits` on a
+   * ring; with no ring, the reference span's own seconds over its own progress (an
+   * open sub-lap window still has a pace). `0` on an all-degenerate index, where no
+   * key is ever asked for.
+   *
+   * FROM THE REFERENCE LAP, and that is the whole of the Slice 24 fix to it. It used to
+   * be `cars[0]`'s first lap, and on the shipped restart that lap held the formation
+   * lap and the grid hold — 166.1 s against ~86 s racing laps — so every key read 1.92×
+   * the seconds it meant and `ORDER_HYSTERESIS_S` held a true dead band of half its
+   * size. Focus-independent by construction: it is one number per replay.
+   */
+  readonly paceSecondsPerUnit: number;
   /**
    * Per car: the laps of its own that a lookup landing outside the window is walked by.
    * `null` where there is nothing to walk: no ring, or a car that made no headway.
@@ -197,7 +217,13 @@ export interface ProgressIndex {
   readonly residual: readonly Float64Array[];
   /** Per car: cumulative metres travelled, from that car's own speed channel. */
   readonly travelM: readonly Float64Array[];
-  /** Position units per metre, measured from the reference car's own path and travel. */
+  /**
+   * Position units per metre, measured from the reference car's (`referenceLap.car`'s)
+   * own path and travel over the whole window — the bridge every file without the
+   * field always had, since there the reference car is `cars[0]`. Residuals read
+   * through it; whether the reference span is a ring does NOT — that is the span's
+   * own bridge, the schema's (`referenceLapEnds`).
+   */
   readonly unitsPerMetre: number;
   /** Per car: `true` when the car covered no ground, so it has no answers to give. */
   readonly degenerate: readonly boolean[];
@@ -234,10 +260,12 @@ interface RefPath {
   arc: Float64Array;
   cell: number;
   grid: Map<string, number[]>;
-  /** Lap length in position units, or 0 when the reference never closes a lap. */
+  /** Lap length in position units, or 0 when the reference span is not a lap. */
   lapUnits: number;
   /** Lap length in seconds, or 0 to match. */
   lapSeconds: number;
+  /** The span it was traced from, for the no-ring pace. */
+  span: ReferenceSpan;
 }
 
 /**
@@ -257,20 +285,34 @@ export function buildProgressIndex(replay: Replay): ProgressIndex {
   );
 
   // The metre bridge is measured FIRST, from the reference car's own path against its
-  // own travel, because everything downstream needs it: `findLapEnd` wants to know what
-  // "back where it started" means in position units, and it is not entitled to guess.
-  const referenceMetres = travelM[0][travelM[0].length - 1];
+  // own travel: the guard below reads it, and every residual and pit-lane distance is
+  // converted through it. Over the reference car's WHOLE window, as it always was: on
+  // every file without `track.referenceLap` that car is `cars[0]`, so the bridge is
+  // bit-identical to before. NOT the bridge `buildReference` tests closure through —
+  // that is the span's own, the schema's (see there): a window's bridge drifts with
+  // the speed channel over laps that are not the reference lap.
+  const referenceCar = replay.track.referenceLap.car;
+  const referenceTravel = travelM[referenceCar];
+  const referenceMetres = referenceTravel[referenceTravel.length - 1];
   const unitsPerMetre =
-    referenceMetres === 0 ? 0 : pathLength(cars[0].samples) / referenceMetres;
+    referenceMetres === 0
+      ? 0
+      : pathLength(cars[referenceCar].samples) / referenceMetres;
   // A reference car that never moved leaves nothing to project onto. Every car is then
   // unanswerable, which is a state this returns rather than an error it throws — a
   // window can legitimately contain a car sitting in its box (Slice 8). Checked BEFORE
   // the reference is built, so `buildReference` never sees a path it cannot measure.
-  if (unitsPerMetre === 0 || cars[0].samples.length < 2) {
-    const empty = cars.map(() => new Float64Array(cars[0].samples.length));
+  // (Its span test would refuse such a span as a ring too — `referenceLapEnds` is
+  // `null` over no ground — but the ring is not the only thing missing: there is no
+  // circuit to project onto at all.) A file that names its reference lap cannot reach
+  // here: the schema refuses a reference car that covers no ground over the span, and
+  // a car with no ground over its window has none over any span of it.
+  if (unitsPerMetre === 0) {
+    const empty = cars.map((car) => new Float64Array(car.samples.length));
     return {
       lapUnits: 0,
       lapSeconds: 0,
+      paceSecondsPerUnit: 0,
       edgeLaps: cars.map(() => null),
       sampleRateHz,
       progress: empty,
@@ -283,8 +325,7 @@ export function buildProgressIndex(replay: Replay): ProgressIndex {
     };
   }
 
-  const sameSpot = MAX_RESIDUAL_M * unitsPerMetre;
-  const reference = buildReference(replay, sameSpot);
+  const reference = buildReference(replay);
   const raw = cars.map((car) => projectPath(reference, car.samples));
 
   const seed = seedLapOffsets(
@@ -302,6 +343,7 @@ export function buildProgressIndex(replay: Replay): ProgressIndex {
   return {
     lapUnits: reference.lapUnits,
     lapSeconds: reference.lapSeconds,
+    paceSecondsPerUnit: paceOf(reference, progress[referenceCar], sampleRateHz),
     edgeLaps: progress.map((p, i) =>
       edgeLaps(p, travelM[i], sampleRateHz, reference.lapUnits),
     ),
@@ -317,7 +359,7 @@ export function buildProgressIndex(replay: Replay): ProgressIndex {
 }
 
 /** Trapezoid travel in metres, matching how the pipeline integrates it (Slice 6b). */
-function travelIntegral(
+export function travelIntegral(
   samples: Replay["cars"][number]["samples"],
   sampleRateHz: number,
 ): Float64Array {
@@ -331,7 +373,7 @@ function travelIntegral(
   return out;
 }
 
-function pathLength(samples: Replay["cars"][number]["samples"]): number {
+export function pathLength(samples: Replay["cars"][number]["samples"]): number {
   let total = 0;
   for (let k = 1; k < samples.length; k++) {
     total += Math.hypot(
@@ -342,38 +384,146 @@ function pathLength(samples: Replay["cars"][number]["samples"]): number {
   return total;
 }
 
+interface Point {
+  x: number;
+  y: number;
+}
+
+/** Where a reference lap starts and ends, and the bridge to read the gap in metres. */
+export interface ReferenceLapEnds {
+  /** `cars[car]` at `fromT`. */
+  start: Point;
+  /** `cars[car]` at `toT`. */
+  end: Point;
+  /** Position units per metre over the span: the car's own bridge. */
+  unitsPerMetre: number;
+}
+
 /**
- * The reference circuit: ONE lap of `cars[0]`, plus a spatial hash over its segments.
+ * `cars[car]` at both ends of `reference`, with the car's metre bridge over the
+ * span — or `null` when the car covers no ground over it (no bridge, and no lap
+ * either).
  *
- * One lap rather than the window is the load-bearing choice — see the file header. When
- * the reference car never returns to its start the whole path is used and `lapUnits` is
- * 0, which is the "no ring" case.
+ * THE ONE MEASURE OF "DOES THIS SPAN CLOSE" (Slice 24). The schema reads it to
+ * accept or refuse a present `track.referenceLap`, and `buildReference` reads it to
+ * decide whether a span is a ring, so a lap the schema accepts is a lap the gap
+ * engine rings: one bridge, not two. It lives here rather than in `referenceLap.ts`,
+ * its first home, because `buildReference` reads it and this module cannot import
+ * that one — `referenceLap.ts` imports this module, and a cycle between the two is
+ * the one `referenceSpan.ts`'s header describes. Mirrored by the pipeline as
+ * `reference_lap.py`'s `_closing_m`.
+ *
+ * The bridge is the car's path against its speed integral, this module's rule —
+ * never a constant: FastF1's position unit is undocumented and the engine refuses
+ * to know it. Over the SPAN, not the window: a window's bridge moves with the speed
+ * channel over every other lap in it (by up to 2.0% between laps on the shipped
+ * restart), and "back within `MAX_RESIDUAL_M` of where it started" is a statement
+ * about this lap. `toT` may be `meta.duration`, one step past the last sample, and
+ * the position there is what the engine draws at that instant: a closed lap has
+ * WRAPPED back to its first sample (so a whole closed lap closes exactly), an open
+ * window HOLDS its last. The bridge is measured over the samples that exist.
  */
-function buildReference(replay: Replay, sameSpot: number): RefPath {
-  const samples = replay.cars[0].samples;
-  const n = samples.length;
-  const allX = new Float64Array(n);
-  const allY = new Float64Array(n);
-  for (let k = 0; k < n; k++) {
-    allX[k] = samples[k].x;
-    allY[k] = samples[k].y;
+export function referenceLapEnds(
+  replay: Pick<Replay, "meta" | "cars">,
+  reference: ReferenceLap,
+): ReferenceLapEnds | null {
+  const rate = replay.meta.sampleRateHz;
+  const samples = replay.cars[reference.car].samples;
+  const last = samples.length - 1;
+  const { from: fromK, to: toK } = referenceSpan(rate, reference);
+  const from = Math.min(fromK, last);
+  const to = Math.min(toK, last);
+  const span = samples.slice(from, to + 1);
+  const metres = travelIntegral(span, rate)[span.length - 1];
+  const path = pathLength(span);
+  if (metres === 0 || path === 0) return null;
+  // `toT = duration` is sample n: the wrap or the hold, by `spanSample`'s one rule.
+  const end = spanSample(samples, toK, replay.meta.loop);
+  return {
+    start: { x: samples[from].x, y: samples[from].y },
+    end: { x: end.x, y: end.y },
+    unitsPerMetre: path / metres,
+  };
+}
+
+/** Metres between two positions, through a car's own bridge. */
+export function metresApart(a: Point, b: Point, unitsPerMetre: number): number {
+  return Math.hypot(a.x - b.x, a.y - b.y) / unitsPerMetre;
+}
+
+/**
+ * The reference circuit: `track.referenceLap` — ONE lap of `cars[car]`, timing line to
+ * timing line (Slice 24) — plus a spatial hash over its segments.
+ *
+ * One lap rather than the window is the load-bearing choice — see the file header. The
+ * span is read, never searched for: samples `fromT ..= toT` of the reference car, where
+ * `toT = duration` is the wrap (closed) or the hold (open) by `spanSample`'s one rule,
+ * so a closed lap's ring includes its closing chord and `lapSeconds` is `toT − fromT`
+ * exactly. Arc 0 — the ring's origin — is where the lap starts: the timing line. Nothing
+ * downstream reads the origin itself: the unwrap, the seed's ring cut, the edge laps and
+ * every key and gap are differences of progress, and the cut is the same car whatever
+ * the origin (a rotation of the ring rotates every arc by the same amount).
+ *
+ * WHEN THE SPAN IS NOT A LAP ("no ring", `lapUnits` 0): shorter than `MIN_LAP_S`, the
+ * car covering no ground over it, or its ends further apart than `MAX_RESIDUAL_M` —
+ * the SCHEMA's tests of a present field, run here on the same numbers: the same
+ * `MIN_LAP_S` in sample counts, and `referenceLapEnds`' closure through the reference
+ * car's bridge over the SPAN. So a file that names its reference lap never reaches
+ * this: whatever the schema accepted is a ring. (Until the Slice 24 final review it
+ * tested closure through the car's WHOLE-WINDOW bridge instead, and speed-channel
+ * drift on laps outside the span could turn a lap the schema accepted into no ring,
+ * silently.)
+ *
+ * The loader's legacy synthesis can reach it: an open window whose `cars[0]` never
+ * comes back is its whole path. Over the whole path the span's bridge IS the window's
+ * — the one `findLapEnd` searched with — and its last sample is one the search found
+ * too far away, so this says "no ring" exactly where the search returned `null` (up
+ * to rounding at the bound: this divides where the search multiplied). A legacy lap
+ * the search DID close is now tested through its own bridge rather than the window's
+ * it was found with, so a lap whose closing chord sat within the drift between the
+ * two of 25 m would read no ring where it used to ring. Measured, the shipped legacy
+ * chords are 0.5–4.4 m, and moving this test onto the span's bridge left every gap
+ * output bit-identical: the five gallery assets with the field and without it, and
+ * the fixture as a lap and as a window. (The third legacy case, a `cars[0]` that
+ * never moved, never reaches here — see `buildProgressIndex`'s guard.)
+ *
+ * A span that is not a lap is a PATH, not a loop, so it is traced over the samples it
+ * has and never through the wrap: a closed file shorter than `MIN_LAP_S` would otherwise
+ * end on a copy of its first point, and with no lap counter to unwrap the seam, its own
+ * first sample could project onto either end — measured, a negative pace. Traced over
+ * its samples it is exactly the whole path the engine used before (`findLapEnd` found
+ * no return, so it took everything there was).
+ */
+function buildReference(replay: Replay): RefPath {
+  const { sampleRateHz, loop } = replay.meta;
+  const reference = replay.track.referenceLap;
+  const span = referenceSpan(sampleRateHz, reference);
+  const samples = replay.cars[span.car].samples;
+  const ends = referenceLapEnds(replay, reference);
+  const isLap =
+    span.to - span.from >= MIN_LAP_S * sampleRateHz &&
+    ends !== null &&
+    metresApart(ends.start, ends.end, ends.unitsPerMetre) <= MAX_RESIDUAL_M;
+  // At least 2: the schema requires `toT > fromT` of a present field, every legacy span
+  // holds at least the two samples every car must have, and a span ending past the
+  // last sample is trimmed back to it only when it is not a lap. Dividing by
+  // `count - 1` below keeps that fact here rather than as a second, untestable guard.
+  const last = isLap ? span.to : Math.min(span.to, samples.length - 1);
+  const count = last - span.from + 1;
+
+  const xs = new Float64Array(count);
+  const ys = new Float64Array(count);
+  for (let i = 0; i < count; i++) {
+    const s = spanSample(samples, span.from + i, loop);
+    xs[i] = s.x;
+    ys[i] = s.y;
   }
-
-  const lapEnd = findLapEnd(allX, allY, replay.meta.sampleRateHz, sameSpot);
-  const count = lapEnd === null ? n : lapEnd + 1;
-
-  const xs = allX.slice(0, count);
-  const ys = allY.slice(0, count);
   const arc = new Float64Array(count);
   for (let k = 1; k < count; k++) {
     arc[k] = arc[k - 1] + Math.hypot(xs[k] - xs[k - 1], ys[k] - ys[k - 1]);
   }
 
   const total = arc[count - 1];
-  // `count` is at least 2: a shorter reference is caught by `buildProgressIndex`'s
-  // `xs.length < 2` guard, which returns the all-unanswerable index before any of this
-  // is used. Dividing by `count - 1` unconditionally keeps that fact in one place rather
-  // than as a second, untestable guard here.
   const meanSegment = total / (count - 1);
   const cell = Math.max(meanSegment * 4, 1e-9);
   const grid = new Map<string, number[]>();
@@ -394,13 +544,42 @@ function buildReference(replay: Replay, sameSpot: number): RefPath {
     arc,
     cell,
     grid,
-    lapUnits: lapEnd === null ? 0 : total,
-    lapSeconds: lapEnd === null ? 0 : lapEnd / replay.meta.sampleRateHz,
+    lapUnits: isLap ? total : 0,
+    lapSeconds: isLap ? (span.to - span.from) / sampleRateHz : 0,
+    span,
   };
 }
 
 /**
- * The sample at which the reference car has come back to where it started, or `null`.
+ * Seconds per progress unit at the reference lap's pace — `ProgressIndex
+ * .paceSecondsPerUnit`, measured once at build.
+ *
+ * On a ring, the lap's seconds over its length. With no ring, the reference span's own
+ * seconds over the reference car's own progress across it: on a legacy whole-path span
+ * that is the whole window, exactly the fallback this had before Slice 24. The span is
+ * clamped to the samples that exist — progress has no entry at `toT = duration` — the
+ * same trim `buildReference` gives a span that is not a lap, so the seconds and the
+ * progress are measured over one stretch.
+ */
+function paceOf(
+  reference: RefPath,
+  progress: Float64Array,
+  sampleRateHz: number,
+): number {
+  if (reference.lapUnits > 0) return reference.lapSeconds / reference.lapUnits;
+  const last = progress.length - 1;
+  const from = Math.min(reference.span.from, last);
+  const to = Math.min(reference.span.to, last);
+  return (to - from) / sampleRateHz / (progress[to] - progress[from]);
+}
+
+/**
+ * The sample at which a car has come back to where it started, or `null`.
+ *
+ * The loader's legacy reference lap (`referenceLap.ts`) is `cars[0]` to this, which is
+ * why it is exported: the span every open window without `track.referenceLap` is
+ * settled to is the one this has always found, measured by the one implementation.
+ * `buildReference` no longer calls it — it reads the span (Slice 24).
  *
  * The ARGMIN of the return excursion, not its first sample. Slice 9's `measureLapPeriod`
  * deliberately took the first re-entry into the residual bound because it only ever used
@@ -408,7 +587,7 @@ function buildReference(replay: Replay, sameSpot: number): RefPath {
  * it is the modulus the unwrap and the lapped-car test are written against, so it wants
  * to be right rather than conservative.
  */
-function findLapEnd(
+export function findLapEnd(
   xs: Float64Array,
   ys: Float64Array,
   sampleRateHz: number,
@@ -841,7 +1020,7 @@ export function travelSoFarM(
 
 /**
  * The timing tower's sort key: the progress deficit `ΔP`, expressed in seconds at the
- * reference's own average lap pace (Slice 19, revised at its watch).
+ * reference lap's pace (Slice 19, revised at its watch; the pace's lap is Slice 24's).
  *
  * THE RULING THIS ENCODES: the running order is ALWAYS by track progress — 9d's `ΔP` —
  * and the gap is a display column that can never reorder a row. The first cut of this
@@ -858,9 +1037,11 @@ export function travelSoFarM(
  * `ORDER_HYSTERESIS_S` is seconds and a progress-denominated key would read the dead
  * band as either ~0.9 mm of track (vacuous) or a fraction of a lap (frozen). The pace
  * conversion answers that objection instead of re-litigating it: `ΔP` times
- * `lapSeconds / lapUnits` (the window's own span-over-progress when no lap closed) is
- * seconds again — approximate seconds, which is exactly what a dead band wants, and
- * strictly monotone in progress, which is what the ruling demands.
+ * `paceSecondsPerUnit` is seconds again — approximate seconds, which is exactly what a
+ * dead band wants, and strictly monotone in progress, which is what the ruling
+ * demands. "Approximate" has a bound only if the pace is a racing lap's: read off a lap
+ * that holds a grid hold, the same `ΔP` is quoted at nearly twice its seconds and the
+ * dead band quietly halves — the shipped restart until Slice 24 (see the field).
  *
  * Focus-independent in the strong sense: two cars' keys differ by `P_j − P_i` at pace,
  * with the focus contributing the same constant to both — so the ORDER cannot move on
@@ -879,21 +1060,7 @@ export function progressKeyAt(
   const deltaP =
     at(index.progress[focusIndex], cursor) -
     at(index.progress[carIndex], cursor);
-  return deltaP * paceSecondsPerUnit(index);
-}
-
-/**
- * Seconds per progress unit at the reference's average pace.
- *
- * From the lap when one closed; from the whole window's span over the reference's own
- * progress when none did (an open sub-lap window still has a pace). Callers reach this
- * only past the degenerate gate, so the reference is known to have covered ground.
- */
-function paceSecondsPerUnit(index: ProgressIndex): number {
-  if (index.lapUnits > 0) return index.lapSeconds / index.lapUnits;
-  const reference = index.progress[0];
-  const span = reference[reference.length - 1] - reference[0];
-  return (reference.length - 1) / index.sampleRateHz / span;
+  return deltaP * index.paceSecondsPerUnit;
 }
 
 /**

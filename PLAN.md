@@ -5277,7 +5277,154 @@ caught after the backward-seek pin.
    90% passes AA and still sits a step below the hook, so the provenance recedes as
    designed. Applied in this slice (the provenance and note lines in `FeaturedPanel`).
 
+### [x] Slice 24 — make the reference lap explicit in the contract (done 2026-10-07, ruled and MERGED 2026-10-08 as #79)
+
+**Filed and built 2026-10-07 on the human's direction, from the whole-project review.
+One root cause, four symptoms.** `cars[0]` — whoever was typed first in `--drivers` —
+had silently decided, from its FIRST in-window lap and with no check that the lap was
+clean: the start/finish line (`assembly.py`: sample 0, `atan2(y1-y0, x1-x0)`), the
+ribbon (`scene.ts`: its whole path), the gap reference circuit (`buildReference` via
+`findLapEnd`), and the pace that scales gaps and the tower's order key. The shipped
+cost: the red-flag window opens on a standing start, so its `startFinish` was RUS's
+POLE SLOT at angle **0.0** — drawn ~85° off square, ~290 m up the straight (this is
+Slice 23's item 3); the restart's reference lap was **166.1 s** of formation and grid
+hold against ~86 s racing laps, so the order key quoted ΔP at 1.92x and its dead band
+held half its width; a reference that pits on its first lap made healthy cars read
+off-line/PIT (synthetic: 6.5–32.5 s); and the red-flag ribbon was three laps drawn over
+each other from the pole slot.
+
+**The contract: `track.referenceLap = {car, fromT, toT}`** — a span in which
+`cars[car]` drives exactly ONE clean racing lap, timing line to timing line.
+- **Optional on input, required once parsed.** `referenceLap.withReferenceLap` is the
+  one place an absent field is settled, with the LEGACY reference (closed: `0..duration`;
+  open: cars[0] from sample 0 to `findLapEnd`'s first return, or its whole path).
+- **Validated loudly when present,** counting in samples: car in range; `fromT < toT ≤
+  duration` on the grid; span ≥ 5 s (`MIN_LAP_S`); the span CLOSES — cars[car] at `toT`
+  within 25 m (`MAX_RESIDUAL_M`) of where it was at `fromT`; `startFinish` within 25 m
+  of cars[car] at `fromT`. Distances go through the car's own metre bridge over the
+  span; `referenceSpan.ts` is the one rule for `toT = duration` (a closed lap wraps to
+  sample 0, an open window holds its last sample). A pytest pins the pipeline's mirrored
+  constants against the TypeScript ones.
+
+**The pipeline chooses it (`replay_transform/reference_lap.py`, numpy-only, pure).** A
+lap qualifies when it is not race lap 1 (standing start), has a LapTime, is neither an
+in- nor an out-lap, is FastF1 `IsAccurate` (which also fails laps touched by SC/VSC/red),
+lies wholly in the window on the grid, spans ≥ 5 s, has no sample under
+`PIT_STOP_MAX_KMH`, overlaps no stuck-channel dropout, lies more than
+`POSITION_FAULT_MARGIN_S` = 10 s from any known position fault of that car (a declined
+displacement step, a reversal a declined plan left in place, a surrendered fix run), and
+closes within 25 m (mirroring the loader). Ranking: green-throughout laps first,
+**field-wide ahead of car order** (pace is the one thing a slow lap gets wrong; the line
+and circuit are the same whichever car drives them), then first car, then earliest lap.
+Nothing qualifies → `NoReferenceLapError`, naming every candidate's reason. The window
+builder takes `startFinish` from the chosen lap's start, heading toward the first sample
+≥ 5 m on; no silent legacy path survives (`build_window_replay_dict(*,
+reference_laps)` is required; `LEGACY_REFERENCE` is the named opt-in for synthetic
+sub-lap tests).
+
+**Every consumer reads it.** `buildReference` reads the span (no search; arc 0 on the
+timing line; nothing reads the ring's origin, pinned by an identical-answers test from
+two origins); legacy "no ring" is recognised from the span by `findLapEnd`'s own two
+tests; the never-moved guard stays first. `paceSecondsPerUnit` is an index field from
+the reference lap. The ribbon is the span of `carPaths[car]`. Instruments that subset
+cars drop a `referenceLap` whose car falls outside the subset and say so.
+
+**Assets — all five regenerated OFFLINE** through `build_replay.main` from the FastF1
+cache (dead proxies, `offline_mode` re-asserted after `enable_cache`), `--gp` from each
+committed `meta.event`, laps and drivers in provenance order, `--compact`. Structural
+and byte-level diff against the committed files (committed + exactly the expected
+fields through `dump_json` == the rebuild): `referenceLap` added on all five;
+`startFinish` moved on the red flag (pole slot, angle 0.0 → RUS's lap-2 start:
+**(-1387.1, -829.5) at 1.488774 rad**) and the restart (8.9 m, onto RUS's lap-7 start);
+`trackStatus` gained by the finale (the known FastF1-cache drift — the backlog's
+"re-record the finale" housekeeping, closed here; its transport bar now shows a GREEN
+chip). Every sample, lap, stint, pitLane and other field byte-identical. Chosen laps:
+red flag RUS lap 2 (89.0–175.6 s, green; lap 1 is the standing start); restart RUS lap 7
+(166.2–252.6 s, green; lap 6 holds the 64.2 s grid hold); rain HAM 24, finale HAM 48,
+pit cycle VER 13 (each from 0). Closing chords 2.6–4.6 m.
+
+**Evidence.** Red-flag S/F square: 89.9–90.0° to the ribbon (4.6° before), on the
+timing line; screenshot comparison shows the mark ACROSS the straight where it lay
+ALONG it at the grid slot. Restart `lapSeconds` 166.1 → 86.4, key scale 1.92x → 1x
+(focus ANT: reorders 319 → 283, pair reversals within 3 s 37 → 22). Reference-that-pits
+synthetic: healthy VER off-line/PIT 6.5 / 5.8 / 32.5 s → 0.0 with an explicit clean lap.
+Window-edge gaps unchanged from Slice 23. Draw-call per-frame structure identical on all
+five assets (764.80 calls/frame on the red flag); the ribbon Path2D shrinks from 3–7
+overlaid laps (2948–5976 points) to one (851–917). `buildProgressIndex` 106 → 88 ms on
+the restart; HUD tick unchanged. Fixture digests unchanged (closed `cb43a0f8…`, open
+`e30b5b6e…`): both fixture spans are every sample. Gates on the final tree: `npm run
+check` green, 0 warn/error lines in the full log, vitest 4.1.10 53 files / 959 tests,
+engine coverage 100% per file, layout check 51/51; pytest 401 at 100% per module; all
+five assets pass `validate:replay` with an explicit reference lap.
+
+**Amendments (in-slice, from three adversarial reviews).**
+- **The first contract test was vacuous:** every golden's field equalled the legacy
+  synthesis, so "survives parseReplay" stayed green with the field deleted from the
+  schema (mutation-proven). A new `race-window-standing` golden carries a non-legacy lap
+  `{0, 24.5, 44.5}`; the same mutation now fails 3 tests.
+- **The declined-car exclusion was car-level and threw away most of the field** (10 of
+  22 red-flag cars, 7 of 21 restart cars): it skipped a RUS lap 2 that ends 115 s before
+  RUS's only declined jump (t=290.6 s) and chose VER lap 2, which closes at 14.3 m
+  against RUS's 2.8 m. Ruled lap-level with a 10 s margin (measured: corruption reaches
+  ≤ 4.0 s from a jump; any margin from 4.1 to 10.2 s selects the same field). Admitting
+  declined cars' laps exposed laps that drift and do not close (STR, restart: 66.9 m), so
+  the selector now mirrors the loader's closure check by name.
+- **The schema and the gap engine measured a named lap's closure through different
+  metre bridges** (the span's vs the reference car's whole window), so speed-channel drift
+  outside the lap could turn a schema-valid lap into "no ring" with nothing reported (a
+  24.9 m chord with speed 4% high after the lap reproduced it). `buildReference` now runs
+  the schema's own tests through `referenceLapEnds`; a regression test fails before and
+  passes after, and every gap output on the five assets (with and without the field) and
+  on the fixture is bit-identical across the change.
+- **The legacy-behaviour claim overstated** ("old files behave identically") and the
+  perf instruments' procedure text still named the red flag's reference as cars[2]; both
+  restated as measured (below).
+
+**Behaviour changes for files WITHOUT the field, stated as measured:** open-window gaps
+are bit-identical and the committed fixture's visible output is identical; a CLOSED
+lap's ring now includes its closing chord (fixture `lapSeconds` 58.4 → 58.5; on a
+hand-built multi-car closed file gaps move by ≤ 0.111 s and one sample per wrap reads
+null); a field-less open window's ribbon is now cars[0]'s FIRST LAP, not its whole path
+(on a standing start that lap begins at the grid slot), and the label centroid moves
+with it — the gitignored `monza_full_field.json` behind Slice 12's fps baseline is such
+a file.
+
+**Rulings (human, 2026-10-08, after a walkthrough of each decision; recorded before
+merge).** All seven ACCEPTED as built:
+1. **The green tier applied field-wide before car order.** A green-throughout lap on any
+   car beats a non-green lap on the first-listed car: the line and circuit are the same
+   whichever car drives them, and pace is the one thing a slow lap corrupts. All five
+   gallery assets choose `cars[0]` regardless.
+2. **Lap-level exclusion making RUS — a car with a declined placement plan — the red
+   flag's reference.** RUS's lap 2 ends 115 s before its only fault and closes at
+   2.8 m (the car-level rule's VER lap closed at 14.3 m and discarded 10 of 22 cars).
+   The field-anchored timing-line guard for declined cars' laps stays in the backlog.
+3. **`POSITION_FAULT_MARGIN_S` = 10 s** — argued, not a measured empty band, but any
+   margin from 4.1 to 10.2 s selects the same laps, and the report names the reason
+   whenever it rejects one.
+4. **The finale's `trackStatus` ships in this PR** — real data the committed file was
+   missing, not hand-editable out of a regenerated asset without breaking provenance.
+5. **The restart tower's now-true hysteresis** — rows hold within the 0.05 s dead band
+   (HUL +1.225 above TSU +1.191 at 2:50) as `ORDER_HYSTERESIS_S` was sized to; the 166 s
+   reference lap had been halving it (reorders 319 → 283, swaps within 3 s 37 → 22).
+6. **The corner-8 label flipping sides on the restart** — cosmetic, a consequence of the
+   one-lap ribbon's centroid.
+7. **Files without the field behave as measured above, and Slice 12's fps baseline is
+   NOT re-taken:** the ribbon is one retained Path2D stroked twice per frame whatever
+   its length, so per-frame call structure is unchanged and fewer points only make the
+   stroke cheaper — the old baseline stays a valid upper bound.
+
+**Still open:** `pit_lane`'s racing line still comes from `cars[0]`'s lap table — moving
+it changes `track.pitLane` bytes, so it needs its own slice; a field-anchored
+timing-line check for declined cars' laps (both in the backlog).
+
 ## Backlog (ideas — not committed)
+- **`pit_lane`'s racing line still comes from `cars[0]`'s lap table** (Slice 24's last
+  implicit cars[0]-as-reference consumer): move it to `track.referenceLap`. It changes
+  `track.pitLane` bytes, so it needs its own asset regeneration and watch.
+- **A field-anchored timing-line check for declined cars' reference laps** (Slice 24):
+  nothing bounds where a declined car's lap starts along the track; RUS's red-flag lap-2
+  start sits 7.9 m before the anchored cars' median.
 - **The focus car's edge lap can hold a pit stop (Slice 23's tracked limit).** Past the
   window, gaps walk the focus car's own edge lap; when that lap contains its stop, the
   walk replays it (rain, focus HAM: NOR −3.3 → −16.5 s over the last 3.3 s). Walking
@@ -5323,8 +5470,9 @@ caught after the backward-seek pin.
   (PIA, ALO), noted in the 9m entry and owned by the DROPOUT state; cleaning it would
   need the field's racing line, not the per-car polyline, and waits for a case where
   it is visible rather than just measurable.
-- **Re-record the three 2024 gallery assets** — housekeeping surfaced by Slice 9m,
-  **two-thirds CLOSED by Slice 16**: the pit cycle and rain picked up their missing
+- ~~**Re-record the three 2024 gallery assets**~~ — **CLOSED by Slice 24**, whose
+  regeneration gave the finale its `trackStatus` (its transport bar now shows a GREEN
+  chip). History: housekeeping surfaced by Slice 9m, **two-thirds closed by Slice 16**: the pit cycle and rain picked up their missing
   `trackStatus` when 16 re-recorded them for `pitLane`. Only the FINALE still
   carries the drift — its fresh rebuild differed by exactly that field and was
   reverted so 16's diff carried no unforced change. A trivial

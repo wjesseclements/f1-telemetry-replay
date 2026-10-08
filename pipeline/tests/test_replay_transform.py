@@ -96,6 +96,7 @@ from replay_transform import (
     LOOP_OPEN,
     KMH_S_PER_METRE,
     PARKED_TRAVEL_M,
+    LEGACY_REFERENCE,
     build_window_replay_dict,
     covers_ground,
     has_drs,
@@ -1274,6 +1275,19 @@ def test_window_grid_rejects_a_window_too_short_to_interpolate_across():
 # --- build_window_replay_dict: the v2 shape ---------------------------------------
 
 
+def build_legacy_window(*args, **kwargs):
+    """
+    `build_window_replay_dict` with the pre-Slice-24 start/finish line opted into BY
+    NAME (`LEGACY_REFERENCE`). Every window in this module is a synthetic stretch
+    built to exercise one screen or one shape, most of them shorter than a lap, so
+    none carries a lap table to choose a reference lap from. The builder has no
+    default for `reference_laps`, so this opt-in is the only way they reach that
+    path — and a real build, which never says it, cannot fall into it by omission.
+    The reference lap itself is tested in `test_reference_lap.py`.
+    """
+    return build_window_replay_dict(*args, reference_laps=LEGACY_REFERENCE, **kwargs)
+
+
 WINDOW_END = synthetic.SESSION_T0 + 12.0
 WINDOW = (synthetic.SESSION_T0, WINDOW_END)
 
@@ -1290,7 +1304,7 @@ def _two_car_window(**kwargs):
 
 
 def test_window_puts_every_car_on_one_shared_grid():
-    replay = build_window_replay_dict(_two_car_window(), synthetic.SESSION_META, WINDOW)
+    replay = build_legacy_window(_two_car_window(), synthetic.SESSION_META, WINDOW)
 
     rate = replay["meta"]["sampleRateHz"]
     n = round(replay["meta"]["duration"] * rate)
@@ -1314,7 +1328,7 @@ def test_window_greys_only_the_car_whose_colour_lookup_failed():
     """
     lead, chase = _two_car_window()
     blanked = dataclasses.replace(chase, team="", color="")
-    replay = build_window_replay_dict(
+    replay = build_legacy_window(
         [lead, blanked], synthetic.SESSION_META, WINDOW
     )
 
@@ -1327,7 +1341,7 @@ def test_window_sample_k_is_the_same_instant_for_every_car():
     CLAUDE.md rule 5, stated as an equality rather than a hope: the cars are aligned
     on SESSION time, so index k means one moment across the whole file.
     """
-    replay = build_window_replay_dict(_two_car_window(), synthetic.SESSION_META, WINDOW)
+    replay = build_legacy_window(_two_car_window(), synthetic.SESSION_META, WINDOW)
     a, b = (c["samples"] for c in replay["cars"])
     for k in (0, 17, len(a) - 1):
         assert a[k]["t"] == b[k]["t"]
@@ -1339,7 +1353,7 @@ def test_window_preserves_the_interval_between_two_cars():
     grid index BBB must sit where AAA was 2 s (= 20 grid steps) earlier. If anything
     rebased a car's clock, this is what breaks.
     """
-    replay = build_window_replay_dict(_two_car_window(), synthetic.SESSION_META, WINDOW)
+    replay = build_legacy_window(_two_car_window(), synthetic.SESSION_META, WINDOW)
     lead, chase = (c["samples"] for c in replay["cars"])
     offset_steps = int(2.0 * replay["meta"]["sampleRateHz"])
 
@@ -1351,7 +1365,7 @@ def test_window_preserves_the_interval_between_two_cars():
 def test_window_positions_match_the_closed_form():
     """Each car's emitted path is the circle it was generated from, not merely
     self-consistent with another run of the same code."""
-    replay = build_window_replay_dict(_two_car_window(), synthetic.SESSION_META, WINDOW)
+    replay = build_legacy_window(_two_car_window(), synthetic.SESSION_META, WINDOW)
     rate = replay["meta"]["sampleRateHz"]
     samples = replay["cars"][0]["samples"]
 
@@ -1378,7 +1392,7 @@ def test_window_never_rebases_a_cars_time_axis():
     late = synthetic.window_car(
         "BBB", synthetic.session_telemetry(synthetic.SESSION_T0 + 3.0, WINDOW_END)
     )
-    replay = build_window_replay_dict([early, late], synthetic.SESSION_META, WINDOW)
+    replay = build_legacy_window([early, late], synthetic.SESSION_META, WINDOW)
     a, b = (c["samples"] for c in replay["cars"])
 
     # Same generator, same offset: once BOTH cars have data, they are in the same
@@ -1393,7 +1407,7 @@ def test_window_holds_a_car_whose_data_starts_late_rather_than_extrapolating():
     late = synthetic.window_car(
         "BBB", synthetic.session_telemetry(synthetic.SESSION_T0 + 3.0, WINDOW_END)
     )
-    replay = build_window_replay_dict(
+    replay = build_legacy_window(
         [synthetic.window_car("AAA", synthetic.session_telemetry(*WINDOW)), late],
         synthetic.SESSION_META,
         WINDOW,
@@ -1415,7 +1429,7 @@ def test_window_holds_a_retired_car_at_its_last_known_place():
         "BBB",
         synthetic.session_telemetry(*WINDOW, stopped_from=synthetic.SESSION_T0 + 6.0),
     )
-    replay = build_window_replay_dict(
+    replay = build_legacy_window(
         [synthetic.window_car("AAA", synthetic.session_telemetry(*WINDOW)), retired],
         synthetic.SESSION_META,
         WINDOW,
@@ -1436,7 +1450,7 @@ def test_window_tolerates_cars_at_different_source_rates():
     coarse = synthetic.window_car(
         "BBB", synthetic.session_telemetry(*WINDOW, rate=3.0)
     )
-    replay = build_window_replay_dict(
+    replay = build_legacy_window(
         [synthetic.window_car("AAA", synthetic.session_telemetry(*WINDOW, rate=11.0)),
          coarse],
         synthetic.SESSION_META,
@@ -1451,7 +1465,7 @@ def test_window_emits_a_parked_car_without_raising():
     A stationary car is CORRUPT data for a lap and ORDINARY data for a window. Same
     condition, different meaning — which is the whole reason `covers_ground` exists.
     """
-    replay = build_window_replay_dict(
+    replay = build_legacy_window(
         [
             synthetic.window_car("AAA", synthetic.session_telemetry(*WINDOW)),
             synthetic.window_car("BBB", synthetic.parked_telemetry(*WINDOW)),
@@ -1475,7 +1489,7 @@ def test_the_lap_builder_still_raises_on_the_very_same_stationary_car():
 
 
 def test_window_marks_the_replay_open_and_a_lap_closed():
-    window = build_window_replay_dict(
+    window = build_legacy_window(
         _two_car_window(), synthetic.SESSION_META, WINDOW
     )
     assert window["meta"]["loop"] == LOOP_OPEN
@@ -1485,7 +1499,7 @@ def test_window_marks_the_replay_open_and_a_lap_closed():
 
 
 def test_window_takes_start_finish_from_the_reference_car():
-    replay = build_window_replay_dict(_two_car_window(), synthetic.SESSION_META, WINDOW)
+    replay = build_legacy_window(_two_car_window(), synthetic.SESSION_META, WINDOW)
     first = replay["cars"][0]["samples"][0]
     assert replay["track"]["startFinish"]["x"] == first["x"]
     assert replay["track"]["startFinish"]["y"] == first["y"]
@@ -1493,21 +1507,21 @@ def test_window_takes_start_finish_from_the_reference_car():
 
 def test_window_rejects_an_empty_car_list():
     with pytest.raises(TelemetryShapeError, match="at least one car"):
-        build_window_replay_dict([], synthetic.SESSION_META, WINDOW)
+        build_legacy_window([], synthetic.SESSION_META, WINDOW)
 
 
 def test_window_rejects_a_car_missing_a_required_channel():
     cars = _two_car_window()
     del cars[1].telemetry["Speed"]
     with pytest.raises(MissingColumnsError, match="Speed"):
-        build_window_replay_dict(cars, synthetic.SESSION_META, WINDOW)
+        build_legacy_window(cars, synthetic.SESSION_META, WINDOW)
 
 
 def test_window_rejects_a_car_with_time_running_backwards():
     cars = _two_car_window()
     cars[1].telemetry["Time"] = cars[1].telemetry["Time"][::-1].copy()
     with pytest.raises(TelemetryShapeError, match="BBB: telemetry Time"):
-        build_window_replay_dict(cars, synthetic.SESSION_META, WINDOW)
+        build_legacy_window(cars, synthetic.SESSION_META, WINDOW)
 
 
 def test_window_rejects_a_car_with_too_few_rows():
@@ -1515,7 +1529,7 @@ def test_window_rejects_a_car_with_too_few_rows():
     for name in list(cars[1].telemetry):
         cars[1].telemetry[name] = cars[1].telemetry[name][:1]
     with pytest.raises(TelemetryShapeError, match="BBB: telemetry needs at least 2"):
-        build_window_replay_dict(cars, synthetic.SESSION_META, WINDOW)
+        build_legacy_window(cars, synthetic.SESSION_META, WINDOW)
 
 
 def test_window_positions_are_unaffected_by_the_speed_channel_s_scale():
@@ -1523,13 +1537,13 @@ def test_window_positions_are_unaffected_by_the_speed_channel_s_scale():
     6b's unit-agnosticism, carried into the window. Only the RATIO of travel to path
     is used, so a speed channel in mph must emit identical positions.
     """
-    kmh = build_window_replay_dict(
+    kmh = build_legacy_window(
         _two_car_window(), synthetic.SESSION_META, WINDOW
     )
     mph_cars = _two_car_window()
     for car in mph_cars:
         car.telemetry["Speed"] = car.telemetry["Speed"] / 1.609344
-    mph = build_window_replay_dict(mph_cars, synthetic.SESSION_META, WINDOW)
+    mph = build_legacy_window(mph_cars, synthetic.SESSION_META, WINDOW)
 
     for a, b in zip(kmh["cars"], mph["cars"]):
         assert [(s["x"], s["y"]) for s in a["samples"]] == [
@@ -1548,7 +1562,7 @@ def test_window_gives_every_car_drs_when_any_car_used_it():
     """
     cars = _two_car_window()
     cars[1].telemetry["DRS"] = np.zeros_like(cars[1].telemetry["DRS"])
-    replay = build_window_replay_dict(cars, synthetic.SESSION_META, WINDOW)
+    replay = build_legacy_window(cars, synthetic.SESSION_META, WINDOW)
 
     for car in replay["cars"]:
         assert all("drs" in s for s in car["samples"])
@@ -1557,7 +1571,7 @@ def test_window_gives_every_car_drs_when_any_car_used_it():
 
 def test_window_omits_drs_from_every_car_when_no_car_used_it():
     """A 2026+ session: all-zero everywhere means the key is omitted, as for a lap."""
-    replay = build_window_replay_dict(
+    replay = build_legacy_window(
         _two_car_window(drs=False), synthetic.SESSION_META, WINDOW
     )
     for car in replay["cars"]:
@@ -1571,7 +1585,7 @@ def test_window_omits_drs_when_one_car_lacks_the_channel_entirely():
     """
     cars = _two_car_window()
     del cars[1].telemetry["DRS"]
-    replay = build_window_replay_dict(cars, synthetic.SESSION_META, WINDOW)
+    replay = build_legacy_window(cars, synthetic.SESSION_META, WINDOW)
     for car in replay["cars"]:
         assert all("drs" not in s for s in car["samples"])
 
@@ -1670,7 +1684,7 @@ def test_motion_fidelity_is_near_perfect_on_arc_length_placed_positions():
     samples by travelled distance is what makes the marker's apparent speed agree
     with the speed channel; this is that claim, measured.
     """
-    replay = build_window_replay_dict(_two_car_window(), synthetic.SESSION_META, WINDOW)
+    replay = build_legacy_window(_two_car_window(), synthetic.SESSION_META, WINDOW)
     for car in replay["cars"]:
         corr, spread = motion_fidelity(car["samples"], replay["meta"]["sampleRateHz"])
         assert corr > 0.97
@@ -1683,7 +1697,7 @@ def test_motion_fidelity_is_scale_free_in_both_channels():
     conversion between position units and km/h, and a correlation plus a
     self-normalised spread do not need one.
     """
-    replay = build_window_replay_dict(_two_car_window(), synthetic.SESSION_META, WINDOW)
+    replay = build_legacy_window(_two_car_window(), synthetic.SESSION_META, WINDOW)
     samples = replay["cars"][0]["samples"]
     rescaled = [
         {**s, "x": s["x"] * 7.5, "y": s["y"] * 7.5, "speed": s["speed"] * 0.3}
@@ -1698,7 +1712,7 @@ def test_motion_fidelity_catches_positions_placed_by_time_instead_of_travel():
     alone is exactly the defect 6b removed, and the metric has to see it — otherwise
     it would pass everything and mean nothing.
     """
-    replay = build_window_replay_dict(_two_car_window(), synthetic.SESSION_META, WINDOW)
+    replay = build_legacy_window(_two_car_window(), synthetic.SESSION_META, WINDOW)
     samples = replay["cars"][0]["samples"]
     scrambled = [
         {**s, "x": s["x"] * (1.0 + 0.6 * ((k % 3) - 1))}
@@ -1713,7 +1727,7 @@ def test_motion_fidelity_catches_positions_placed_by_time_instead_of_travel():
 def test_motion_fidelity_is_undefined_for_a_car_that_never_moved():
     """A parked car's ratio has a zero denominator on every step; there is nothing to
     correlate, and saying so is better than returning a number."""
-    replay = build_window_replay_dict(
+    replay = build_legacy_window(
         [
             synthetic.window_car("AAA", synthetic.session_telemetry(*WINDOW)),
             synthetic.window_car("BBB", synthetic.parked_telemetry(*WINDOW)),
@@ -1748,12 +1762,12 @@ def test_one_car_s_speed_scale_changes_nothing_for_it_or_its_neighbours():
     must leave every emitted coordinate — its own and its neighbour's — untouched.
     Anyone who reintroduces a shared or absolute scale will fail here.
     """
-    base = build_window_replay_dict(
+    base = build_legacy_window(
         _two_car_window(), synthetic.SESSION_META, WINDOW
     )
     skewed_cars = _two_car_window()
     skewed_cars[1].telemetry["Speed"] = skewed_cars[1].telemetry["Speed"] * 1.5
-    skewed = build_window_replay_dict(skewed_cars, synthetic.SESSION_META, WINDOW)
+    skewed = build_legacy_window(skewed_cars, synthetic.SESSION_META, WINDOW)
 
     for before, after in zip(base["cars"], skewed["cars"]):
         assert [(s["x"], s["y"]) for s in before["samples"]] == [
@@ -2755,7 +2769,7 @@ def test_window_cars_carry_their_own_lap_context_per_car():
     start = synthetic.SESSION_T0
     window = (start, start + 4.0)
     laps, stints = lap_context(*synthetic.SESSION_LAP_TABLES["AAA"], window)
-    replay = build_window_replay_dict(
+    replay = build_legacy_window(
         [
             synthetic.window_car(
                 "AAA", synthetic.session_telemetry(start, window[1]),
@@ -2892,12 +2906,12 @@ def test_window_builder_moves_samples_for_an_anchored_car():
     # the map to the crossing fix's own arc position instead of the global line.
     start, end = WINDOW
     telemetry = synthetic.session_telemetry(start, end)
-    with_laps = build_window_replay_dict(
+    with_laps = build_legacy_window(
         [synthetic.window_car("AAA", telemetry,
                               laps=[{"number": 12, "startT": 4.0}])],
         synthetic.SESSION_META, WINDOW,
     )["cars"][0]["samples"]
-    without = build_window_replay_dict(
+    without = build_legacy_window(
         [synthetic.window_car("AAA", telemetry)],
         synthetic.SESSION_META, WINDOW,
     )["cars"][0]["samples"]
@@ -2932,12 +2946,12 @@ def test_window_builder_applies_structural_adjudications_per_driver():
         synthetic.window_car("AAA", clean),
         synthetic.window_car("BBB", tel),
     ]
-    unaided = build_window_replay_dict(cars(displaced), synthetic.SESSION_META, WINDOW)
-    ruled = build_window_replay_dict(
+    unaided = build_legacy_window(cars(displaced), synthetic.SESSION_META, WINDOW)
+    ruled = build_legacy_window(
         cars(displaced), synthetic.SESSION_META, WINDOW,
         adjudicated={"BBB": (times[lo - 1], times[hi - 1])},
     )
-    truth = build_window_replay_dict(cars(clean), synthetic.SESSION_META, WINDOW)
+    truth = build_legacy_window(cars(clean), synthetic.SESSION_META, WINDOW)
 
     assert ruled["cars"][0] == unaided["cars"][0] == truth["cars"][0]
 
@@ -3067,10 +3081,10 @@ def test_window_builder_screens_reversals_but_not_for_declined_cars():
         spike["Time"], spike["X"], spike["Y"], spike["Speed"]
     ).keep
     assert keeps[k], "premise broken: the ratio screen caught the spike itself"
-    clean_build = build_window_replay_dict(
+    clean_build = build_legacy_window(
         [synthetic.window_car("AAA", tel)], synthetic.SESSION_META, WINDOW
     )["cars"][0]["samples"]
-    spiked_build = build_window_replay_dict(
+    spiked_build = build_legacy_window(
         [synthetic.window_car("AAA", spike)], synthetic.SESSION_META, WINDOW
     )["cars"][0]["samples"]
     # with the reversal screen the spike is dropped and bridged; without it the
@@ -3108,7 +3122,7 @@ def test_window_builder_withholds_the_reversal_screen_for_a_declined_car():
     spiked_tel, _ = _sub_bar_overshoot(declined_tel, start + 8.0)
 
     def build(cartel):
-        return build_window_replay_dict(
+        return build_legacy_window(
             [synthetic.window_car("AAA", cartel)], synthetic.SESSION_META, WINDOW
         )["cars"][0]["samples"]
 
@@ -3239,14 +3253,14 @@ def test_status_empty_feed_emits_no_intervals():
 def test_window_builder_emits_status_rows_and_defaults_them_empty():
     start, end = 1042.5, 1046.5
     cars = [synthetic.window_car("AAA", synthetic.session_telemetry(start, end))]
-    with_status = build_window_replay_dict(
+    with_status = build_legacy_window(
         cars, synthetic.SESSION_META, (start, end),
         status=[{"status": "green", "fromT": 0.0, "toT": 4.1}],
     )
     assert with_status["trackStatus"] == [
         {"status": "green", "fromT": 0.0, "toT": 4.1}
     ]
-    without = build_window_replay_dict(cars, synthetic.SESSION_META, (start, end))
+    without = build_legacy_window(cars, synthetic.SESSION_META, (start, end))
     assert without["trackStatus"] == []
 
 
@@ -3455,7 +3469,7 @@ def test_window_builder_freezes_a_dead_feed_and_emits_retiredAt():
         "Y": np.zeros(len(dead_t)),
     }
     dead = synthetic.window_car("BBB", tel)
-    replay = build_window_replay_dict(
+    replay = build_legacy_window(
         [healthy, dead], synthetic.SESSION_META, (start, end)
     )
     cars = {c["driver"]: c for c in replay["cars"]}
@@ -3765,7 +3779,7 @@ def test_window_builder_bridges_a_dropout_and_emits_the_interval():
     tel = dict(base)
     tel["Speed"], tel["Throttle"], tel["Brake"] = v, th, br
     car = synthetic.window_car("AAA", tel)
-    built = build_window_replay_dict([car], synthetic.SESSION_META, WINDOW)
+    built = build_legacy_window([car], synthetic.SESSION_META, WINDOW)
     emitted = built["cars"][0]
     assert "dropouts" in emitted and len(emitted["dropouts"]) == 1
     drop = emitted["dropouts"][0]
@@ -3777,7 +3791,7 @@ def test_window_builder_bridges_a_dropout_and_emits_the_interval():
 def test_window_builder_omits_dropouts_for_a_clean_field():
     start, end = WINDOW
     tel = synthetic.session_telemetry(start, end)
-    built = build_window_replay_dict(
+    built = build_legacy_window(
         [synthetic.window_car("AAA", tel)], synthetic.SESSION_META, WINDOW
     )
     assert "dropouts" not in built["cars"][0]
@@ -4080,7 +4094,7 @@ def test_detect_pit_lane_no_cars_and_no_traversals():
 
 def test_window_builder_emits_the_pit_lane_and_the_lap_builder_stays_silent():
     start, end = synthetic.PIT_WINDOW
-    built = build_window_replay_dict(
+    built = build_legacy_window(
         [
             synthetic.window_car(
                 "AAA",
@@ -4118,7 +4132,7 @@ def test_window_builder_emits_the_pit_lane_and_the_lap_builder_stays_silent():
 
 def test_window_builder_omits_the_key_when_no_car_pits():
     start, end = synthetic.PIT_WINDOW
-    built = build_window_replay_dict(
+    built = build_legacy_window(
         [synthetic.window_car("AAA", synthetic.session_telemetry(start, end))],
         synthetic.SESSION_META,
         synthetic.PIT_WINDOW,
@@ -4128,7 +4142,7 @@ def test_window_builder_omits_the_key_when_no_car_pits():
 
 def test_pit_lane_report_names_every_traversal_and_confirms_the_file():
     start, end = synthetic.PIT_WINDOW
-    built = build_window_replay_dict(
+    built = build_legacy_window(
         [
             synthetic.window_car(
                 "AAA",
@@ -4148,7 +4162,7 @@ def test_pit_lane_report_names_every_traversal_and_confirms_the_file():
 
 def test_pit_lane_report_says_none_for_a_clean_window():
     start, end = synthetic.PIT_WINDOW
-    built = build_window_replay_dict(
+    built = build_legacy_window(
         [synthetic.window_car("AAA", synthetic.session_telemetry(start, end))],
         synthetic.SESSION_META,
         synthetic.PIT_WINDOW,
@@ -4161,7 +4175,7 @@ def test_pit_lane_report_screams_when_declined_facts_disagree():
     # its recomputation drops the lane the file carries, and it says so rather
     # than printing two truths quietly.
     start, end = synthetic.PIT_WINDOW
-    built = build_window_replay_dict(
+    built = build_legacy_window(
         [
             synthetic.window_car(
                 "AAA",
@@ -4200,7 +4214,7 @@ def test_pit_lane_report_marks_the_second_same_lane_traversal_redundant():
     # Two cars through the SAME dogleg: one polyline in the file, and the report
     # says which traversal it came from and why the other added nothing.
     start, end = synthetic.PIT_WINDOW
-    built = build_window_replay_dict(
+    built = build_legacy_window(
         [
             synthetic.window_car(
                 "AAA",

@@ -42,16 +42,30 @@
  * ---------------------------------------------------------------------------------
  * Frame interval is clamped by vsync, so a single car count cannot show a slope. The
  * sweep varies car count and NOTHING ELSE by slicing subsets off one full-field file:
- * same window, same duration, same `cars[0]`, therefore the same ribbon, bounds, fit
- * and corner chrome. `dist/` is gitignored build output, so nothing here is committed
- * and no source-tree data file is written.
+ * same window, same duration, same reference lap, therefore the same ribbon, bounds,
+ * fit and corner chrome. `dist/` is gitignored build output, so nothing here is
+ * committed and no source-tree data file is written.
+ *
+ * `track.referenceLap` (Slice 24) names its car BY INDEX, so a subset that leaves
+ * that car out cannot keep it — the loader would reject the file. The recipe drops
+ * the field there and the legacy reference (the subset's `cars[0]`, first lap)
+ * applies; that point's ribbon is then NOT the full file's, so say so in the table.
+ * A file without the field (the gitignored `monza_full_field.json` predates it) is
+ * untouched, and so is every gallery asset: none currently names a car past
+ * `cars[0]` (the red flag's reference is `cars[0]`, RUS), so every subset of them
+ * keeps its field. The drop is reached only by a hand-made or future file whose
+ * reference car is not listed first.
  *
  *   python3 - <<'PY'
  *   import json
  *   ff = json.load(open("app/public/data/monza_full_field.json"))
  *   for n in (1, 3, 7, 13, 19):
+ *       track = dict(ff["track"])
+ *       if track.get("referenceLap", {}).get("car", 0) >= n:
+ *           print(f"N={n}: reference car not in the subset - referenceLap dropped")
+ *           del track["referenceLap"]
  *       with open(f"app/dist/data/field_{n:02d}.json", "w") as f:
- *           json.dump({"meta": ff["meta"], "track": ff["track"],
+ *           json.dump({"meta": ff["meta"], "track": track,
  *                      "cars": ff["cars"][:n]}, f, sort_keys=True, indent=2)
  *           f.write("\n")
  *   PY

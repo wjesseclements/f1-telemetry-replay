@@ -139,7 +139,29 @@ as a Zod schema; the loader validates against it; the Python pipeline emits it.
   },
   "track": {
     "startFinish": { "x": 0, "y": 0, "angle": 0 },
-    "corners": [ { "number": 1, "letter": "", "x": 0, "y": 0 } ]
+    "corners": [ { "number": 1, "letter": "", "x": 0, "y": 0 } ],
+    // Slice 24, ADDITIVE within schemaVersion 1: the REFERENCE LAP — a span of
+    // replay seconds during which cars[car] drives exactly ONE clean racing lap,
+    // timing line to timing line. The start/finish line, track ribbon, gap
+    // reference circuit and gap pace are all measured from it. OPTIONAL on input,
+    // ALWAYS present once parsed: when absent the loader synthesizes the legacy
+    // reference (closed: the whole lap, 0..duration; open: cars[0] from sample 0
+    // to its first return to its start, or its whole path if it never returns).
+    // When present it is validated loudly: car in range; fromT < toT <= duration,
+    // both on the sample grid; span >= 5 s (the engine's MIN_LAP_S); the span
+    // CLOSES — cars[car] at toT within 25 m (MAX_RESIDUAL_M) of where it was at
+    // fromT; startFinish within 25 m of cars[car] at fromT. The pipeline chooses it
+    // by rule — not race lap 1, LapTime recorded, not an in/out lap, FastF1
+    // IsAccurate, wholly in the window, no sample below 15 km/h, no stuck-channel
+    // dropout in it, no known position fault of its car within 10 s of it (a
+    // declined frame-displacement jump, a reversal the declined plan left in
+    // place, a surrendered fix run — lap-level, not car-level), it closes within
+    // the loader's 25 m, green throughout preferred field-wide — and fails the
+    // build if no lap qualifies.
+    // The app reads it and nothing else: the ribbon is cars[car]'s fromT..toT, the
+    // gap circuit is that lap (arc 0 on the timing line, lapSeconds = toT - fromT),
+    // and the tower's order key converts progress at that lap's pace.
+    "referenceLap": { "car": 0, "fromT": 89.0, "toT": 175.6 }
   },
   "cars": [
     {

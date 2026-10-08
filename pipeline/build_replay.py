@@ -78,7 +78,10 @@ from replay_transform import (
     reversal_report,
     frame_repair_report,
     window_anchor_plan,
+    position_faults,
     lap_context,
+    lap_facts,
+    reference_lap_report,
     reject_impossible_fixes,
     repair_frame_displacements,
     count_out_of_range_gears,
@@ -333,9 +336,41 @@ def _lap_context_for(laps, window):
     )
 
 
-def _driver_window_telemetry(session, driver, t0, t1):
+#: FastF1 `Session.name`s that start from the grid: their lap 1 is a standing start,
+#: which begins on the driver's grid slot rather than on the timing line, so it can
+#: never be the reference lap (`replay_transform.reference_lap`). Named by the
+#: session's own name rather than the CLI's `--session` so `R`, `Race` and a round
+#: number cannot disagree.
+STANDING_START_SESSIONS = ("Race", "Sprint")
+
+
+def _lap_facts_for(laps, window, standing_start):
     """
-    One driver's telemetry over `[t0, t1]` session seconds, on the SHARED axis.
+    A driver's reference-lap candidates for `window`, from their lap table — pure
+    column extraction, like `_lap_context_for`; the rule is
+    `replay_transform.lap_facts`. NaT pit times become NaN, which is "not an in/out
+    lap"; a NaT LapTime becomes NaN, which the selector names as "no LapTime".
+    `IsAccurate` is handed over as it comes — `lap_facts` counts only a real True —
+    and, unlike Compound/TyreLife, is not degraded when absent: FastF1 3.8 always
+    computes it, and a reference lap must not be chosen on timing nobody vouched for.
+    """
+    return lap_facts(
+        laps["LapNumber"].to_numpy(dtype=float).astype(int),
+        _session_seconds(laps["LapStartTime"]),
+        _session_seconds(laps["LapTime"]),
+        _session_seconds(laps["PitInTime"]),
+        _session_seconds(laps["PitOutTime"]),
+        laps["IsAccurate"].tolist(),
+        standing_start,
+        window,
+    )
+
+
+def _driver_window_telemetry(session, driver, t0, t1, standing_start):
+    """
+    One driver's telemetry over `[t0, t1]` session seconds, on the SHARED axis,
+    plus the driver's reference-lap candidates (`_lap_facts_for`). `standing_start`
+    has no default: a forgotten one would read a race's lap 1 as a candidate.
 
     The `Time` key handed back is SessionTime, not the per-lap time `build_lap_replay`
     uses — that substitution is the whole of CLAUDE.md rule 5, and it is made here in
@@ -389,7 +424,8 @@ def _driver_window_telemetry(session, driver, t0, t1):
         laps=car_laps,
         stints=car_stints,
     )
-    return car, (float(covered[0]), float(covered[-1]))
+    facts = _lap_facts_for(laps, (t0, t1), standing_start)
+    return car, (float(covered[0]), float(covered[-1])), facts
 
 
 def resolve_lap_window(session, driver, first_lap, last_lap):
@@ -400,7 +436,9 @@ def resolve_lap_window(session, driver, first_lap, last_lap):
     are about correctness, not ergonomics (though nobody knows when lap 12 was
     either). A whole-lap window starts and ends on the start/finish line, so:
 
-    * `track.startFinish`, taken from the reference car's first sample, is the line;
+    * the window holds whole laps, one of which becomes `track.referenceLap` and
+      supplies `track.startFinish` (Slice 24 — chosen by rule, no longer simply the
+      reference car's first sample, which on a standing start is the grid slot);
     * the renderer's ribbon — traced from `cars[0]` and closed with `closePath` —
       actually closes, instead of drawing a chord across the infield.
 
@@ -439,14 +477,16 @@ def resolve_lap_window(session, driver, first_lap, last_lap):
 def build_race_replay(year, gp, session_id, drivers, laps, cache_dir=".f1cache"):
     """
     Fetch several drivers over a shared session-time window and return
-    `(replay, window, cars)`.
+    `(replay, window, cars, coverage, adjudicated, reference_laps)`.
 
     The v2 shape. Every driver is resampled onto ONE grid derived from the window, so
     sample k of every car is the same instant — which is what `cars[]` being an array
     has been waiting for since Slice 2, and why the app needs no change to render it.
 
-    `drivers[0]` is the reference: the window is its lap range, and it supplies the
-    replay's start/finish line.
+    `drivers[0]` names the window: it is their lap range. The REFERENCE LAP — and
+    with it the start/finish line — is chosen by `select_reference_lap` from every
+    driver's lap facts, first driver first (Slice 24); a window with no qualifying
+    lap fails the build by name.
     """
     os.makedirs(cache_dir, exist_ok=True)
     fastf1.Cache.enable_cache(cache_dir)
@@ -461,12 +501,17 @@ def build_race_replay(year, gp, session_id, drivers, laps, cache_dir=".f1cache")
         f"session {t0:.2f}s -> {t1:.2f}s ({t1 - t0:.2f}s)"
     )
 
+    standing_start = str(session.name) in STANDING_START_SESSIONS
     window_cars = []
     coverage = {}
+    reference_laps = []
     for driver in drivers:
-        car, covered = _driver_window_telemetry(session, driver, t0, t1)
+        car, covered, facts = _driver_window_telemetry(
+            session, driver, t0, t1, standing_start
+        )
         window_cars.append(car)
         coverage[driver] = covered
+        reference_laps.append(facts)
         print(
             f"  {driver}: {len(car.telemetry['Time'])} source rows covering "
             f"{covered[0]:.2f}s -> {covered[1]:.2f}s"
@@ -548,12 +593,20 @@ def build_race_replay(year, gp, session_id, drivers, laps, cache_dir=".f1cache")
         rate=SAMPLE_RATE_HZ,
         status=status.intervals,
         adjudicated=adjudicated,
+        reference_laps=reference_laps,
     )
-    return replay, (t0, t1), window_cars, coverage, adjudicated
+    return replay, (t0, t1), window_cars, coverage, adjudicated, reference_laps
 
 
 def report_window(
-    replay, window, cars, coverage, compact: bool = False, adjudicated=None
+    replay,
+    window,
+    cars,
+    coverage,
+    compact: bool = False,
+    adjudicated=None,
+    *,
+    reference_laps,
 ) -> None:
     """
     Print the numbers behind a window build, for the same reason `build_lap_replay`
@@ -564,6 +617,10 @@ def report_window(
     metric, now computed per car on every build instead of by hand once. It answers
     the question Slice 9's relative gaps actually rest on: does each car's marker
     move at the speed its own telemetry claims?
+
+    `reference_laps` is keyword-only with no default: the same lap facts the
+    builder chose from, so the report recomputes the same choice. The `()` default
+    it once had would have failed only after the file was written (Slice 24 review).
     """
     t0, t1 = window
     n = len(replay["cars"][0]["samples"])
@@ -618,6 +675,7 @@ def report_window(
     print("  position screening:")
     worst_share = 0.0
     declined_drivers = []
+    faults = {}
     for car in cars:
         # Bridge the stuck-channel dropouts FIRST, exactly as the builder does, so every
         # screen below sees the same telemetry the builder screened and the log cannot
@@ -642,9 +700,12 @@ def report_window(
         print(fix_rejection_report(str(car.driver), r, offset=window[0]))
         worst_share = max(worst_share, r.n_rejected / max(len(b_t), 1))
         plan_declined = bool(repair.jump_times) and not repair.repaired
+        # Run on every car, as the builder runs it; APPLIED (and so reported) only
+        # where the plan was not declined — elsewhere it feeds the position faults.
+        reversals = reject_reversals(b_t, repair.x, repair.y, b_v)
         print(reversal_report(
             str(car.driver),
-            None if plan_declined else reject_reversals(b_t, repair.x, repair.y, b_v),
+            None if plan_declined else reversals,
             offset=window[0],
         ))
         # The anchor plan (Slice 9i/9m), recomputed from the same pure function the
@@ -654,6 +715,12 @@ def report_window(
         )
         if plan.declined:
             declined_drivers.append(str(car.driver))
+        # Where this car's emitted positions are known corrupt (Slice 24 follow-up):
+        # the same pure function the builder ran, on the same inputs, so the
+        # reference-lap report below passes over the same laps the builder did.
+        faults[str(car.driver)] = position_faults(
+            b_t, window[0], plan, repair, r, reversals
+        )
         print(anchor_report(str(car.driver), plan))
     if worst_share > REJECTED_FIX_WARN_SHARE:
         print(
@@ -669,6 +736,12 @@ def report_window(
     # pure function the builder ran, with the declined-driver facts recomputed
     # just above — the report itself checks that file and recomputation agree.
     print(pit_lane_report(replay, declined_drivers))
+
+    # The reference lap (Slice 24), recomputed from the EMITTED file with the same
+    # lap facts the builder was handed and the position faults recomputed above (a
+    # lap within reach of one is never the reference): which car, which lap, which
+    # span, and why every earlier candidate was passed over.
+    print(reference_lap_report(replay, reference_laps, faults=faults))
 
     # What was actually WRITTEN, read back off the replay dict rather than
     # recomputed, so the report and the file cannot disagree. A strange session —
@@ -760,10 +833,12 @@ def _run_window(args) -> int:
     lap_range = parse_lap_range(args.laps)
 
     try:
-        data, window, cars, coverage, adjudicated = build_race_replay(
+        data, window, cars, coverage, adjudicated, reference_laps = build_race_replay(
             args.year, args.gp, args.session, drivers, lap_range
         )
     except TelemetryShapeError as err:
+        # Includes `NoReferenceLapError`: a window with no clean racing lap names
+        # every candidate's reason and the two ways out, then stops here.
         raise SystemExit(f"telemetry cannot produce a valid replay: {err}")
 
     out = Path(args.out)
@@ -774,7 +849,15 @@ def _run_window(args) -> int:
         f"wrote {out}: {data['meta']['track']} · "
         f"{', '.join(car['driver'] for car in data['cars'])}"
     )
-    report_window(data, window, cars, coverage, compact=args.compact, adjudicated=adjudicated)
+    report_window(
+        data,
+        window,
+        cars,
+        coverage,
+        compact=args.compact,
+        adjudicated=adjudicated,
+        reference_laps=reference_laps,
+    )
 
     if args.no_validate:
         print("WARNING: --no-validate: output was NOT checked against the schema.")
@@ -822,6 +905,12 @@ def _run_lap(args) -> int:
     print(frame_repair_report(args.driver, repair))
     print("tyre stints:")
     print(stint_report(args.driver, data["cars"][0]["laps"], data["cars"][0]["stints"]))
+    # Silent-never, like the window's report: a closed lap is its own reference.
+    ref = data["track"]["referenceLap"]
+    print(
+        f"reference lap: cars[{ref['car']}] {args.driver}, the whole closed lap "
+        f"{ref['fromT']:g}-{ref['toT']:g} s"
+    )
     # The tripwire for the case the synthetic tests can only simulate: telemetry that
     # leaves more than a whole grid step unrecorded (or runs more than one past the
     # line). Beyond that the closing chord is no longer a rounding correction — the

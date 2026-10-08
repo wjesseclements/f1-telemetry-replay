@@ -4510,6 +4510,11 @@
         }
       ]
     ],
+    "referenceLap": {
+      "car": 0,
+      "fromT": 0.0,
+      "toT": 20.0
+    },
     "startFinish": {
       "angle": 2.579283,
       "x": 446.3,
