@@ -5020,7 +5020,7 @@ watch: the `track.pitLane` re-election, and no-label-at-6:19 (on the line is on
 the line). Auto-merge (squash) enabled on the human's instruction. The board
 advances: **18 → 20**.
 
-### [x] Slice 22 — headless-Chrome layout check (the instrument; the fix is Slice 23) (done 2026-10-07)
+### [x] Slice 22 — headless-Chrome layout check (the instrument; the fix is Slice 23) (done 2026-10-07, MERGED 2026-10-08 as #77)
 
 **Filed and built 2026-10-07 on the human's direction, ahead of the board (18 → 20),
 from the whole-project review of that day.** jsdom has no layout engine — every box

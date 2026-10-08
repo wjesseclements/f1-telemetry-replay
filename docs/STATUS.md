@@ -59,12 +59,13 @@ home network (CLAUDE.md Gotchas).
 
 **What happens next.** The 2026-10-07 whole-project review inserted three slices
 ahead of the board, on the human's direction. **Slice 22** (a headless-Chrome layout
-check, `npm run check:layout`) and **Slice 23** (six of the seven defects visible on
-the live gallery fixed — the phone canvas collapsing under a full field, the clipped
-gallery panel, seek-to-end landing at the start, stopped cars pointing east, ~80 s
-window-edge gap jumps, the scrim that never rendered — and the layout check gated in
-`npm run check` and CI) are done and open as stacked PRs #77 → #78 → #79, CI green on all three (the
-layout check runs 51/51 on ubuntu-latest), awaiting the human's review.
+check, `npm run check:layout`) is **merged** (#77, 2026-10-08, after the human's
+review of the preview). **Slice 23** (six of the seven defects visible on the live
+gallery fixed — the phone canvas collapsing under a full field, the clipped gallery
+panel, seek-to-end landing at the start, stopped cars pointing east, ~80 s window-edge
+gap jumps, the scrim that never rendered — and the layout check gated in `npm run
+check` and CI; it runs 51/51 on ubuntu-latest) is PR #78, with Slice 24 stacked on it
+as #79.
 **Slice 24** makes the reference lap explicit in the contract (the seventh defect, the
 red-flag start/finish line, is its symptom). Then **Slice 18** per the board: 18 → 20,
 with the backlog's headline **fixture asymmetry overhaul** behind them. Housekeeping unchanged:
