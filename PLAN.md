@@ -5066,7 +5066,12 @@ named failure. **Exit codes:** 0 every row passed; 1 the run finished with a FAI
 row (layout, a state not reached, an off-origin request, a page exception, a harness
 fault mid-run); 2 the run did not finish (no build, no Chrome, probes cannot run,
 the cap); 130/143 interrupted. **CI only:** `--no-sandbox` when `CI=true` on Linux,
-UNVERIFIED until the first CI run (Ubuntu 24.04's AppArmor userns restriction).
+added for Ubuntu 24.04's AppArmor userns restriction; **measured on the first CI
+runs (2026-10-08, Chrome 154.0.8037.57 on ubuntu-latest): Chrome launches and the
+check runs 51/51** — whether the flag is required there is untested. That first run
+also failed 375x812 A once: polled straight after `Page.navigate` on a cold machine,
+the probe caught the document with no root (`documentElement` null) and threw; it now
+reads that window as "not ready" (`probe.test.ts` reproduces the TypeError).
 
 **Offline inside the browser — three layers, two of which enforce.** (1) The
 background-networking flags only REDUCE Chrome's own traffic: a net-log on Chrome
