@@ -4819,6 +4819,17 @@ the 2024 pit cycle's swaps reading as moves. The pre-registered 300 ms stands
 untouched — no tune requested. **"NO SIG" ratified** as the compact spelling.
 Push + PR + auto-merge authorised.
 
+### [ ] Slice 26 — phone-first layout, measured against Safari's real viewports
+
+**Filed 2026-10-11 by the human's phone check of Slice 25** (see its entry). Scope, as
+ruled: build **A** a full-screen gallery on phones (not confined to the track cell);
+**B** the canvas margin scaling with the canvas instead of a fixed 46 px (desktop
+unchanged); **D** scroll the focused car into view on focus change (the filed
+follow-up); **G** gate Safari's real viewports (~724x257 landscape, ~375x626 upright).
+And draft options — to compare, not to build — for **C** compact top and bottom bars
+on very short screens, **E** a track-first landscape mode with a tap-to-open tower,
+and **F** Add to Home Screen support (a web app manifest; needs an icon).
+
 ### [ ] Slice 20 — colour distinction under the luminance floor
 
 **Filed 2026-09-08 by Slice 17's browser pass.** The floor fixes visibility, not
@@ -5404,7 +5415,7 @@ merge).** All seven ACCEPTED as built:
 it changes `track.pitLane` bytes, so it needs its own slice; a field-anchored
 timing-line check for declined cars' laps (both in the backlog).
 
-### [x] Slice 25 — short and landscape phones (done 2026-10-08)
+### [x] Slice 25 — short and landscape phones (done 2026-10-08, MERGED 2026-10-11 as #80)
 
 **Filed 2026-10-08 by the human's ruling on Slice 23's phone-strip cap. Designed as
 three candidates and a judged synthesis, then built as ruled the same day.**
@@ -5566,8 +5577,22 @@ accepted:
 **Follow-ups filed in the backlog:** scroll the focused car into view on focus change
 (ruling 7); the md column readout on landscape phones 768 px and wider.
 
+**Phone check (human, 2026-10-11, a 375x812 iPhone in Safari): functional, "not very
+usable on a small screen".** The screenshots exposed what the matrix never modelled:
+Safari keeps its toolbars on screen, so the page gets about **724x257** in landscape
+(tab bar shown; the notch's safe area also takes ~44 px a side) and about **375x626**
+upright — not the 812x375 / 375x812 device sizes the gate assumes. Measured on this
+branch at those sizes: landscape draws the track 468x160 (under the 200 px floor), the
+tower list 144 px tall, the focused readout never whole (83–151 px hidden), and the
+gallery panel 160 px with no card whole; upright, the first-load gallery gets 216 px
+and no card whole, under the demo car's oversized readout. Slice 25 fixed the
+proportions at the sizes it measured; a usable phone needs a phone-first layout.
+Merged as a strict improvement on main (human ruling, 2026-10-11) and **Slice 26**
+filed for the phone work.
+
 ## Backlog (ideas — not committed)
-- **Scroll the focused car into view on focus change** (Slice 25's ruling 7). A full
+- **Scroll the focused car into view on focus change** (Slice 25's ruling 7; now in
+  Slice 26's scope as D). A full
   field's focused readout is still cut on every phone — 33–48 px on landscape phones,
   61–67 px on portrait — because it sorts wherever its car runs and the list does not
   follow it.

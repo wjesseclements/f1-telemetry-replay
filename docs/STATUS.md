@@ -57,5 +57,6 @@ standing constraint remains: `build_replay.py` fetches only from the human's hom
 network (CLAUDE.md Gotchas) — offline rebuilds from the FastF1 cache work on that
 machine.
 
-**What happens next.** **The board: 18 → 20**, with the fixture asymmetry overhaul
-behind them.
+**What happens next.** **Slice 26** (filed 2026-10-11 by the human's phone check: a
+phone-first layout measured against Safari's real viewports), then **the board: 18 →
+20**, with the fixture asymmetry overhaul behind them.
