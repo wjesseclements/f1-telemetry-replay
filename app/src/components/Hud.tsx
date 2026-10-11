@@ -344,11 +344,20 @@ export function Hud({ replay }: HudProps) {
           and three cars fit without it ever showing. `relative` contains the rows'
           `sr-only` text (absolutely positioned) in THIS scroller — without it, the
           rows scrolled out of the list made the whole page scrollable — and makes
-          the list its rows' `offsetParent`, which the focus reveal measures from. */}
+          the list its rows' `offsetParent`, which the focus reveal measures from.
+          `[overflow-anchor:none]` (Slice 26): the list scrolls for the viewer and
+          for the viewer's focus change, never for a reorder. Chrome's scroll
+          anchoring scrolled it on reorders, to hold whichever row sat at the top of
+          the view: a list parked at mid-field moved 232 px in 4 s of the red
+          flag's first lap at 2x (375x626, headless Chrome), following a car rather
+          than the positions the viewer chose, and every row the reorder did not
+          touch jumped with it. Off, the list holds still and only the rows that
+          changed places slide. Whether iOS Safari anchors was not measured (no
+          Safari here); a browser that does not was already behaving this way. */}
       <ul
         ref={rowsRef}
         aria-label="Running order"
-        className="relative m-0 flex min-h-0 w-full min-w-0 list-none flex-col gap-1 overflow-y-auto p-0"
+        className="relative m-0 flex min-h-0 w-full min-w-0 list-none flex-col gap-1 overflow-y-auto p-0 [overflow-anchor:none]"
       >
         {next.map((i) => (
           <CarEntry
