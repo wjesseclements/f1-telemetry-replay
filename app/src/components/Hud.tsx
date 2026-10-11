@@ -57,6 +57,7 @@ import { useTelemetry } from "../telemetry/useTelemetry";
 import { CarEntry } from "./CarEntry";
 import { SpeedTrace } from "./SpeedTrace";
 import { flipRows } from "./towerFlip";
+import { revealRow } from "./towerReveal";
 
 export interface HudProps {
   replay: Replay;
@@ -205,9 +206,48 @@ export function Hud({ replay }: HudProps) {
    *    height change snaps, per the PLAN argument — animating height is layout
    *    per frame, which rule 1 forbids;
    *  - `prefers-reduced-motion` does not, checked at the moment it matters (the
-   *    reorder), consistent with `motion.ts`'s read-at-need doctrine.
+   *    reorder), consistent with `motion.ts`'s read-at-need doctrine;
+   *  - a SCROLL does not — the viewer's, or the reveal's below — because the tops
+   *    are positions in the list, not on the screen (`towerFlip.ts`, Slice 26).
    */
   const rowsRef = useRef<HTMLUListElement>(null);
+
+  /**
+   * Bring the focused car into view when the FOCUSED CAR changes (Slice 26) — and
+   * at no other time. The focused car is a (replay, index) pair, so the trigger is
+   * a change of either: a click on a row, the keyboard's focus cycle, a scenario
+   * landing on its suggested driver, any replay load (which resets focus, and is
+   * a different car even at the same index). All four are a human acting.
+   *
+   * What does NOT trigger it is the point: a reorder, a HUD tick, a resize, the
+   * comparison toggle. Following the focused car down the field as it loses places
+   * would scroll the list under the viewer's own thumb at up to 30 Hz — rule 1's
+   * line, held on the DOM side too. The viewer scrolls; the tower answers only the
+   * viewer's own focus change.
+   *
+   * Once per change, at the first commit that RENDERS the focused row. Usually the
+   * same commit; after a load whose car count differs from the last frame's, the
+   * rows arrive with the next published frame (the stale-frame guard above), and
+   * the reveal waits for them rather than being lost. Declared BEFORE the FLIP
+   * pass so that pass measures the list where this left it.
+   */
+  const revealed = useRef<{ replay: Replay; focus: number } | null>(null);
+  useLayoutEffect(() => {
+    const list = rowsRef.current;
+    const seen = revealed.current;
+    if (
+      list === null ||
+      (seen !== null &&
+        seen.replay === replay &&
+        seen.focus === focusedCarIndex)
+    )
+      return;
+    const row = list.children[next.indexOf(focusedCarIndex)];
+    if (!(row instanceof HTMLElement)) return; // not rendered yet: stay pending
+    revealed.current = { replay, focus: focusedCarIndex };
+    revealRow(list, row, !prefersReducedMotion());
+  });
+
   const rowTops = useRef<ReadonlyMap<string, number>>(new Map());
   const flipPrev = useRef<{ replay: Replay | null; order: readonly number[] }>({
     replay: null,
@@ -226,6 +266,10 @@ export function Hud({ replay }: HudProps) {
       next.map((i) => replay.cars[i].driver),
       sameReplay ? rowTops.current : new Map(),
       sameReplay && !sameOrder(prev.order, next) && !prefersReducedMotion(),
+      // Where the list's CONTENT starts on screen, so the cached tops are positions
+      // in the list and a scroll between two commits is not mistaken for a move
+      // (Slice 26 — the smooth reveal above scrolls across several commits).
+      list.getBoundingClientRect().top - list.scrollTop,
     );
   });
 
@@ -299,7 +343,8 @@ export function Hud({ replay }: HudProps) {
           sidebar or strip: the list shrinks to what the aside allows and scrolls,
           and three cars fit without it ever showing. `relative` contains the rows'
           `sr-only` text (absolutely positioned) in THIS scroller — without it, the
-          rows scrolled out of the list made the whole page scrollable. */}
+          rows scrolled out of the list made the whole page scrollable — and makes
+          the list its rows' `offsetParent`, which the focus reveal measures from. */}
       <ul
         ref={rowsRef}
         aria-label="Running order"

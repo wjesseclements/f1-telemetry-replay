@@ -25,14 +25,26 @@
  * -------------------------------------------------------
  * First positions must predate the commit that moved the rows, so they are cached on
  * the PREVIOUS commit — and because rows also move for reasons that must NOT animate
- * (the focused readout collapsing on one row and opening on another, a scroll, a
- * viewport resize), the cache is refreshed on every ≤30 Hz commit rather than
- * derived. `getBoundingClientRect` deliberately: it includes any in-flight
- * transform, so the cache always holds where the row is SEEN, which is what a
- * retarget needs. The cost is one batched read pass after a commit that already
- * dirtied layout (the gap digits changed), so the browser does the same layout it
- * was about to do for paint, just earlier — measured by fps-probe in this slice's
- * PLAN entry rather than assumed.
+ * (the focused readout collapsing on one row and opening on another, a viewport
+ * resize), the cache is refreshed on every ≤30 Hz commit rather than derived.
+ * `getBoundingClientRect` deliberately: it includes any in-flight transform, so the
+ * cache always holds where the row is SEEN, which is what a retarget needs. The
+ * cost is one batched read pass after a commit that already dirtied layout (the gap
+ * digits changed), so the browser does the same layout it was about to do for
+ * paint, just earlier — measured by fps-probe in this slice's PLAN entry rather
+ * than assumed.
+ *
+ * POSITIONS IN THE LIST, NOT ON THE SCREEN (Slice 26)
+ * --------------------------------------------------
+ * A scroll moves every row on screen and none of them in the list, and a scroll can
+ * now run ACROSS commits: the tower's smooth reveal of a newly focused car takes
+ * several hundred ms, as does a flick of the viewer's thumb. Cached as screen tops,
+ * a reorder landing mid-scroll read the scroll since the last commit as a move of
+ * EVERY row and slid the whole list back against it. So every top is taken
+ * relative to `origin`, where the list's content starts on screen (its box's top
+ * minus its `scrollTop`): scroll-invariant, and invariant under the list itself
+ * moving on the page, while still the SEEN position within the list, transform
+ * included.
  */
 
 /**
@@ -78,8 +90,8 @@ const inFlight = new WeakMap<Element, Animation>();
 /**
  * One commit's FLIP pass over the tower rows.
  *
- * Always measures and returns the rows' current visual tops (the next commit's
- * First positions). When `animate` is true — the caller saw the order change on an
+ * Always measures and returns the rows' current visual tops, from `origin` (the
+ * next commit's First positions). When `animate` is true — the caller saw the order change on an
  * unchanged replay, with motion allowed — every row whose cached top differs from
  * its measured top slides from the old place to the new one.
  *
@@ -92,6 +104,9 @@ const inFlight = new WeakMap<Element, Animation>();
  *                 to forget continuity (a replay/scenario switch: a fresh tower
  *                 must not slide from where a different session's rows sat).
  * @param animate  whether row movement should animate this commit.
+ * @param origin   where the list's content starts on screen this commit (the
+ *                 scrolling list's `getBoundingClientRect().top - scrollTop`);
+ *                 every top is measured from it. 0 measures on the screen.
  * @returns the tops to hand back as `previous` next commit.
  */
 export function flipRows(
@@ -99,6 +114,7 @@ export function flipRows(
   keys: readonly string[],
   previous: ReadonlyMap<string, number>,
   animate: boolean,
+  origin: number,
 ): Map<string, number> {
   // Cancel before measuring, so every read below is pure layout — the Last
   // position — with no in-flight transform left in it. (The current VISUAL
@@ -107,7 +123,7 @@ export function flipRows(
 
   // One batched read pass; the writes below are transform-only and cannot dirty
   // layout, so this is a single forced layout, not a read/write interleave.
-  const tops = rows.map((el) => el.getBoundingClientRect().top);
+  const tops = rows.map((el) => el.getBoundingClientRect().top - origin);
 
   const next = new Map<string, number>();
   rows.forEach((el, k) => {
