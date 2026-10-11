@@ -1,3 +1,6 @@
+import defaultTheme from "tailwindcss/defaultTheme";
+import plugin from "tailwindcss/plugin";
+
 /**
  * A design token as a Tailwind colour that takes an opacity modifier (`bg-bg/75`).
  *
@@ -21,6 +24,40 @@
  */
 const token = (name) =>
   `color-mix(in srgb, var(--c-${name}) calc(<alpha-value> * 100%), transparent)`;
+
+/**
+ * A screen at least 5:4 wide (Slice 25). Its height is the scarce resource.
+ *
+ * Below `md` the page stacked whatever the shape, so a 667x375 phone gave the track
+ * 126 px and the tower 59. Stacked against side by side below `md`, with the same
+ * header in both, the circuit draws larger side by side at every width once the
+ * screen is 5:4 or wider. The worst case is the gallery's widest circuit (Monza,
+ * 2:1 on screen) at 767 px, beside the 256 px sub-md sidebar: at 5:4 it draws 419
+ * px wide side by side against 410 stacked; at 6:5 stacking wins, 460 against 419;
+ * the crossover is about 1.24 (measured through buildScene and fitTransform). With
+ * candidate B's 224 px sidebar the 5:4 margin was 41 px; the shipped 256 px one keeps
+ * 9. A rounder circuit crosses over
+ * sooner (the 1-car fixture already wins at 1:1). The tower always gains, because
+ * side by side it gets the region's whole height instead of a 40% strip.
+ *
+ * Every portrait screen (a phone is about 0.46–0.56) stays stacked exactly as
+ * before. Every landscape phone (16:9 is 1.78) goes side by side, and so do short
+ * desktop windows and a small tablet's split-screen half (600x480). A near-square
+ * narrow window, such as a landscape phone's split-screen half (457x412), stays
+ * stacked, as it was before.
+ */
+const WIDE = "(min-aspect-ratio: 5/4)";
+
+/**
+ * A screen at most 43.75rem (700 px) tall (Slice 25): the short portrait phones,
+ * 375x667 and 360x640, which `WIDE` misses. The header's meta line lists every
+ * driver, so a full field wrapped the header to 106–138 px there, and the track
+ * paid for it: one line took 375x667 with 22 cars from 200 to 256 px of track,
+ * and made 360x640's one-car readout whole (measured on candidate C). 375x812 and
+ * 390x844 are taller, and keep the wrapping line. Short desktop windows (1366x657)
+ * match too, but they are already `WIDE`.
+ */
+const SHORT = "(max-height: 43.75rem)";
 
 /** @type {import('tailwindcss').Config} */
 export default {
@@ -57,5 +94,22 @@ export default {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    // Variants rather than `theme.screens`, because a non-min-width screen there
+    // switches off Tailwind's `min-*` and `max-*` variants project-wide.
+    plugin(({ addVariant }) => {
+      // Track and tower side by side: wide enough for the 224 px sidebar (`md`),
+      // or a wide shape at any width. Every class that makes the layout side by
+      // side uses this one query, so they switch together; a `md:` copy would
+      // miss landscape phones. `md:` only resizes the sidebar and turns its
+      // readout into a column from 768 px up (Hud.tsx, CarEntry.tsx).
+      addVariant(
+        "side",
+        `@media (min-width: ${defaultTheme.screens.md}), ${WIDE}`,
+      );
+      // The header's meta line keeps to one line (App.tsx): on a wide screen OR
+      // a short one. One variant, so the two cases cannot drift apart.
+      addVariant("onerow", `@media ${WIDE}, ${SHORT}`);
+    }),
+  ],
 };

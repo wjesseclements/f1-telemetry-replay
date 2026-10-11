@@ -39,8 +39,9 @@
  *     swatch is what identifies the team in a row.
  *  2. **`gap_m` is next**, if twenty rows get tight — and Slice 15's vs pill called
  *     this in: at the sidebar's fixed `md:w-56` the pill and the metres column never
- *     both fit, so `gap_m` is `md:hidden` there (it still renders in the sub-`md`
- *     full-width strip). Enforced by flex as well as promised: `gap_m` is the compact
+ *     both fit, so `gap_m` is `side:hidden` in every sidebar, the 256 px one below
+ *     `md` included (Slice 25), and still renders in the stacked full-width strip.
+ *     Enforced by flex as well as promised: `gap_m` is the compact
  *     row's one shrinkable column, so at any unanticipated width it truncates away
  *     before anything else moves. Giving it back means a wider sidebar, knowingly.
  *  3. **`gap_s` never goes.** It is the unit the one-second DRS rule and every
@@ -269,11 +270,11 @@ export function CarEntry({
             /*
               The surrender order, enforced rather than promised, twice over:
 
-               - `md:hidden` on `gap_m`: at the sidebar's fixed `md:w-56` the vs pill
+               - `side:hidden` on `gap_m`: at the sidebar's fixed `md:w-56` the vs pill
                  and the metres column can NEVER both fit (measured — the leftover is
                  a "1…" stub that reads as broken data), so metres is dropped outright
-                 there, per the header's list. Below `md` the tower is a full-width
-                 strip with room for both, and metres comes back.
+                 in every sidebar, per the header's list. Stacked, the tower is a
+                 full-width strip with room for both, and metres comes back.
                - the flex belt: `gap_s` is `shrink-0` (it never goes) and `gap_m` is
                  the row's ONE shrinkable item (`min-w-0 shrink truncate` behind the
                  `min-w-0` chain), so at any width the maths didn't anticipate the
@@ -287,7 +288,7 @@ export function CarEntry({
                   gap === null ? 0 : gap.lapsDown,
                 )}
               </span>
-              <span className="w-11 min-w-0 shrink truncate text-right font-mono text-[10px] tabular-nums text-dim md:hidden">
+              <span className="w-11 min-w-0 shrink truncate text-right font-mono text-[10px] tabular-nums text-dim side:hidden">
                 {formatGapMetres(gap === null ? null : gap.metres)}
               </span>
             </span>
@@ -321,8 +322,9 @@ export function CarEntry({
           dropout={dropout}
         />
       )}
-      {/* `w-full` so the trace takes its own row in the sub-`md` strip, where the
-          readout wraps horizontally; in the sidebar it fills the column. */}
+      {/* `w-full` so the trace takes its own row wherever the readout wraps
+          horizontally (the stacked strip, and the sidebar below `md`); in the
+          `md` sidebar it fills the column. */}
       {focused && trace !== undefined && (
         <div className="mt-3 w-full">{trace}</div>
       )}
@@ -355,6 +357,12 @@ function NoSignalWord() {
  * does not have. The marker still moves (the bridged position is on the racing line),
  * but the numbers say, honestly, that the feed is out. DRS and tyres are season/stint
  * facts the dropout does not touch, so they render as usual.
+ *
+ * It becomes a column at `md:`, not at the layout's `side:` (Slice 25): below `md`
+ * the sidebar keeps this wrapping readout. Measured on landscape phones, the column
+ * readout was 300–333 px tall in a 231–283 px list, never whole and its speed trace
+ * never shown; wrapped in the 256 px sidebar it holds at 227 px whatever the speed
+ * (the width window is argued in `Hud.tsx`).
  */
 function CarReadout({
   car,
@@ -458,7 +466,7 @@ function Pedal({
   const percent = fraction === null ? 0 : Math.round(fraction * 100);
   return (
     // A bar needs width to mean anything, so it claims a minimum and grows into what
-    // is left. In the stacked sidebar `md:w-full` puts it back to full width.
+    // is left. In the `md` sidebar's column `md:w-full` puts it back to full width.
     <div className="min-w-[6rem] flex-1 md:w-full md:flex-none">
       <dt className="mb-1 font-mono text-[10px] uppercase tracking-widest text-dim">
         {label}

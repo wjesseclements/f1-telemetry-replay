@@ -230,15 +230,16 @@ export function Hud({ replay }: HudProps) {
   });
 
   return (
-    // A sidebar when there is width for one, a strip under the track when there is
-    // not. The border follows the edge it is actually on, so the panel never looks
-    // detached from the canvas it belongs to.
+    // A sidebar when there is width for one or the screen is wide rather than tall
+    // (`side:`), and a strip under the track otherwise. The border follows the edge
+    // it is actually on, so the panel never looks detached from the canvas it
+    // belongs to.
     //
     // The strip is CAPPED (Slice 23), with a bounded FLOOR, as one max-height over
     // the stacked region between the header and the transport bar — the list
     // scrolls inside whatever it resolves to:
     //
-    //     max(40%, min(13.75rem, 100% - 12.5rem))
+    //     max(40%, min(13.75rem, 100% - max(12.5rem, 30dvh + 1px)))
     //
     //  - 40%, the cap. Uncapped, a full field took the whole region: the canvas
     //    measured 0 px at 375x812 and the strip ran on under the transport bar.
@@ -246,21 +247,53 @@ export function Hud({ replay }: HudProps) {
     //  - 13.75rem (220 px), the floor: a strip that fits keeps its height. The
     //    one-car fixture's strip measures 219 px (a 194 px readout at every point
     //    of its lap, + `p-3` + the border); 40% alone cut it to 178 px at 375x667
-    //    and hid the speed trace behind a scroll. At 375x667 the same floor holds
-    //    a full field's focused readout whole too (a 195 px list).
-    //  - 100% - 12.5rem, the floor's bound: the floor never pushes the track under
-    //    200 px (the layout check's canvas floor). Unbounded, it is taller than a
-    //    landscape phone's whole region — 22 cars measured the canvas at 0 px
-    //    again at 667x375 and 740x360. There the bare 40% wins, as before.
+    //    and hid the speed trace behind a scroll. A full field's list is that
+    //    tall there too (195 px), but its focused car sits wherever it sorts:
+    //    LEC, third at the red flag's start, shows 127 of 194 px.
+    //  - 100% - max(12.5rem, 30dvh + 1px), the floor's bound: the floor never
+    //    takes the track under the layout check's canvas floor, max(200 px, 30%
+    //    of the viewport's height). It is the SAME floor (Slice 25: one floor,
+    //    not two; `scripts/layout/states.ts` says so from its side), and the
+    //    check's rule stays strict. Measured while the header still wrapped 22
+    //    drivers to 138 px: with only the 200 px half, 22 cars at 375x667 left
+    //    the track 200.0 px against the check's 200.1, and a taller header (the
+    //    picker's "loaded" line at 375x690) left it 204 against 207. The 1px is
+    //    the canvas's: TrackCanvas sizes it from its cell's `clientHeight`, a
+    //    whole-px snap that can lose up to 1 px, and with the bound at a bare
+    //    30dvh the cell measured 200.1 and the canvas 200.0 (201 with the 1px).
+    //    Only the fractional term needs it (12.5rem is whole), so a screen where
+    //    30% is under 200 px is untouched. Unbounded, the floor is taller than a
+    //    short region's whole height: 22 cars measured the canvas at 0 px at
+    //    667x375 and 740x360 when those stacked.
     //
     // Measured: 375x812 and taller are as the bare 40% left them (a three-car
-    // window scrolls its last ~48 px); at 375x667 the one-car strip is whole and
-    // 22 cars leave the track exactly 200 px; at 360x640 the two floors meet and
-    // the track wins — the one-car list is 192 of 194 px, the track 200. The
-    // sidebar needs no cap (`md:max-h-none`): its row bounds it.
+    // window scrolls its last ~48 px). At 375x667 and 360x640 the header's meta
+    // line keeps to one line (`onerow:`, App.tsx), so neither bound binds: every
+    // strip keeps its 220 px floor (the one-car list whole) and the track gets
+    // 229–257 px. With the wrapping header, 360x640 was where the two floors met
+    // and the track won (the one-car list 192 of 194 px, the track 200). A screen
+    // 5:4 or wider never stacks (`side:`, `tailwind.config.js`), and the sidebar
+    // needs no cap (`side:max-h-none`): its row bounds it.
+    //
+    // The sidebar has two widths. From `md` it is 224 px (`md:w-56 md:p-4`) with
+    // CarEntry's column readout, as before. Below `md` (a phone on its side, a
+    // short window) it is `side:w-64 side:py-2` and keeps the strip's WRAPPING
+    // readout, because CarEntry switches its readout at `md:`, not `side:`. The
+    // column readout measured 300–333 px tall there, in a 231–283 px list, so it
+    // was never whole and its speed trace never showed. 256 px is the middle of
+    // the window in which the wrapped readout's rows do not depend on the SPEED
+    // shown, measured seeking through whole replays: from 240 to 272 px the
+    // focused block holds at 227 px (speed and gear / the pedals / the pills).
+    // From 288 px a one- or two-digit speed pulls THROTTLE up onto the first row,
+    // so at 320 px a 22-car focused block jumped 194 <-> 227 px each time the car
+    // crossed 100 km/h, moving every row under it; at 224 px the pedals no longer
+    // share a row. `py-2` because a 667x375 phone's region is 246 px: `p-3` left
+    // the list 222 px for that 227 px block. Tailwind prints `md:` after `side:`,
+    // so `md:w-56` and `md:p-4` win from 768 px up (pinned in
+    // `layoutVariants.test.ts`).
     <aside
       aria-label="Telemetry"
-      className="flex max-h-[max(40%,min(13.75rem,100%-12.5rem))] shrink-0 flex-col border-t border-line bg-panel p-3 md:max-h-none md:w-56 md:border-l md:border-t-0 md:p-4"
+      className="flex max-h-[max(40%,min(13.75rem,100%-max(12.5rem,30dvh+1px)))] shrink-0 flex-col border-t border-line bg-panel p-3 side:max-h-none side:w-64 side:border-l side:border-t-0 side:py-2 md:w-56 md:p-4"
     >
       {/* `overflow-y-auto` + `min-h-0` because twenty cars are taller than any
           sidebar or strip: the list shrinks to what the aside allows and scrolls,

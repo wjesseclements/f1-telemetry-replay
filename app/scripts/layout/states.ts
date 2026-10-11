@@ -76,13 +76,26 @@ const CANVAS_MIN_HEIGHT_PX = 200;
  * …and at least this share of the viewport's height (244 px on a 812 px phone).
  * The fixed floor alone would let a tall screen pass with the HUD owning most of
  * it; the track is the product, so it keeps at least ~a third of the height.
+ *
+ * ONE floor (Slice 25): the stacked strip's cap in `src/components/Hud.tsx`
+ * reserves exactly max(CANVAS_MIN_HEIGHT_PX, CANVAS_MIN_HEIGHT_FRAC of the
+ * height) for the track, as `max(12.5rem, 30dvh + 1px)`. Change one, change
+ * both. The layout meets this rule; the rule was not loosened to meet the
+ * layout. The 1px is the canvas's own: `TrackCanvas` sizes it from its cell's
+ * whole-px `clientHeight`, and with a bare `30dvh` the cell measured 200.1 px at
+ * 375x667 and the canvas 200.0. If the canvas is ever sized from fractional
+ * boxes, the 1px becomes 1 px of strip given away for nothing; drop it then.
  */
 const CANVAS_MIN_HEIGHT_FRAC = 0.3;
 /**
  * The canvas's minimum share of the viewport's width. The side-by-side layout
- * gives the HUD a fixed `md:w-56` (224 px) column, which never takes half of any
- * viewport at or above the 768 px breakpoint; stacked, the canvas is full-width.
- * Under half means a sidebar has grown into the track.
+ * gives the HUD a fixed column: 224 px from `md` (`md:w-56`), which is under half
+ * of every `md` viewport, and 256 px below it (`side:w-64`, a screen 5:4 or
+ * wider; Slice 25), which is under half of any viewport 512 px wide or more. The
+ * smallest phone held sideways, 568x320, leaves 312 px of track. A 5:4 window
+ * narrower than 512 px (so under 410 px tall) would fail here; no phone is that
+ * shape and no gated viewport is. Stacked, the canvas is full width. Under half
+ * means a sidebar has grown into the track.
  */
 const CANVAS_MIN_WIDTH_FRAC = 0.5;
 /**

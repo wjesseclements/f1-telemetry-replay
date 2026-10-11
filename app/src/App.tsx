@@ -66,8 +66,17 @@ export default function App({ bootstrapError = null }: AppProps) {
         <h1 className="font-mono text-sm font-bold tracking-[0.2em]">
           TELEMETRY REPLAY
         </h1>
+        {/* On a wide screen (5:4 and up) or a short one (at most 700 px tall),
+            `onerow:` in tailwind.config.js, this line takes whatever the title's
+            row leaves and truncates its tail. The tail is the driver list, the
+            tower already lists every driver, and the full line stays in the DOM.
+            Wrapped, 22 drivers cost the track 52–68 px of a 360–412 px landscape
+            phone and 56 px of a 375x667 one (Slice 25). `min-w-24` keeps it from
+            being squeezed to "M…": with under 6rem left beside the title it
+            moves to a line of its own instead. The controls still wrap when they
+            alone cannot fit. */}
         {replay !== null && (
-          <p className="font-mono text-xs text-dim">
+          <p className="font-mono text-xs text-dim onerow:min-w-24 onerow:flex-1 onerow:truncate">
             {replay.meta.event} · {replay.meta.session} ·{" "}
             {replay.cars.map((car) => car.driver).join(" ")}
           </p>
@@ -96,11 +105,13 @@ export default function App({ bootstrapError = null }: AppProps) {
         </div>
       ) : replay !== null ? (
         <>
-          {/* The track and the numbers sit side by side when there is width for it
-              and stack when there is not. `min-h-0`/`min-w-0` on the canvas cell in
-              BOTH directions: a flex item defaults to its content's minimum size, and
-              the canvas would otherwise refuse to shrink and push the HUD off screen. */}
-          <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+          {/* The track and the numbers sit side by side (`side:`) when there is
+              width for the sidebar or the screen is wide rather than tall (5:4 and
+              up, `tailwind.config.js`), and stack otherwise. `min-h-0`/`min-w-0` on
+              the canvas cell in BOTH directions: a flex item defaults to its
+              content's minimum size, and the canvas would otherwise refuse to shrink
+              and push the HUD off screen. */}
+          <div className="flex min-h-0 flex-1 flex-col side:flex-row">
             <div className="relative min-h-0 min-w-0 flex-1">
               {/* The canvas is memoised, so mounting and unmounting the panel
                   beside it does not re-render it — the replay animates behind the
