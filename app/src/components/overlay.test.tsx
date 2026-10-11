@@ -18,6 +18,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { EventCard } from "./EventCard";
 import { FeaturedPanel } from "./FeaturedPanel";
+import { OVERLAY_PHONE } from "./overlay";
 
 afterEach(cleanup);
 
@@ -60,4 +61,30 @@ describe("overlay dialogs centre their card safely", () => {
       expect(card).toHaveClass("my-auto");
     },
   );
+});
+
+/**
+ * Where the gallery sits (Slice 26): over the track cell from `md` up, over the
+ * whole screen on a phone. jsdom evaluates no media query, so this pins the
+ * classes; what `phone:` means is pinned in `layoutVariants.test.ts`, and the
+ * geometry it buys was measured in a real Chrome (Slice 26's PLAN entry).
+ */
+describe("the gallery covers the whole screen on a phone", () => {
+  const mountPanel = DIALOGS[0][1];
+
+  it("covers the track cell, and from `md` up nothing more", () => {
+    mountPanel();
+    const dialog = screen.getByRole("dialog");
+    // The md+ position, unchanged since Slice 13: absolute in the track cell.
+    expect(dialog).toHaveClass("absolute", "inset-0", "z-10");
+    // No unprefixed `fixed`: it would take the md+ dialog out of the cell too.
+    expect(dialog).not.toHaveClass("fixed");
+  });
+
+  it("on a phone, is positioned against the viewport instead", () => {
+    mountPanel();
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveClass("phone:fixed");
+    expect(dialog.className).toContain(OVERLAY_PHONE);
+  });
 });

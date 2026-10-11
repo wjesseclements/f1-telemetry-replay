@@ -3,7 +3,9 @@
  *
  * Slice 25. The page puts the track and the tower side by side at `md` OR on a
  * screen 5:4 or wider (`side:`, `tailwind.config.js`), and keeps the header's
- * meta line to one line on a wide or short screen (`onerow:`). jsdom evaluates no
+ * meta line to one line on a wide or short screen (`onerow:`). Slice 26 adds
+ * `phone:`, below `md`, where the overlay dialogs cover the whole screen
+ * (`components/overlay.ts`). jsdom evaluates no
  * media query, so no component test can tell which layout a screen gets. The
  * layout check measures a handful of viewports. The compiled stylesheet shows
  * what each variant means at every size.
@@ -46,6 +48,16 @@ describe("the side-by-side layout's variants", () => {
     expect(mediaFor(".onerow\\:truncate")).toBe(
       "(min-aspect-ratio:5/4),(max-height:43.75rem)",
     );
+  });
+
+  it("compiles `phone:` to exactly the screens `md:` does not match", () => {
+    // Slice 26: the overlay dialogs cover the whole screen below `md`. Written as
+    // `not all and` the `md` query itself, so no width falls between the two —
+    // a `(max-width: 767px)` would leave 767.5 px to neither. Whitespace is
+    // stripped, hence "notalland".
+    const md = mediaFor(".md\\:w-56");
+    expect(md).toBe("(min-width:768px)");
+    expect(mediaFor(".phone\\:fixed")).toBe(`notalland${md}`);
   });
 
   it("lets the `md` sidebar's size win over the sidebar's below `md`", () => {

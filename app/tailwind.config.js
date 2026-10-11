@@ -59,6 +59,33 @@ const WIDE = "(min-aspect-ratio: 5/4)";
  */
 const SHORT = "(max-height: 43.75rem)";
 
+/**
+ * A phone (Slice 26): any screen narrower than `md`, in either orientation.
+ *
+ * The exact complement of `md`, written the way Tailwind writes `max-md:`, so at
+ * every width exactly one of `md:` and `phone:` applies — no fractional width
+ * falls between them. It is the line the app already draws: below it the sidebar
+ * is the phone's, the focused readout wraps instead of stacking, and the layout
+ * check emulates a mobile device (`MOBILE_BELOW_PX`). Every iPhone's Safari
+ * viewport is under it in both orientations: the safe areas take ~88 px of a
+ * landscape width, so a 375x812 phone leaves 724x257 (measured from the human's
+ * screenshots, 2026-10-11).
+ *
+ * The gallery covers the whole screen here rather than the track cell, because
+ * below `md` the track cell is the short part of the screen:
+ * 216 px of a 375x626 phone, 160 px of a 724x257 one, and no gallery card fitted
+ * whole in either (`src/components/overlay.ts` has the numbers). From `md` up
+ * it keeps the track cell, unchanged.
+ *
+ * Width alone misses one kind of phone. A Plus or Pro Max iPhone held sideways
+ * leaves Safari about 814 px (932 less 2 x 59 px of safe area), so it is `md`. Its
+ * track cell is then about 215 px and holds no whole card, as on a smaller
+ * phone. Adding `(max-height: 30rem)` here would cover it, but it would also
+ * change md+ desktop windows 480 px tall or less. That was measured and not
+ * adopted (Slice 26's PLAN entry).
+ */
+const PHONE = `not all and (min-width: ${defaultTheme.screens.md})`;
+
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
@@ -110,6 +137,8 @@ export default {
       // The header's meta line keeps to one line (App.tsx): on a wide screen OR
       // a short one. One variant, so the two cases cannot drift apart.
       addVariant("onerow", `@media ${WIDE}, ${SHORT}`);
+      // The gallery leaves the track cell for the whole screen.
+      addVariant("phone", `@media ${PHONE}`);
     }),
   ],
 };

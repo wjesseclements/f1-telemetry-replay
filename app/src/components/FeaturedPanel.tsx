@@ -11,9 +11,11 @@
  *  - **It overlays the canvas; it does not replace it.** The fixture keeps
  *    animating behind the scrim, because motion says "this is alive" in a way a
  *    frozen frame cannot. So the scrim is a plain translucent wash with no backdrop
- *    blur — the moving car has to read through it.
+ *    blur — the moving car has to read through it. From `md` up it covers the
+ *    track cell; on a phone, the whole screen (`overlay.ts`, Slice 26).
  *  - **A failed load keeps the replay that is on screen** and leaves the file
- *    picker working, exactly as `ReplayFilePicker` does for a bad file. The message
+ *    picker working, exactly as `ReplayFilePicker` does for a bad file. On a phone
+ *    the picker sits under the wash until the panel is closed. The message
  *    is rendered verbatim, because `ReplayValidationError.message` carries its
  *    `→ at cars[0].samples[3].speed` paths and those are the whole value of it.
  *  - **Focus is managed, not left to chance.** Opening moves focus to the first
@@ -26,6 +28,7 @@ import { applyScenario } from "../data/applyScenario";
 import { parseGalleryManifest, type GalleryScenario } from "../engine/gallery";
 import manifestJson from "../gallery/manifest.json";
 import { FOCUS_RING } from "./focus";
+import { OVERLAY_PHONE } from "./overlay";
 
 /**
  * Validated once at module load, not per render.
@@ -96,7 +99,7 @@ export function FeaturedPanel({ onClose, id }: FeaturedPanelProps) {
       // scroll range: the heading and Close sat out of reach at 1280x720 and on
       // every phone. Auto margins centre the card when it fits and collapse to 0
       // when it does not, so it scrolls from its top. EventCard shares the idiom.
-      className="absolute inset-0 z-10 flex items-start justify-center overflow-y-auto bg-bg/75 p-4"
+      className={`absolute inset-0 z-10 flex items-start justify-center overflow-y-auto bg-bg/75 p-4 ${OVERLAY_PHONE}`}
     >
       <div className="my-auto w-full max-w-md rounded-lg border border-line bg-panel p-4 shadow-xl">
         <div className="mb-3 flex items-baseline justify-between gap-3">
