@@ -57,7 +57,7 @@ import { useTelemetry } from "../telemetry/useTelemetry";
 import { CarEntry } from "./CarEntry";
 import { SpeedTrace } from "./SpeedTrace";
 import { flipRows } from "./towerFlip";
-import { revealRow } from "./towerReveal";
+import { holdRow, revealRow } from "./towerReveal";
 
 export interface HudProps {
   replay: Replay;
@@ -211,6 +211,11 @@ export function Hud({ replay }: HudProps) {
    *    are positions in the list, not on the screen (`towerFlip.ts`, Slice 26).
    */
   const rowsRef = useRef<HTMLUListElement>(null);
+  const rowTops = useRef<ReadonlyMap<string, number>>(new Map());
+  const flipPrev = useRef<{ replay: Replay | null; order: readonly number[] }>({
+    replay: null,
+    order: [],
+  });
 
   /**
    * Bring the focused car into view when the FOCUSED CAR changes (Slice 26) — and
@@ -228,8 +233,14 @@ export function Hud({ replay }: HudProps) {
    * Once per change, at the first commit that RENDERS the focused row. Usually the
    * same commit; after a load whose car count differs from the last frame's, the
    * rows arrive with the next published frame (the stale-frame guard above), and
-   * the reveal waits for them rather than being lost. Declared BEFORE the FLIP
-   * pass so that pass measures the list where this left it.
+   * the reveal waits for them rather than being lost.
+   *
+   * Two scrolls, in order (`engine/reveal.ts`): HOLD the row where the viewer saw
+   * it — the readout closing above it moved it, and a row clicked a moment ago
+   * must not jump out from under the finger — then REVEAL the least distance from
+   * there. The hold reads the FLIP pass's cache from the previous commit, which
+   * is why this is declared BEFORE that pass, and only on the same replay (the
+   * cache is keyed by driver, and a new session's LEC is not the one on screen).
    */
   const revealed = useRef<{ replay: Replay; focus: number } | null>(null);
   useLayoutEffect(() => {
@@ -245,14 +256,16 @@ export function Hud({ replay }: HudProps) {
     const row = list.children[next.indexOf(focusedCarIndex)];
     if (!(row instanceof HTMLElement)) return; // not rendered yet: stay pending
     revealed.current = { replay, focus: focusedCarIndex };
+    holdRow(
+      list,
+      row,
+      flipPrev.current.replay === replay
+        ? rowTops.current.get(replay.cars[focusedCarIndex].driver)
+        : undefined,
+    );
     revealRow(list, row, !prefersReducedMotion());
   });
 
-  const rowTops = useRef<ReadonlyMap<string, number>>(new Map());
-  const flipPrev = useRef<{ replay: Replay | null; order: readonly number[] }>({
-    replay: null,
-    order: [],
-  });
   useLayoutEffect(() => {
     const list = rowsRef.current;
     if (list === null) return;

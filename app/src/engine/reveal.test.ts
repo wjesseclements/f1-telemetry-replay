@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { revealOffset } from "./reveal";
+import { holdOffset, revealOffset } from "./reveal";
 
 /** A 100 px port over 1000 px of content, scrolled to `offset`. */
 const port = (offset: number) => ({ offset, size: 100, content: 1000 });
@@ -76,5 +76,37 @@ describe("revealOffset — the offsets the port can take", () => {
         { start: 150, size: 50 },
       ),
     ).toBe(0);
+  });
+});
+
+describe("holdOffset — keeping a moved item where it was seen", () => {
+  it("follows an item the content moved up, so it stays put on screen", () => {
+    // Seen at 272 in a port at 250 (22 px down); a readout above it closed and it
+    // now starts at 102: the port moves up the same 170 px.
+    expect(holdOffset(port(250), 272, 102, 30)).toBe(80);
+  });
+
+  it("follows an item the content moved down", () => {
+    expect(holdOffset(port(200), 220, 385, 30)).toBe(365);
+  });
+
+  it("does not move when the item did not", () => {
+    expect(holdOffset(port(200), 220, 220, 30)).toBe(200);
+  });
+
+  it("holds an item whose start is above the port by less than its reach", () => {
+    // Clicked on its lower half: its first line still showed.
+    expect(holdOffset(port(280), 272, 102, 30)).toBe(110);
+  });
+
+  it("does not hold an item that was off screen, above or below", () => {
+    expect(holdOffset(port(305), 272, 102, 30)).toBe(305); // a full reach above
+    expect(holdOffset(port(0), 340, 170, 30)).toBe(0); // below the port
+    expect(holdOffset(port(0), 100, 50, 30)).toBe(0); // exactly at the port's end
+  });
+
+  it("never asks for an offset the port cannot take", () => {
+    expect(holdOffset(port(50), 60, 0, 30)).toBe(0);
+    expect(holdOffset(port(880), 890, 1000, 30)).toBe(900);
   });
 });

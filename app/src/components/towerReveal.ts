@@ -24,7 +24,7 @@
  * containment of the rows' `sr-only` text) — `Hud.test.tsx` pins that class for
  * both reasons. Whole px, which is what the rows are.
  */
-import { revealOffset } from "../engine/reveal";
+import { holdOffset, revealOffset, type Scrollport } from "../engine/reveal";
 
 /**
  * Scroll `list` the least distance that shows `row` whole, or to the row's top when
@@ -38,14 +38,47 @@ export function revealRow(
   row: HTMLElement,
   smooth: boolean,
 ): void {
-  const top = revealOffset(
-    {
-      offset: list.scrollTop,
-      size: list.clientHeight,
-      content: list.scrollHeight,
-    },
-    { start: row.offsetTop, size: row.offsetHeight },
-  );
+  const top = revealOffset(portOf(list), {
+    start: row.offsetTop,
+    size: row.offsetHeight,
+  });
   if (top === list.scrollTop) return;
   list.scrollTo({ top, behavior: smooth ? "smooth" : "instant" });
+}
+
+/**
+ * Scroll `list` instantly by however far this commit moved `row` inside it, so the
+ * row stays where the viewer last saw it — if it was on screen. Not motion: it is
+ * what keeps a clicked row still under the finger while the readout above it
+ * closes, so it runs under `prefers-reduced-motion` too.
+ *
+ * @param seenTop the row's top at the previous commit, in the list's coordinates
+ *                (`towerFlip`'s cache), or `undefined` when there is none (a new
+ *                replay: nothing was seen to hold).
+ */
+export function holdRow(
+  list: HTMLElement,
+  row: HTMLElement,
+  seenTop: number | undefined,
+): void {
+  if (seenTop === undefined) return;
+  // The same coordinates as the cache: the box's top from where the list's
+  // content starts on screen.
+  const origin = list.getBoundingClientRect().top - list.scrollTop;
+  const line = row.firstElementChild; // the row's header line, focused or not
+  const top = holdOffset(
+    portOf(list),
+    seenTop,
+    row.getBoundingClientRect().top - origin,
+    line instanceof HTMLElement ? line.offsetHeight : 0,
+  );
+  if (top !== list.scrollTop) list.scrollTop = top;
+}
+
+function portOf(list: HTMLElement): Scrollport {
+  return {
+    offset: list.scrollTop,
+    size: list.clientHeight,
+    content: list.scrollHeight,
+  };
 }

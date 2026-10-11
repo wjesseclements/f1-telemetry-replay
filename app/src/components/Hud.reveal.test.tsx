@@ -2,12 +2,13 @@
  * Hud.reveal.test.tsx — the tower brings the focused car into view (Slice 26).
  *
  * jsdom has no layout and no `scrollTo` on elements, so both are stood in for: a
- * compact row is 30 px, the focused row (the one with a readout `<dl>`) 200 px, the
- * rows 4 px apart (`gap-1`), and the list `listHeight` tall; `Element.scrollTo`
- * records its calls and moves `scrollTop` (which jsdom stores). The assertions are
- * then exact — which element scrolled, to where, how — over the real component and
- * the real engine. The geometry in a real browser is the PLAN entry's (headless
- * Chrome at 375x626, 724x257, 375x812 and 1440x900).
+ * compact row is 30 px (its header line too), the focused row (the one with a
+ * readout `<dl>`) 200 px, the rows 4 px apart (`gap-1`), the list `listHeight` tall
+ * with its top at 0, and every box drawn where its offset minus the list's
+ * `scrollTop` puts it; `Element.scrollTo` records its calls — from where, to where,
+ * how — and moves `scrollTop` (which jsdom stores). The assertions are then exact
+ * over the real component and the real engine. The geometry in a real browser is
+ * the PLAN entry's (headless Chrome at 375x626, 724x257, 375x812 and 1440x900).
  *
  * What is pinned, per the slice's trigger ruling:
  *  - a focus change reveals the focused block — by a click, by the store (the
@@ -15,6 +16,8 @@
  *    renders;
  *  - nearest when the block fits, its top when it does not, nothing when it is
  *    already whole;
+ *  - first, a row that was on screen is HELD where the viewer saw it while the
+ *    readout above it closes (a scroll by exactly as far as it moved);
  *  - smooth, or instant under `prefers-reduced-motion`;
  *  - NOTHING else scrolls the list: no reorder, no tick, no re-click;
  *  - it is the LIST that scrolls (`scrollTo` on it), never `scrollIntoView`.
@@ -39,7 +42,7 @@ const BLOCK_H = 200;
 const GAP = 4;
 let listHeight = 100;
 
-type ScrollCall = { el: Element; options: ScrollToOptions };
+type ScrollCall = { el: Element; from: number; options: ScrollToOptions };
 let scrollCalls: ScrollCall[] = [];
 const scrollIntoView = vi.fn();
 
@@ -68,7 +71,23 @@ beforeEach(() => {
   );
   vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(
     function (this: HTMLElement) {
-      return isRow(this) ? rowHeight(this) : 0;
+      if (isRow(this)) return rowHeight(this);
+      // A row's header line: the compact row's whole height.
+      const li = this.parentElement;
+      return li !== null && isRow(li) && li.firstElementChild === this
+        ? ROW_H
+        : 0;
+    },
+  );
+  // Drawn boxes: a row sits at its offset less the list's scroll, the list at 0.
+  vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(
+    function (this: Element) {
+      const ul = this.parentElement;
+      const top =
+        isRow(this) && ul !== null
+          ? (this as HTMLElement).offsetTop - ul.scrollTop
+          : 0;
+      return { top, toJSON: () => ({}) } as DOMRect;
     },
   );
   vi.spyOn(Element.prototype, "clientHeight", "get").mockImplementation(
@@ -91,16 +110,22 @@ beforeEach(() => {
     options?: ScrollToOptions | number,
   ) {
     const o = options as ScrollToOptions;
-    scrollCalls.push({ el: this, options: o });
+    scrollCalls.push({ el: this, from: this.scrollTop, options: o });
     this.scrollTop = o.top ?? this.scrollTop;
   } as Element["scrollTo"];
   Element.prototype.scrollIntoView = scrollIntoView;
+  // A reorder over this layout really moves rows, so the FLIP pass animates: jsdom
+  // has no WAAPI, and the slides are Hud.flip.test.tsx's to pin, not this file's.
+  Element.prototype.animate = function () {
+    return { cancel: () => undefined } as unknown as Animation;
+  };
 });
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   Reflect.deleteProperty(Element.prototype, "scrollTo");
   Reflect.deleteProperty(Element.prototype, "scrollIntoView");
+  Reflect.deleteProperty(Element.prototype, "animate");
 });
 
 // ---------------------------------------------------------------------------------
@@ -328,16 +353,94 @@ describe("tower focus reveal (Slice 26) — what triggers it", () => {
     fireEvent.click(rowButton("A3"));
     expect(scrollCalls).toHaveLength(1);
     list().scrollTop = 0; // the viewer scrolls away
+    // Not a focus change: the store keeps the same index and nothing commits, so
+    // this pins the end-to-end no-op (the trigger guard is pinned by the reorder
+    // and comparison tests, which do commit).
     fireEvent.click(rowButton("A3"));
     expect(scrollCalls).toHaveLength(1);
     expect(list().scrollTop).toBe(0);
   });
 
+  it("holds a clicked row under the finger while the readout above it closes, then glides", () => {
+    render(<Hud replay={SIX} />);
+    publish(SIX, 5);
+    // The viewer scrolls past A0's open block: A3 shows 22 px down the list.
+    list().scrollTop = 250;
+    fireEvent.click(rowButton("A3"));
+    // A0 closing moved A3 from 272 up to 102, so the list first follows it by the
+    // same 170 px (80), keeping it 22 px down; the reveal glides on from there.
+    expect(scrollCalls).toHaveLength(1);
+    expect(scrollCalls[0].from).toBe(80);
+    expect(scrollCalls[0].options).toEqual({ top: 102, behavior: "smooth" });
+  });
+
+  it("holds under prefers-reduced-motion too — keeping still is not motion", () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query === "(prefers-reduced-motion: reduce)",
+      media: query,
+    }));
+    render(<Hud replay={SIX} />);
+    publish(SIX, 5);
+    list().scrollTop = 250;
+    fireEvent.click(rowButton("A3"));
+    expect(scrollCalls.map((c) => [c.from, c.options])).toEqual([
+      [80, { top: 102, behavior: "instant" }],
+    ]);
+  });
+
+  it("holds a row clicked on its lower half, whose top had scrolled just out of view", () => {
+    render(<Hud replay={SIX} />);
+    publish(SIX, 5);
+    list().scrollTop = 280; // A3's top (272) is 8 px above the list; its line shows
+    fireEvent.click(rowButton("A3"));
+    expect(scrollCalls.map((c) => c.from)).toEqual([110]);
+  });
+
+  it("does not hold a row that was off screen — the keyboard's next car", () => {
+    render(<Hud replay={SIX} />);
+    publish(SIX, 5);
+    // A5 sat at 340, below a 100..200 view (A0's open block): following it up the
+    // 170 px it moved would drag every visible row down, to keep still a row
+    // nobody could see. The reveal starts from where the viewer was.
+    list().scrollTop = 100;
+    act(() => useTransport.getState().setFocusedCarIndex(5));
+    expect(scrollCalls.map((c) => [c.from, c.options.top])).toEqual([
+      [100, 170],
+    ]);
+  });
+
+  it("does not hold across a replay load — a new session's row was never seen", () => {
+    const { rerender } = render(<Hud replay={SIX} />);
+    publish(SIX, 5);
+    list().scrollTop = 250;
+    // The same six drivers in a new file: a row keyed A3 exists in both, but the
+    // one on screen belonged to the other session.
+    const again = ringReplay(
+      "again.json",
+      ...[0, 1, 2, 3, 4, 5].map((k) => ({
+        driver: `A${k}`,
+        shift: 50 - 10 * k,
+      })),
+    );
+    // One commit, as applyScenario lands it: the new replay and its driver.
+    act(() => {
+      useTransport.getState().setFocusedCarIndex(3);
+      rerender(<Hud replay={again} />);
+    });
+    expect(scrollCalls.map((c) => [c.from, c.options.top])).toEqual([
+      [250, 102],
+    ]);
+  });
+
   it("does not scroll when the comparison car changes", () => {
     render(<Hud replay={SIX} />);
     publish(SIX, 5);
+    // The viewer has scrolled A0's open block half out of view: a reveal now
+    // WOULD move the list (back to 0), so a toggle that commits must not run one.
+    list().scrollTop = 120;
     fireEvent.click(screen.getByRole("button", { name: "vs A5" }));
     expect(useTransport.getState().comparisonCarIndex).toBe(5);
     expect(scrollCalls).toHaveLength(0);
+    expect(list().scrollTop).toBe(120);
   });
 });
