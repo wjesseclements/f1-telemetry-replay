@@ -3,7 +3,9 @@
  *
  * A DOM overlay in `FeaturedPanel`'s exact mould: a wash over the canvas, not a
  * replacement for it — the paused frame underneath IS the moment being narrated.
- * `ScenarioEvents` has already paused playback by the time this mounts.
+ * `ScenarioEvents` has already paused playback by the time this mounts. Like the
+ * panel, it covers the track cell from `md` up and the whole screen on a phone
+ * (`overlay.ts`, Slice 26), where the cell was too short to show it whole.
  *
  * The copy (`event.title`, `event.body`) is the manifest's, rendered verbatim —
  * owned by the human like every hook line.
@@ -23,6 +25,7 @@ import { applyScenario } from "../data/applyScenario";
 import type { GalleryScenario, ScenarioEvent } from "../engine/gallery";
 import { useTransport } from "../store/transport";
 import { FOCUS_RING } from "./focus";
+import { OVERLAY_PHONE } from "./overlay";
 import { PLAY_TOGGLE_ID } from "./TransportBar";
 
 export interface EventCardProps {
@@ -94,7 +97,7 @@ export function EventCard({ event, next, onClose }: EventCardProps) {
       // A wash, not a blur: the paused frame behind this is what the card is about.
       // `items-start` + the card's `my-auto`, never `items-center`: centred when it
       // fits, scrolling from its top when it does not (FeaturedPanel says why).
-      className="absolute inset-0 z-10 flex items-start justify-center overflow-y-auto bg-bg/75 p-4"
+      className={`absolute inset-0 z-10 flex items-start justify-center overflow-y-auto bg-bg/75 p-4 ${OVERLAY_PHONE}`}
     >
       <div className="my-auto w-full max-w-md rounded-lg border border-line bg-panel p-4 shadow-xl">
         <div className="mb-2 flex items-baseline justify-between gap-3">

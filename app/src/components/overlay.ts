@@ -1,21 +1,25 @@
 /**
  * overlay.ts — where the overlay dialogs sit on a phone (Slice 26).
  *
- * The gallery (`FeaturedPanel`) is a scrim over the track cell: `absolute
- * inset-0`, inside the cell, so from `md` up the tower and the transport bar
- * stay beside it and usable. Below `md` (`phone:`,
+ * The gallery (`FeaturedPanel`) and the event card (`EventCard`) are scrims over
+ * the track cell: `absolute inset-0`, inside the cell, so from `md` up the tower
+ * and the transport bar stay beside them and usable. Below `md` (`phone:`,
  * `tailwind.config.js`) the track cell is the short part of the screen, so the
  * same scrim is positioned against the VIEWPORT instead and covers the header,
  * the tower and the transport bar too. Measured in headless Chrome at the
  * viewports iPhone Safari leaves the page:
  *
  *   - the gallery at 375x626 went from 216 px with no card whole to 626 px with
- *     three, and at 724x257 from 160 px with none to 257 px with one.
+ *     three, and at 724x257 from 160 px with none to 257 px with one;
+ *   - the event card at 724x257 had its Continue button 29.5 px below the
+ *     clip, and at 375x626 its last 11 px cut. It is now whole at both, and at
+ *     375x626 the track shows above it through the wash.
  *
- * While it is open on a phone, nothing behind it takes a tap: not the header
- * (the toggle and "Load replay JSON"), the tower or the transport bar. Close,
- * Escape or a card is the way out, and focus returns to the toggle as before.
- * The replay keeps animating behind the wash.
+ * While either one is open on a phone, nothing behind it takes a tap: not the
+ * header (the toggle and "Load replay JSON"), the tower or the transport bar.
+ * Close, Escape or a card is the way out, and focus returns where it did before.
+ * The replay keeps animating behind the gallery's wash; the event card has
+ * already paused it.
  *
  * Only `position` changes. The element stays where it is in the DOM, inside the
  * track cell after the memoised canvas. So opening and closing it still does not
@@ -30,5 +34,7 @@
  * would quietly go back into the cell on phones, and nothing in
  * `npm run check` would notice: the tests pin this class, not its geometry, and
  * every layout-check row passed with the overlay in the cell too.
+ *
+ * One string, so the two dialogs cannot drift apart.
  */
 export const OVERLAY_PHONE = "phone:fixed";

@@ -116,8 +116,8 @@ export default function App({ bootstrapError = null }: AppProps) {
               {/* The canvas is memoised, so mounting and unmounting the panel
                   beside it does not re-render it — the replay animates behind the
                   scrim without interruption. Pinned in `App.test.tsx`. On a
-                  phone the panel covers the whole screen from here: `fixed`,
-                  not moved (`components/overlay.ts`). */}
+                  phone the panel and the event card cover the whole screen from
+                  here: `fixed`, not moved (`components/overlay.ts`). */}
               <TrackCanvas replay={replay} />
               <SpeedLegend />
               {/* The abnormal-flag strip and the narrated-moment overlay

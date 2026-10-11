@@ -71,11 +71,11 @@ const SHORT = "(max-height: 43.75rem)";
  * landscape width, so a 375x812 phone leaves 724x257 (measured from the human's
  * screenshots, 2026-10-11).
  *
- * The gallery covers the whole screen here rather than the track cell, because
- * below `md` the track cell is the short part of the screen:
+ * The gallery and the event card cover the whole screen here rather than the
+ * track cell, because below `md` the track cell is the short part of the screen:
  * 216 px of a 375x626 phone, 160 px of a 724x257 one, and no gallery card fitted
  * whole in either (`src/components/overlay.ts` has the numbers). From `md` up
- * it keeps the track cell, unchanged.
+ * they keep the track cell, unchanged.
  *
  * Width alone misses one kind of phone. A Plus or Pro Max iPhone held sideways
  * leaves Safari about 814 px (932 less 2 x 59 px of safe area), so it is `md`. Its
@@ -137,7 +137,8 @@ export default {
       // The header's meta line keeps to one line (App.tsx): on a wide screen OR
       // a short one. One variant, so the two cases cannot drift apart.
       addVariant("onerow", `@media ${WIDE}, ${SHORT}`);
-      // The gallery leaves the track cell for the whole screen.
+      // The overlay dialogs leave the track cell for the whole screen (the
+      // gallery and the event card). One variant, so the two cannot drift.
       addVariant("phone", `@media ${PHONE}`);
     }),
   ],

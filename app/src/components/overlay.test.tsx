@@ -64,27 +64,32 @@ describe("overlay dialogs centre their card safely", () => {
 });
 
 /**
- * Where the gallery sits (Slice 26): over the track cell from `md` up, over the
+ * Where each dialog sits (Slice 26): over the track cell from `md` up, over the
  * whole screen on a phone. jsdom evaluates no media query, so this pins the
  * classes; what `phone:` means is pinned in `layoutVariants.test.ts`, and the
  * geometry it buys was measured in a real Chrome (Slice 26's PLAN entry).
  */
-describe("the gallery covers the whole screen on a phone", () => {
-  const mountPanel = DIALOGS[0][1];
+describe("overlay dialogs cover the whole screen on a phone", () => {
+  it.each(DIALOGS)(
+    "%s: covers the track cell, and from `md` up nothing more",
+    (_, mount) => {
+      mount();
+      const dialog = screen.getByRole("dialog");
+      // The md+ position, unchanged since Slice 13: absolute in the track cell.
+      expect(dialog).toHaveClass("absolute", "inset-0", "z-10");
+      // No unprefixed `fixed`: it would take the md+ dialog out of the cell too.
+      expect(dialog).not.toHaveClass("fixed");
+    },
+  );
 
-  it("covers the track cell, and from `md` up nothing more", () => {
-    mountPanel();
-    const dialog = screen.getByRole("dialog");
-    // The md+ position, unchanged since Slice 13: absolute in the track cell.
-    expect(dialog).toHaveClass("absolute", "inset-0", "z-10");
-    // No unprefixed `fixed`: it would take the md+ dialog out of the cell too.
-    expect(dialog).not.toHaveClass("fixed");
-  });
-
-  it("on a phone, is positioned against the viewport instead", () => {
-    mountPanel();
-    const dialog = screen.getByRole("dialog");
-    expect(dialog).toHaveClass("phone:fixed");
-    expect(dialog.className).toContain(OVERLAY_PHONE);
-  });
+  it.each(DIALOGS)(
+    "%s: on a phone, is positioned against the viewport instead",
+    (_, mount) => {
+      mount();
+      const dialog = screen.getByRole("dialog");
+      expect(dialog).toHaveClass("phone:fixed");
+      // The two dialogs share one string, so they cannot drift apart.
+      expect(dialog.className).toContain(OVERLAY_PHONE);
+    },
+  );
 });
