@@ -105,6 +105,29 @@ export const OVERLAY_PINNED_BAR =
 export const OVERLAY_CLOSE_TARGET = "phone:min-h-11 phone:min-w-11";
 
 /**
+ * Where keyboard focus stops scrolling a phone dialog: below the pinned bar, not
+ * under it (Slice 26 review). When focus moves to a control above the visible
+ * part (Shift+Tab, or Tab wrapping from Close to the first card), the browser
+ * scrolls it to the scrollport's top edge, and Chrome's focus scrolling ignores
+ * a sticky header unless the scroller pads its top. Measured without this, in
+ * headless Chrome with trusted keys and the 48.5 px bar: 24 of 191 Tab and
+ * Shift+Tab stops left the focused card's title and the top of its ring under
+ * the bar.
+ *
+ * The padding is the pinned bar, the focus ring and one pixel. The bar is its
+ * top padding (1rem), its row, which is Close's touch floor (2.75rem), and its
+ * bottom padding (0.5rem): 4.25rem, 68 px. The ring reaches 4 px past a card
+ * (`FOCUS_RING`: a 2 px offset and a 2 px ring). And a focus scroll lands on a
+ * whole pixel while the cards sit on half ones (166.5 px tall), so it can stop
+ * half a pixel short: measured at exactly 72 px, two stops at 375x626 put 0.5
+ * px of the ring under the bar. The rem part scales with the bar if the root
+ * font size does; the px part is the ring's, which does not. On the dialog,
+ * the scroller, not on the card. It moves nothing at rest: it only says where
+ * a control scrolled to by focus comes to a stop.
+ */
+export const OVERLAY_FOCUS_CLEARANCE = "phone:scroll-pt-[calc(4.25rem+5px)]";
+
+/**
  * Make an overlay dialog modal while it covers the whole screen (Slice 26, ruled
  * 2026-10-12): on a phone, everything outside `dialog` is inert for as long as it
  * is mounted (`inertOutside`); on a desktop nothing changes. Returns whether it

@@ -27,6 +27,7 @@ import { useTransport } from "../store/transport";
 import { FOCUS_RING } from "./focus";
 import {
   OVERLAY_CLOSE_TARGET,
+  OVERLAY_FOCUS_CLEARANCE,
   OVERLAY_PHONE,
   OVERLAY_PINNED_BAR,
   usePhoneModal,
@@ -115,7 +116,7 @@ export function EventCard({ event, next, onClose }: EventCardProps) {
       // A wash, not a blur: the paused frame behind this is what the card is about.
       // `items-start` + the card's `my-auto`, never `items-center`: centred when it
       // fits, scrolling from its top when it does not (FeaturedPanel says why).
-      className={`absolute inset-0 z-10 flex items-start justify-center overflow-y-auto bg-bg/75 p-4 ${OVERLAY_PHONE}`}
+      className={`absolute inset-0 z-10 flex items-start justify-center overflow-y-auto bg-bg/75 p-4 ${OVERLAY_PHONE} ${OVERLAY_FOCUS_CLEARANCE}`}
     >
       <div className="my-auto w-full max-w-md rounded-lg border border-line bg-panel p-4 shadow-xl">
         {/* Pinned on a phone, as the gallery's is: a failed "Continue" can make

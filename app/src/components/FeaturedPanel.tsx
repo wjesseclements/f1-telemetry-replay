@@ -30,6 +30,7 @@ import manifestJson from "../gallery/manifest.json";
 import { FOCUS_RING } from "./focus";
 import {
   OVERLAY_CLOSE_TARGET,
+  OVERLAY_FOCUS_CLEARANCE,
   OVERLAY_PHONE,
   OVERLAY_PINNED_BAR,
   usePhoneModal,
@@ -109,7 +110,7 @@ export function FeaturedPanel({ onClose, id }: FeaturedPanelProps) {
       // scroll range: the heading and Close sat out of reach at 1280x720 and on
       // every phone. Auto margins centre the card when it fits and collapse to 0
       // when it does not, so it scrolls from its top. EventCard shares the idiom.
-      className={`absolute inset-0 z-10 flex items-start justify-center overflow-y-auto bg-bg/75 p-4 ${OVERLAY_PHONE}`}
+      className={`absolute inset-0 z-10 flex items-start justify-center overflow-y-auto bg-bg/75 p-4 ${OVERLAY_PHONE} ${OVERLAY_FOCUS_CLEARANCE}`}
     >
       <div className="my-auto w-full max-w-md rounded-lg border border-line bg-panel p-4 shadow-xl">
         {/* On a phone the heading row stays pinned at the top of the panel

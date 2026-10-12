@@ -18,8 +18,10 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { EventCard } from "./EventCard";
 import { FeaturedPanel } from "./FeaturedPanel";
+import { FOCUS_RING } from "./focus";
 import {
   OVERLAY_CLOSE_TARGET,
+  OVERLAY_FOCUS_CLEARANCE,
   OVERLAY_PHONE,
   OVERLAY_PINNED_BAR,
 } from "./overlay";
@@ -187,6 +189,61 @@ describe("each dialog's heading row is pinned on a phone", () => {
       const padding = step(/(?:^|\s)phone:pb-(\d+)(?:\s|$)/);
       expect(gap, "the bar's own margin off a phone").toBeGreaterThan(0);
       expect(margin + padding).toBe(gap);
+    },
+  );
+});
+
+/**
+ * Keyboard focus stops BELOW the pinned bar on a phone (Slice 26 review). Focus
+ * moving up the dialog (Shift+Tab, or Tab wrapping from Close to the first card)
+ * scrolls the focused control to the scrollport's top edge, which the sticky bar
+ * covers, unless the dialog pads its scrollport's top by the bar and the focus
+ * ring. jsdom has no layout and no focus scrolling, so this pins the arithmetic,
+ * read from the classes themselves; Chrome measured the result (no stop under
+ * the bar, at five phone sizes; Slice 26's PLAN entry). On a phone:
+ *
+ *     the bar's top padding                     16 px   (step 4, 1rem)
+ *   + its row: Close's touch floor              44 px   (step 11, 2.75rem)
+ *   + the bar's bottom padding                   8 px   (step 2, 0.5rem)
+ *   = the pinned bar                            68 px   (4.25rem; measured y=[0,68])
+ *   + the focus ring past a card: 2 offset + 2   4 px   (FOCUS_RING)
+ *   + a focus scroll's half-pixel snap           1 px   (measured: 0.5 px short)
+ *   = the scrollport's top padding              73 px   (4.25rem + 5px)
+ */
+describe("keyboard focus stops below the pinned bar on a phone", () => {
+  /** The number captured by `re` in `className`, or NaN. */
+  const read = (className: string, re: RegExp, group = 1): number =>
+    Number(re.exec(className)?.[group] ?? NaN);
+
+  it.each(DIALOGS)(
+    "%s: pads its scrollport's top by the pinned bar plus the focus ring",
+    (_, mount) => {
+      mount();
+      const dialog = screen.getByRole("dialog");
+      const row = screen.getByRole("heading").parentElement as HTMLElement;
+      const bar = row.parentElement as HTMLElement;
+      const close = within(row).getByRole("button", { name: /^close$/i });
+      // Tailwind's spacing step n is n x 4 px (0.25rem); ring widths are px.
+      const barTop = 4 * read(bar.className, /(?:^|\s)phone:pt-(\d+)(?:\s|$)/);
+      const rowHeight =
+        4 * read(close.className, /(?:^|\s)phone:min-h-(\d+)(?:\s|$)/);
+      const barBottom =
+        4 * read(bar.className, /(?:^|\s)phone:pb-(\d+)(?:\s|$)/);
+      const ring =
+        read(FOCUS_RING, /focus-visible:ring-(\d+)(?:\s|$)/) +
+        read(FOCUS_RING, /focus-visible:ring-offset-(\d+)(?:\s|$)/);
+      const clearance =
+        /(?:^|\s)phone:scroll-pt-\[calc\((\d+(?:\.\d+)?)rem\+(\d+)px\)\](?:\s|$)/;
+      // The rem part is the bar, so it scales with it; the px part, the ring's.
+      const barPart = 16 * read(dialog.className, clearance, 1);
+      const pxPart = read(dialog.className, clearance, 2);
+
+      expect(dialog.className).toContain(OVERLAY_FOCUS_CLEARANCE);
+      expect([barTop, rowHeight, barBottom, ring]).toEqual([16, 44, 8, 4]);
+      expect(barPart).toBe(barTop + rowHeight + barBottom);
+      expect(pxPart).toBe(ring + 1);
+      // Only under `phone:`: off a phone no bar is pinned, nothing to clear.
+      expect(dialog.className).not.toMatch(/(?:^|\s)scroll-p/);
     },
   );
 });
