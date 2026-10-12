@@ -92,10 +92,11 @@ const TEARDOWN_STEP_MS = 2_000;
 // "panel covers the viewport" rows, in A and C at every phone-layout viewport
 // (`isPhoneLayout`, below). 375x626's "last card reachable" also fails with the
 // gallery in the cell, but only by ~10 px of footer copy (Slice 26's review).
-// Safari's landscape size, 724x257, is NOT gated: the header and the transport
-// bar leave its track 160 px, under the 200 px floor in `layout/states.ts`, and
-// that floor is not loosened to admit it (Slice 27's compact bars are its way
-// in). Its other rows pass.
+// Safari's landscape size, 724x257, is NOT gated: even with Slice 27's thin
+// header and transport rows (44 and 45 px, every control a 44 px target) its
+// track is 168 px (160 before them), under the 200 px floor in
+// `layout/states.ts`, and that floor is not loosened to admit it. Closing the
+// last 32 px is an open ruling (Slice 27's PLAN entry). Its other rows pass.
 //
 // Then 814x312, appended last (Slice 26's review): a Plus or Pro Max iPhone held
 // sideways, `md` wide but at most 30rem tall. It is the one gated viewport where
