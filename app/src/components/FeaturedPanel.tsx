@@ -110,7 +110,7 @@ export function FeaturedPanel({ onClose, id }: FeaturedPanelProps) {
         {/* On a phone the heading row stays pinned at the top of the panel
             while the cards scroll under it, so Close is always on screen
             (`OVERLAY_PINNED_BAR`, Slice 26). */}
-        <div className={`mb-3 ${OVERLAY_PINNED_BAR}`}>
+        <div className={`mb-3 phone:mb-0 phone:pb-3 ${OVERLAY_PINNED_BAR}`}>
           <div className="flex items-baseline justify-between gap-3">
             <h2
               id={headingId}

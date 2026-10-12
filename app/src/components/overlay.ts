@@ -47,29 +47,32 @@ import { usePhoneLayout } from "./phoneLayout";
 export const OVERLAY_PHONE = "phone:fixed";
 
 /**
- * The gallery's heading row on a phone: a bar pinned to the top of the panel
- * while the cards scroll under it (Slice 26, ruled 2026-10-12). Full screen, the
- * panel scrolls itself, and once it did nothing on screen closed it: Close
- * scrolled away with the heading, the header's toggle is under the wash, and a
- * tap on the wash does nothing.
+ * An overlay's heading row on a phone: a bar pinned to the top of the dialog
+ * while the rest of the card scrolls under it (Slice 26, ruled 2026-10-12). Full
+ * screen, the dialog scrolls itself, and once it did nothing on screen closed it:
+ * Close scrolled away with the heading, the header's toggle is under the wash,
+ * and a tap on the wash does nothing.
  *
  * It goes on a wrapper around the row, not on the row, so that at rest nothing
  * moves. The wrapper reaches over the card's padding with negative margins and
- * puts the same padding back, and trades the row's 12 px bottom margin for
- * padding, so the row keeps its box to the pixel (the layout check's heading and
- * Close rows read it). It sticks at `-top-4` because a sticky box's `top` counts
- * from inside the dialog's 16 px padding (measured in Chrome: `top-0` pinned the
- * row at y=16 and the cards stayed visible, and TAPPABLE, in the 16 px above
- * it). Pinned, its `bg-panel` covers the strip from the top edge down to 12 px
- * under the row, across the card's whole padding box: nothing scrolls into view
- * above Close, and a tap there lands on the bar instead of a card no one can
- * see. At rest the same paint is the card's own colour, so nothing shows.
+ * puts the same padding back, and the caller moves the row's bottom margin onto
+ * it — `mb-N` off a phone, `phone:mb-0 phone:pb-N` on one — so the row keeps its
+ * box to the pixel (the layout check's heading and Close rows read the
+ * gallery's). It sticks at `-top-4` because a sticky box's `top` counts from
+ * inside the dialog's 16 px padding (measured in Chrome: `top-0` pinned the row
+ * at y=16 and the cards stayed visible, and TAPPABLE, in the 16 px above it).
+ * Pinned, its `bg-panel` covers the strip from the top edge to the end of its
+ * gap under the row, across the card's whole padding box: nothing scrolls into
+ * view above Close, and a tap there lands on the bar instead of on a card no one
+ * can see. At rest the same paint is the card's own colour, so nothing shows.
  *
- * Only the gallery uses it. The event card's dialog never scrolled at any size
- * measured (Slice 26's PLAN entry), so it has nothing to pin.
+ * Both dialogs use it. The gallery scrolls on every phone. The event card
+ * scrolled at none of the 28 sizes measured as it opens, but a failed "Continue"
+ * adds its error message, and then it scrolls on the short screens: at 724x257
+ * Close ended 16 px above the top edge (Slice 26's PLAN entry has the sizes).
  */
 export const OVERLAY_PINNED_BAR =
-  "phone:sticky phone:-top-4 phone:-mx-4 phone:-mt-4 phone:mb-0 phone:bg-panel phone:px-4 phone:pb-3 phone:pt-4";
+  "phone:sticky phone:-top-4 phone:-mx-4 phone:-mt-4 phone:bg-panel phone:px-4 phone:pt-4";
 
 /**
  * Make an overlay dialog modal while it covers the whole screen (Slice 26, ruled

@@ -25,7 +25,7 @@ import { applyScenario } from "../data/applyScenario";
 import type { GalleryScenario, ScenarioEvent } from "../engine/gallery";
 import { useTransport } from "../store/transport";
 import { FOCUS_RING } from "./focus";
-import { OVERLAY_PHONE, usePhoneModal } from "./overlay";
+import { OVERLAY_PHONE, OVERLAY_PINNED_BAR, usePhoneModal } from "./overlay";
 import { PLAY_TOGGLE_ID } from "./TransportBar";
 
 export interface EventCardProps {
@@ -113,21 +113,25 @@ export function EventCard({ event, next, onClose }: EventCardProps) {
       className={`absolute inset-0 z-10 flex items-start justify-center overflow-y-auto bg-bg/75 p-4 ${OVERLAY_PHONE}`}
     >
       <div className="my-auto w-full max-w-md rounded-lg border border-line bg-panel p-4 shadow-xl">
-        <div className="mb-2 flex items-baseline justify-between gap-3">
-          <h2
-            id={headingId}
-            className="font-mono text-xs font-bold tracking-[0.2em] text-accent"
-          >
-            {event.title}
-          </h2>
-          <button
-            type="button"
-            ref={closeRef}
-            onClick={onClose}
-            className={`rounded px-2 py-1 font-mono text-[11px] text-dim transition-colors hover:text-txt ${FOCUS_RING}`}
-          >
-            Close
-          </button>
+        {/* Pinned on a phone, as the gallery's is: a failed "Continue" can make
+            the card scroll there (`OVERLAY_PINNED_BAR`, Slice 26). */}
+        <div className={`mb-2 phone:mb-0 phone:pb-2 ${OVERLAY_PINNED_BAR}`}>
+          <div className="flex items-baseline justify-between gap-3">
+            <h2
+              id={headingId}
+              className="font-mono text-xs font-bold tracking-[0.2em] text-accent"
+            >
+              {event.title}
+            </h2>
+            <button
+              type="button"
+              ref={closeRef}
+              onClick={onClose}
+              className={`rounded px-2 py-1 font-mono text-[11px] text-dim transition-colors hover:text-txt ${FOCUS_RING}`}
+            >
+              Close
+            </button>
+          </div>
         </div>
 
         <p className="m-0 font-mono text-xs leading-relaxed text-txt">
