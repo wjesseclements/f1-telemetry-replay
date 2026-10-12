@@ -104,6 +104,11 @@ describe("the side-by-side layout's variants", () => {
         "--tw-ring-inset:inset",
       ],
       [".compact\\:rounded-\\[2px\\/22px\\]", "border-radius:2px/22px"],
+      // Important, or the tint's inline `background` shorthand resets it.
+      [
+        ".compact\\:\\!bg-clip-content",
+        "background-clip:content-box!important",
+      ],
     ]) {
       expect(mediaFor(selector), selector).toBe(compact);
       expect(ruleBody(selector), selector).toContain(declaration);

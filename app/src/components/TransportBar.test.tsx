@@ -175,8 +175,9 @@ describe("TransportBar on a short phone (Slice 27)", () => {
 
   it("makes the scrubber 44 px tall and keeps its painted track 4 px", () => {
     // The tint is clipped to the content box, so the 20 px of padding above and
-    // below are hit area, not paint; `backgroundClip` follows the `background`
-    // shorthand in the style, which would otherwise reset it to the border box.
+    // below are hit area, not paint. The clip is an important `compact:` class,
+    // because the tint's inline `background` shorthand resets the clip, and the
+    // inline style stays exactly what it was so no other screen's pixels move.
     renderBar(
       withStatus([
         { status: "green", fromT: 0, toT: 40 },
@@ -188,9 +189,9 @@ describe("TransportBar on a short phone (Slice 27)", () => {
     expect(slider).toHaveClass(
       "compact:h-11",
       "compact:py-5",
-      "bg-clip-content",
+      "compact:!bg-clip-content",
       ...COMPACT_FOCUS_RING.split(" "),
     );
-    expect(slider.style.backgroundClip).toBe("content-box");
+    expect(slider.style.backgroundClip).toBe("");
   });
 });
