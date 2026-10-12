@@ -32,6 +32,14 @@ import { holdOffset, revealOffset, type Scrollport } from "../engine/reveal";
  *
  * @param smooth animate the scroll. The caller passes `false` under
  *               `prefers-reduced-motion`, and the jump is then instant.
+ *
+ * The instant jump is asked for as `"auto"`, not `"instant"` (Slice 26's review).
+ * `"auto"` takes the list's CSS `scroll-behavior`, and none is set anywhere
+ * (`Hud.reveal.test.tsx` pins the stylesheet free of it), so it jumps exactly as
+ * `"instant"` would. Every browser's `ScrollBehavior` has `"auto"`; whether every
+ * Safari the build targets accepts `"instant"` could not be shown here, and a
+ * browser that rejects a dictionary's enum value throws a TypeError — from a
+ * layout effect, which would take the tower down with it.
  */
 export function revealRow(
   list: HTMLElement,
@@ -43,7 +51,7 @@ export function revealRow(
     size: row.offsetHeight,
   });
   if (top === list.scrollTop) return;
-  list.scrollTo({ top, behavior: smooth ? "smooth" : "instant" });
+  list.scrollTo({ top, behavior: smooth ? "smooth" : "auto" });
 }
 
 /**

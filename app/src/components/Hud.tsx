@@ -364,9 +364,15 @@ export function Hud({ replay }: HudProps) {
           the view: a list parked at mid-field moved 232 px in 4 s of the red
           flag's first lap at 2x (375x626, headless Chrome), following a car rather
           than the positions the viewer chose, and every row the reorder did not
-          touch jumped with it. Off, the list holds still and only the rows that
-          changed places slide. Whether iOS Safari anchors was not measured (no
-          Safari here); a browser that does not was already behaving this way. */}
+          touch jumped with it. Off, the SCROLL POSITION holds still, and the cost
+          is that the rows in view move when something above them leaves: at
+          LEC's DNF (174.8 s, 375x626, list parked at 300 below LEC's 194 px
+          focused block) the block drops to the foot of the field, and every row
+          in view slides up 198 px (the block and its 4 px gap), animated, while
+          scrollTop stays 300 — PIA to HAM give way to HAM to SAI. Anchored, main
+          chased the focused block instead (300 to 102 to 68; Slice 26's review).
+          Whether iOS Safari anchors was not measured (no Safari here); a browser
+          that does not was already behaving this way. */}
       <ul
         ref={rowsRef}
         aria-label="Running order"

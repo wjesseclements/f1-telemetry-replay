@@ -18,7 +18,8 @@
  *    already whole;
  *  - first, a row that was on screen is HELD where the viewer saw it while the
  *    readout above it closes (a scroll by exactly as far as it moved);
- *  - smooth, or instant under `prefers-reduced-motion`;
+ *  - smooth, or an instant jump (`"auto"`, with no CSS `scroll-behavior`
+ *    anywhere) under `prefers-reduced-motion`;
  *  - NOTHING else scrolls the list: no reorder, no tick, no re-click;
  *  - it is the LIST that scrolls (`scrollTo` on it), never `scrollIntoView`.
  */
@@ -35,6 +36,7 @@ import { parseReplay } from "../engine/load";
 import type { Replay } from "../engine/schema";
 import { useTransport } from "../store/transport";
 import { telemetry } from "../telemetry/channel";
+import css from "../index.css?inline";
 import { Hud } from "./Hud";
 
 const ROW_H = 30;
@@ -269,8 +271,15 @@ describe("tower focus reveal (Slice 26) — what it does", () => {
     publish(SIX, 5);
     fireEvent.click(rowButton("A3"));
     expect(scrollCalls.map((c) => c.options)).toEqual([
-      { top: 102, behavior: "instant" },
+      { top: 102, behavior: "auto" },
     ]);
+  });
+
+  it("jumps with `auto` because no stylesheet makes `auto` smooth", () => {
+    // `behavior: "auto"` takes the list's CSS `scroll-behavior`; it is an
+    // instant jump only while no rule sets that to `smooth` (`towerReveal.ts`).
+    // The compiled stylesheet is the whole app's CSS.
+    expect(css).not.toMatch(/scroll-behavior/);
   });
 
   it("reveals a focus change made through the store — the keyboard's path", () => {
@@ -384,7 +393,7 @@ describe("tower focus reveal (Slice 26) — what triggers it", () => {
     list().scrollTop = 250;
     fireEvent.click(rowButton("A3"));
     expect(scrollCalls.map((c) => [c.from, c.options])).toEqual([
-      [80, { top: 102, behavior: "instant" }],
+      [80, { top: 102, behavior: "auto" }],
     ]);
   });
 
