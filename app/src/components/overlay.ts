@@ -31,9 +31,12 @@
  *
  * `fixed` resolves against the viewport only while no ancestor has a
  * `transform`, `filter` or `contain`. None does. If one ever did, the overlay
- * would quietly go back into the cell on phones, and nothing in
- * `npm run check` would notice: the tests pin this class, not its geometry, and
- * every layout-check row passed with the overlay in the cell too.
+ * would go back into the cell on phones. The tests pin this class, not its
+ * geometry; what measures the geometry is the layout check's 375x626 viewport
+ * (Slice 26), whose first-load "last card reachable" row fails with the gallery
+ * in the cell. It is the only row that does: every other row, at every gated
+ * viewport, passed with the overlay in the cell too, and nothing gates the
+ * event card's.
  *
  * One string, so the two dialogs cannot drift apart.
  */

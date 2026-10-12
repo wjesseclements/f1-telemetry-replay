@@ -4,7 +4,7 @@
  * jsdom has no layout engine: every box it reports is 0x0, so the app's tests can
  * prove WHAT renders but never WHERE. This drives the system's headless Chrome
  * over the DevTools Protocol against the BUILT app (`dist/`, served by Vite's own
- * `preview()`) and asserts the geometric facts a visitor depends on, at seven
+ * `preview()`) and asserts the geometric facts a visitor depends on, at eight
  * viewports (`VIEWPORTS`) and in three states (`layout/states.ts`):
  *
  *   A  first load — the gallery panel open over the committed fixture;
@@ -82,6 +82,15 @@ const TEARDOWN_STEP_MS = 2_000;
 // the shortest the one-line header, `onerow:`, serves), and the landscape phones
 // 667x375 and 740x360 (the shortest common one), which go side by side (`side:`
 // in `tailwind.config.js`: `md`, or a screen 5:4 or wider).
+//
+// Then Slice 26's 375x626, appended last: what an upright iPhone's Safari leaves
+// the page once both its bars are shown (measured from the human's screenshots,
+// 2026-10-11), and the shortest portrait screen gated. Its first-load "last card
+// reachable" row is the one that fails without the phone's full-screen gallery
+// (`phone:fixed`, `src/components/overlay.ts`), measured against main's build.
+// Safari's landscape size, 724x257, is NOT gated: the header and the transport
+// bar leave its track 160 px, under the 200 px floor in `layout/states.ts`, and
+// that floor is not loosened to admit it. Its other 16 rows pass.
 const VIEWPORTS: readonly { width: number; height: number }[] = [
   { width: 375, height: 812 },
   { width: 1280, height: 720 },
@@ -90,6 +99,7 @@ const VIEWPORTS: readonly { width: number; height: number }[] = [
   { width: 667, height: 375 },
   { width: 740, height: 360 },
   { width: 360, height: 640 },
+  { width: 375, height: 626 },
 ];
 /**
  * Below this width the emulated device is a phone (`mobile: true`: meta-viewport
