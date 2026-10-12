@@ -1,6 +1,31 @@
 /**
  * webAppManifest.test.ts — Add to Home Screen (Slice 27; drafted as Slice 26's
- * F), checked at build time.
+ * F), checked at build time. This header is also where index.html's install
+ * tags are explained: the reasons lived in that file as a comment, which every
+ * visitor downloaded (about 1.6 KB), so they moved here and index.html points
+ * to this file.
+ *
+ * WHAT INSTALLING CHANGES. Launched from the home screen the app runs without
+ * Safari's toolbars: an upright 375x812 iPhone gives the page about 375x734 to
+ * 375x768 instead of 375x626, a landscape one about 724x354 to 724x375 instead
+ * of 724x257. Those sizes are estimates from Apple's published safe areas,
+ * measured in headless Chrome, never on a phone. Same-origin static files only,
+ * and NO service worker: the installed app needs the site exactly as a bookmark
+ * does, so the offline rule is unchanged.
+ *
+ * THE VIEWPORT SAYS `viewport-fit=auto` ON PURPOSE. It is the default, written
+ * out so nobody changes it by accident. With `cover` a landscape phone's layout
+ * viewport becomes the whole 812 px screen, `md` (768 px) starts to match
+ * although only 724 px are usable, and the 224 px column readout comes back.
+ * Measured with safe-area padding: a 1-car readout cut 75 px, which `auto`
+ * shows whole. With `auto` iOS letterboxes the page into the safe area itself,
+ * and no CSS changes.
+ *
+ * THE STATUS BAR IS `black`, not `black-translucent`: translucent draws the page
+ * under the clock, which only `cover` plus safe-area padding could undo.
+ *
+ * THE ICON IS A PLACEHOLDER: `docs/icons/rasterize-icons.mjs` says how to swap
+ * it.
  *
  * The manifest, the icons and the iOS tags are static files that no component
  * renders, so no component test can see them break. A wrong icon size or a
@@ -18,8 +43,8 @@
  *  - the colours are the `--c-bg` token. A static file cannot read the CSS, so
  *    the hex is repeated in it, and this test keeps the copies equal;
  *  - every icon exists at the size it declares (read from the PNG header);
- *  - the viewport stays `viewport-fit=auto` (index.html says why, with the
- *    measurement), and iOS's status bar stays `black`;
+ *  - the viewport stays `viewport-fit=auto`, and iOS's status bar stays
+ *    `black` (both explained above);
  *  - the names are the human's (2026-10-12): the full name is the page's own
  *    title, and the label under the icon, "F1 Telemetry", is one string in two
  *    files, the manifest's `short_name` and iOS's `apple-mobile-web-app-title`.
