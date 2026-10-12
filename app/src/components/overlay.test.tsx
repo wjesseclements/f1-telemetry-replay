@@ -134,6 +134,15 @@ describe("each dialog's heading row is pinned on a phone", () => {
     },
   );
 
+  it("leaves the gallery's first-card focus ring outside the bar", () => {
+    // The focus ring (FOCUS_RING: a 2 px offset and a 2 px ring) reaches 4 px
+    // above the focused card, and the first card is focused on open. The bar is
+    // positioned, so it paints over whatever it overlaps: those 4 px stay margin.
+    render(<FeaturedPanel id="featured" onClose={() => {}} />);
+    const { bar } = rowAndBar();
+    expect(bar).toHaveClass("phone:mb-1");
+  });
+
   it.each(DIALOGS)(
     "%s: pays back every px the bar borrows, so at rest nothing moves",
     (_, mount) => {
@@ -147,13 +156,16 @@ describe("each dialog's heading row is pinned on a phone", () => {
         expect(classes, borrowed).toContain(borrowed);
         expect(classes, repaid).toContain(repaid);
       }
-      // The gap under the row: a margin off a phone, the same size as padding
-      // on one (inside the bar, so the pinned bar covers it too).
+      // The gap under the row: a margin off a phone; on one, the same total
+      // split between the bar's padding (covered when pinned) and its margin.
       mount();
       const { bar } = rowAndBar();
-      const gap = /(?:^|\s)mb-(\d+)(?:\s|$)/.exec(bar.className)?.[1];
-      expect(gap, "the bar's own margin off a phone").toBeDefined();
-      expect(bar).toHaveClass("phone:mb-0", `phone:pb-${gap}`);
+      const step = (re: RegExp) => Number(re.exec(bar.className)?.[1] ?? NaN);
+      const gap = step(/(?:^|\s)mb-(\d+)(?:\s|$)/);
+      const margin = step(/(?:^|\s)phone:mb-(\d+)(?:\s|$)/);
+      const padding = step(/(?:^|\s)phone:pb-(\d+)(?:\s|$)/);
+      expect(gap, "the bar's own margin off a phone").toBeGreaterThan(0);
+      expect(margin + padding).toBe(gap);
     },
   );
 });

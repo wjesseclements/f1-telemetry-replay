@@ -56,15 +56,27 @@ export const OVERLAY_PHONE = "phone:fixed";
  * It goes on a wrapper around the row, not on the row, so that at rest nothing
  * moves. The wrapper reaches over the card's padding with negative margins and
  * puts the same padding back, and the caller moves the row's bottom margin onto
- * it — `mb-N` off a phone, `phone:mb-0 phone:pb-N` on one — so the row keeps its
- * box to the pixel (the layout check's heading and Close rows read the
- * gallery's). It sticks at `-top-4` because a sticky box's `top` counts from
- * inside the dialog's 16 px padding (measured in Chrome: `top-0` pinned the row
- * at y=16 and the cards stayed visible, and TAPPABLE, in the 16 px above it).
- * Pinned, its `bg-panel` covers the strip from the top edge to the end of its
- * gap under the row, across the card's whole padding box: nothing scrolls into
- * view above Close, and a tap there lands on the bar instead of on a card no one
- * can see. At rest the same paint is the card's own colour, so nothing shows.
+ * it — `mb-N` off a phone; on one, padding and margin that add up to N — so the
+ * row keeps its box to the pixel (the layout check's heading and Close rows read
+ * the gallery's).
+ *
+ * It sticks at `-top-4` because a sticky box's `top` counts from inside the
+ * dialog's 16 px padding (measured in Chrome: `top-0` pinned the row at y=16 and
+ * the cards stayed visible, and TAPPABLE, in the 16 px above it). Pinned, its
+ * `bg-panel` covers the strip from the top edge to the end of its padding under
+ * the row, across the card's whole padding box: nothing scrolls into view above
+ * Close, and a tap there lands on the bar instead of on a card no one can see.
+ *
+ * At rest it must paint nothing, and it is positioned, so it paints OVER the
+ * card's content. Its paint is the card's own colour; the two places that is not
+ * enough were measured in Chrome's screenshots. Square, its corners covered the
+ * card's corner arcs; rounded to the card's inner 7 px they still shaded 16
+ * anti-aliased border pixels, and to 8 px, 12. Rounded to 12 px (`xl`) they
+ * stay clear of the border, and pinned they only ever sit over the card's padding
+ * (its own colour). And a gap made all padding painted over the top of the
+ * focused first card's ring (2 px offset + 2 px ring), so the gallery keeps 4 px
+ * of its 12 as margin. With both, every phone panel screenshot at Safari's four
+ * sizes is pixel-identical to the bar-less build's.
  *
  * Both dialogs use it. The gallery scrolls on every phone. The event card
  * scrolled at none of the 28 sizes measured as it opens, but a failed "Continue"
@@ -72,7 +84,7 @@ export const OVERLAY_PHONE = "phone:fixed";
  * Close ended 16 px above the top edge (Slice 26's PLAN entry has the sizes).
  */
 export const OVERLAY_PINNED_BAR =
-  "phone:sticky phone:-top-4 phone:-mx-4 phone:-mt-4 phone:bg-panel phone:px-4 phone:pt-4";
+  "phone:sticky phone:-top-4 phone:-mx-4 phone:-mt-4 phone:rounded-t-xl phone:bg-panel phone:px-4 phone:pt-4";
 
 /**
  * Make an overlay dialog modal while it covers the whole screen (Slice 26, ruled
