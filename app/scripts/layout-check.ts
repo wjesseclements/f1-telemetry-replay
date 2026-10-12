@@ -4,7 +4,7 @@
  * jsdom has no layout engine: every box it reports is 0x0, so the app's tests can
  * prove WHAT renders but never WHERE. This drives the system's headless Chrome
  * over the DevTools Protocol against the BUILT app (`dist/`, served by Vite's own
- * `preview()`) and asserts the geometric facts a visitor depends on, at eight
+ * `preview()`) and asserts the geometric facts a visitor depends on, at nine
  * viewports (`VIEWPORTS`) and in three states (`layout/states.ts`):
  *
  *   A  first load — the gallery panel open over the committed fixture;
@@ -96,6 +96,14 @@ const TEARDOWN_STEP_MS = 2_000;
 // bar leave its track 160 px, under the 200 px floor in `layout/states.ts`, and
 // that floor is not loosened to admit it (Slice 27's compact bars are its way
 // in). Its other rows pass.
+//
+// Then 814x312, appended last (Slice 26's review): a Plus or Pro Max iPhone held
+// sideways, `md` wide but at most 30rem tall. It is the one gated viewport where
+// `phone:`'s HEIGHT clause decides the layout, so its "panel covers the
+// viewport" rows are what fail if that clause is dropped; before it, only
+// `layoutVariants.test.ts`'s compiled string did. Emulated as every viewport
+// 768 px or wider is (`mobile: false`); measured with `mobile: true` as well,
+// its 19 rows are byte-identical.
 const VIEWPORTS: readonly { width: number; height: number }[] = [
   { width: 375, height: 812 },
   { width: 1280, height: 720 },
@@ -105,6 +113,7 @@ const VIEWPORTS: readonly { width: number; height: number }[] = [
   { width: 740, height: 360 },
   { width: 360, height: 640 },
   { width: 375, height: 626 },
+  { width: 814, height: 312 },
 ];
 /**
  * Below this width the emulated device is a phone (`mobile: true`: meta-viewport
