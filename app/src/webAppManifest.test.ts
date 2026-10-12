@@ -12,16 +12,17 @@
  * armed. What is pinned, and why:
  *  - every path the manifest names is a same-origin path. The offline rule
  *    allows the app no other host, and an installed app is no exception;
- *  - no service worker: installing must not add a cache layer or a second
- *    network path (CLAUDE.md's offline rule);
+ *  - no service worker, from the sources or from index.html itself (an inline
+ *    script): installing must not add a cache layer or a second network path
+ *    (CLAUDE.md's offline rule);
  *  - the colours are the `--c-bg` token. A static file cannot read the CSS, so
  *    the hex is repeated in it, and this test keeps the copies equal;
  *  - every icon exists at the size it declares (read from the PNG header);
  *  - the viewport stays `viewport-fit=auto` (index.html says why, with the
- *    measurement);
+ *    measurement), and iOS's status bar stays `black`;
  *  - the names are the human's (2026-10-12): the full name is the page's own
- *    title, and the label under the icon is one string in two files, the
- *    manifest's `short_name` and iOS's `apple-mobile-web-app-title`.
+ *    title, and the label under the icon, "F1 Telemetry", is one string in two
+ *    files, the manifest's `short_name` and iOS's `apple-mobile-web-app-title`.
  */
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -72,6 +73,9 @@ function link(rel: string): string | undefined {
     new RegExp(`<link\\s+rel="${rel}"[^>]*\\shref="([^"]*)"`),
   )?.[1];
 }
+
+/** What any code registering a service worker has to name. */
+const REGISTERS_WORKER = /serviceWorker/;
 
 /** A same-origin path served from `public/`, as the file it names. */
 function publicFile(path: string): string {
@@ -128,6 +132,16 @@ describe("the web app manifest", () => {
 
   it("gives iOS the same home-screen label as the manifest", () => {
     expect(meta("apple-mobile-web-app-title")).toBe(manifest.short_name);
+    // The value itself is the human's ruling (2026-10-12), not only the two
+    // copies agreeing.
+    expect(manifest.short_name).toBe("F1 Telemetry");
+  });
+
+  it("keeps iOS's status bar `black`, outside the page", () => {
+    // `black-translucent` draws the page under the clock, and only
+    // `viewport-fit=cover` plus safe-area padding could undo that; the viewport
+    // stays `auto` (below). With `black` the status bar sits above the page.
+    expect(meta("apple-mobile-web-app-status-bar-style")).toBe("black");
   });
 
   it("names the installed app what the page's title already calls it", () => {
@@ -168,7 +182,13 @@ describe("what installing does not change", () => {
       .filter((f) => /\.(ts|tsx)$/.test(f) && !/\.test\.tsx?$/.test(f));
     expect(sources.length).toBeGreaterThan(0);
     for (const file of sources)
-      expect(read(join("src", file)), file).not.toMatch(/serviceWorker/);
+      expect(read(join("src", file)), file).not.toMatch(REGISTERS_WORKER);
+    // The page itself too, every byte of it: an inline `<script>` or an inline
+    // handler in index.html registers a worker as surely as a module does.
+    expect(html, "index.html").not.toMatch(REGISTERS_WORKER);
+    expect(
+      '<script>navigator.serviceWorker.register("/sw.js")</script>',
+    ).toMatch(REGISTERS_WORKER);
     const shipped = readdirSync(PUBLIC, { recursive: true }).map(String);
     expect(
       shipped.filter((f) => /(^|\/)(sw|service-?worker)\.js$/i.test(f)),
