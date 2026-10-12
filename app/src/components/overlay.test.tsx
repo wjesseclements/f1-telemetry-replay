@@ -14,11 +14,11 @@
  * the layout check's — which never fires a scenario event, so for the event card
  * this is the only guard there is.
  */
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { EventCard } from "./EventCard";
 import { FeaturedPanel } from "./FeaturedPanel";
-import { OVERLAY_PHONE } from "./overlay";
+import { OVERLAY_PHONE, OVERLAY_PINNED_BAR } from "./overlay";
 
 afterEach(cleanup);
 
@@ -92,4 +92,53 @@ describe("overlay dialogs cover the whole screen on a phone", () => {
       expect(dialog.className).toContain(OVERLAY_PHONE);
     },
   );
+});
+
+/**
+ * The gallery's heading row on a phone (Slice 26, ruled 2026-10-12): pinned at the
+ * top of the full-screen panel while the cards scroll, so Close never scrolls
+ * away. jsdom has no layout or sticky positioning, so this pins the structure;
+ * the geometry (pinned at y=16, the strip above it covered) was measured in
+ * Chrome (Slice 26's PLAN entry).
+ */
+describe("the gallery's heading row is pinned on a phone", () => {
+  const rowAndBar = () => {
+    render(<FeaturedPanel id="featured" onClose={() => {}} />);
+    const row = screen.getByRole("heading", { name: /start here/i })
+      .parentElement as HTMLElement;
+    return { row, bar: row.parentElement as HTMLElement };
+  };
+
+  it("wraps the heading and Close in the pinned bar", () => {
+    const { row, bar } = rowAndBar();
+    expect(bar.className).toContain(OVERLAY_PINNED_BAR);
+    expect(bar).toHaveClass("phone:sticky");
+    expect(within(row).getByRole("button", { name: /^close$/i })).toBeVisible();
+  });
+
+  it("leaves the row itself unpositioned and unpadded, so its box never moves", () => {
+    // The layout check reads the ROW's box (the heading's parent) for its
+    // heading and Close rows; the bar around it is what sticks.
+    const { row } = rowAndBar();
+    expect(row.className).not.toMatch(
+      /sticky|fixed|absolute|\bm[tbxy]?-|\bp[tbxy]?-/,
+    );
+  });
+
+  it("pays back every px the bar borrows, so at rest nothing moves", () => {
+    // Negative margins reach over the card's padding; the same padding puts the
+    // row back. The 12 px under the row moves from margin to padding.
+    const classes = OVERLAY_PINNED_BAR.split(" ");
+    for (const [borrowed, repaid] of [
+      ["phone:-mt-4", "phone:pt-4"],
+      ["phone:-mx-4", "phone:px-4"],
+      ["phone:mb-0", "phone:pb-3"],
+    ]) {
+      expect(classes, borrowed).toContain(borrowed);
+      expect(classes, repaid).toContain(repaid);
+    }
+    const { bar } = rowAndBar();
+    // Off a phone, the bar is an ordinary block with the row's old margin.
+    expect(bar).toHaveClass("mb-3");
+  });
 });

@@ -28,7 +28,7 @@ import { applyScenario } from "../data/applyScenario";
 import { parseGalleryManifest, type GalleryScenario } from "../engine/gallery";
 import manifestJson from "../gallery/manifest.json";
 import { FOCUS_RING } from "./focus";
-import { OVERLAY_PHONE } from "./overlay";
+import { OVERLAY_PHONE, OVERLAY_PINNED_BAR } from "./overlay";
 
 /**
  * Validated once at module load, not per render.
@@ -102,20 +102,25 @@ export function FeaturedPanel({ onClose, id }: FeaturedPanelProps) {
       className={`absolute inset-0 z-10 flex items-start justify-center overflow-y-auto bg-bg/75 p-4 ${OVERLAY_PHONE}`}
     >
       <div className="my-auto w-full max-w-md rounded-lg border border-line bg-panel p-4 shadow-xl">
-        <div className="mb-3 flex items-baseline justify-between gap-3">
-          <h2
-            id={headingId}
-            className="font-mono text-xs font-bold tracking-[0.2em] text-txt"
-          >
-            START HERE
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className={`rounded px-2 py-1 font-mono text-[11px] text-dim transition-colors hover:text-txt ${FOCUS_RING}`}
-          >
-            Close
-          </button>
+        {/* On a phone the heading row stays pinned at the top of the panel
+            while the cards scroll under it, so Close is always on screen
+            (`OVERLAY_PINNED_BAR`, Slice 26). */}
+        <div className={`mb-3 ${OVERLAY_PINNED_BAR}`}>
+          <div className="flex items-baseline justify-between gap-3">
+            <h2
+              id={headingId}
+              className="font-mono text-xs font-bold tracking-[0.2em] text-txt"
+            >
+              START HERE
+            </h2>
+            <button
+              type="button"
+              onClick={onClose}
+              className={`rounded px-2 py-1 font-mono text-[11px] text-dim transition-colors hover:text-txt ${FOCUS_RING}`}
+            >
+              Close
+            </button>
+          </div>
         </div>
 
         <ul className="flex flex-col gap-2">
