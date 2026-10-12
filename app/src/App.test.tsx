@@ -139,9 +139,9 @@ describe("App", () => {
     // The thin header still wraps: Slice 26's draft stopped it wrapping and kept
     // the picker from shrinking, and a failed load's error box then pushed a
     // 375 px page to 637 px wide (measured in Chrome, Slice 27). Not gated by the
-    // layout check, which never fails a load, so it is pinned here. (No utility
-    // is spelled out in this comment or the matchers: Tailwind scans test files
-    // too, and would ship a rule for it.)
+    // layout check, which never fails a load, so it is pinned here. (The
+    // matchers avoid spelling the utility out, from when Tailwind scanned test
+    // files and shipped a rule for whatever they named; it no longer does.)
     const header = toggle.closest("header")!;
     expect(header).toHaveClass("flex-wrap");
     const compactNoWrap = header.className

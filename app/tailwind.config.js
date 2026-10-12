@@ -113,7 +113,14 @@ const COMPACT = `(max-height: 30rem), (max-width: 39.9375rem) and ${SHORT}`;
 
 /** @type {import('tailwindcss').Config} */
 export default {
-  content: ["./index.html", "./src/**/*.{ts,tsx}"],
+  // What ships, never its tests. Tailwind compiles every word in these files that
+  // names a utility, comments and strings included, so a test that merely SPOKE of
+  // a class shipped its rule: a guard asserting a variant's rule exists and sits
+  // after another passed with the class deleted from the component, because the
+  // guard's own comment spelled it (Slice 27's review), and the escaped selectors
+  // tests search for put unused unprefixed rules in the bundle. Excluded, a test
+  // that reads the compiled CSS (`?inline`) sees exactly the app's stylesheet.
+  content: ["./index.html", "./src/**/*.{ts,tsx}", "!./src/**/*.test.{ts,tsx}"],
   theme: {
     extend: {
       // Design tokens are defined as CSS custom properties in src/index.css.
