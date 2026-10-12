@@ -22,6 +22,16 @@
  * honestly rather than clamp. Hidden entirely when no car carries lap data, so every
  * pre-Slice-14 file renders this bar exactly as before. On a closed single-lap file
  * it reads the same lap on every wrap — correct: the data is one lap, replayed.
+ *
+ * ON A SHORT PHONE (Slice 27, `compact:` in tailwind.config.js) the bar is as thin
+ * as its controls allow and no thinner: every button and the scrubber keep a 44x44
+ * CSS px target (the human's ruling; `touchTarget.ts`), with no vertical padding,
+ * 6 px gaps and 8 px side margins. In landscape it is one 45 px row (43 before);
+ * upright it is three 44 px rows, 133 px (109 before) — the scrubber's own 44 px
+ * row costs 20 of those, and the header's 38 px saving pays for it. The narrower
+ * gaps and margins are what keep the scrubber's width: 122 px at 667x375 with 22
+ * cars, where 52 px of extra button width would have left it 92. Same controls,
+ * same order, same names; no button changes width between Play and Pause.
  */
 import { useMemo } from "react";
 import { formatLapIndicator, formatLapTime } from "../engine/format";
@@ -30,10 +40,11 @@ import type { Replay } from "../engine/schema";
 import { statusAt, statusSegments } from "../engine/trackStatus";
 import { useTransport } from "../store/transport";
 import { useTelemetry } from "../telemetry/useTelemetry";
-import { FOCUS_RING } from "./focus";
+import { COMPACT_FOCUS_RING, FOCUS_RING } from "./focus";
 import { Scrubber } from "./Scrubber";
 import { SpeedControl } from "./SpeedControl";
 import { StatusFlag } from "./StatusFlag";
+import { TOUCH_TARGET } from "./touchTarget";
 
 /**
  * The play/pause toggle's DOM id — the event card's focus fallback (see
@@ -69,7 +80,7 @@ export function TransportBar({ replay }: TransportBarProps) {
   return (
     <section
       aria-label="Playback controls"
-      className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-line bg-panel px-4 py-2"
+      className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-line bg-panel px-4 py-2 compact:gap-x-1.5 compact:gap-y-0 compact:px-2 compact:py-0"
     >
       <button
         type="button"
@@ -77,7 +88,7 @@ export function TransportBar({ replay }: TransportBarProps) {
         onClick={togglePlay}
         aria-label={isPlaying ? "Pause" : "Play"}
         aria-keyshortcuts="Space"
-        className={`rounded border border-line px-3 py-1 font-mono text-xs font-bold text-txt hover:border-accent ${FOCUS_RING}`}
+        className={`rounded border border-line px-3 py-1 font-mono text-xs font-bold text-txt hover:border-accent ${TOUCH_TARGET} ${FOCUS_RING} ${COMPACT_FOCUS_RING}`}
       >
         {isPlaying ? "❚❚" : "▶"}
       </button>
@@ -87,7 +98,7 @@ export function TransportBar({ replay }: TransportBarProps) {
         onClick={() => seek(0)}
         aria-label="Restart lap"
         aria-keyshortcuts="Home"
-        className={`rounded border border-line px-3 py-1 font-mono text-xs text-dim hover:text-txt ${FOCUS_RING}`}
+        className={`rounded border border-line px-3 py-1 font-mono text-xs text-dim hover:text-txt ${TOUCH_TARGET} ${FOCUS_RING} ${COMPACT_FOCUS_RING}`}
       >
         ↺
       </button>

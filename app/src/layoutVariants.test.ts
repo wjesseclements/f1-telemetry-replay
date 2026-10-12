@@ -38,6 +38,14 @@ function mediaFor(selector: string): string | null {
     .replace(/\s/g, "");
 }
 
+/** The declarations of `selector`'s first rule, whitespace removed, or "". */
+function ruleBody(selector: string): string {
+  const at = ruleAt(selector);
+  if (at === -1) return "";
+  const open = css.indexOf("{", at);
+  return css.slice(open + 1, css.indexOf("}", open)).replace(/\s/g, "");
+}
+
 describe("the side-by-side layout's variants", () => {
   it("compiles `side:` to `md` OR a screen 5:4 or wider", () => {
     expect(mediaFor(".side\\:flex-row")).toBe(
@@ -70,6 +78,45 @@ describe("the side-by-side layout's variants", () => {
     // here: modal over a page still usable beside it, or not modal over a page
     // it covers, would follow from either drifting.
     expect(PHONE_QUERY.replace(/\s/g, "")).toBe(mediaFor(".phone\\:fixed"));
+  });
+
+  it("compiles `compact:` to a landscape phone OR a short portrait one (Slice 27)", () => {
+    // At most 480 px tall (every landscape phone, Safari's 724x257 included), or
+    // under 640 px wide and at most 700 px tall (Safari's upright 375x626, and
+    // 375x667/360x640). Not 375x812, not a 1366x657 laptop window.
+    expect(mediaFor(".compact\\:py-0")).toBe(
+      "(max-height:30rem),(max-width:39.9375rem)and(max-height:43.75rem)",
+    );
+  });
+
+  it("compiles the 44 px touch-target floor and the inset ring under `compact:` (Slice 27)", () => {
+    // The human's ruling (2026-10-12): every control in the thin rows keeps a
+    // 44x44 CSS px target. A class Tailwind could not compile would vanish with
+    // no warning and leave 26 px buttons, and every component test would still
+    // see the class name, so the compiled rule is what is pinned.
+    const compact = mediaFor(".compact\\:py-0");
+    for (const [selector, declaration] of [
+      [".compact\\:min-h-11", "min-height:2.75rem"],
+      [".compact\\:min-w-11", "min-width:2.75rem"],
+      [".compact\\:h-11", "height:2.75rem"],
+      [
+        ".compact\\:focus-visible\\:ring-inset:focus-visible",
+        "--tw-ring-inset:inset",
+      ],
+      [".compact\\:rounded-\\[2px\\/22px\\]", "border-radius:2px/22px"],
+    ]) {
+      expect(mediaFor(selector), selector).toBe(compact);
+      expect(ruleBody(selector), selector).toContain(declaration);
+    }
+  });
+
+  it("lets a short phone's thin header win over the one-line header (Slice 27)", () => {
+    // `compact:min-w-0` must override `onerow:min-w-24` where both match (every
+    // compact screen is also `onerow:`), or the meta line keeps its 96 px floor in
+    // a header that no longer wraps, and pushes the icons off a 360 px screen.
+    expect(ruleAt(".compact\\:min-w-0")).toBeGreaterThan(
+      ruleAt(".onerow\\:min-w-24"),
+    );
   });
 
   it("lets the `md` sidebar's size win over the sidebar's below `md`", () => {

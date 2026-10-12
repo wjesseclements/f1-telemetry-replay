@@ -90,6 +90,27 @@ const SHORT = "(max-height: 43.75rem)";
  */
 const PHONE = `not all and (min-width: ${defaultTheme.screens.md}), (max-height: 30rem)`;
 
+/**
+ * A phone-shaped short screen (Slice 27, the human's option C1): the header and
+ * the transport bar become thin rows, and the header's two buttons become icons.
+ * Every control in those rows keeps a 44x44 CSS px target (the human's ruling,
+ * `src/components/touchTarget.ts`), so a row is as tall as one control: the
+ * header 44 px, the transport bar 45 in landscape and 133 (three rows) upright.
+ *
+ * Two clauses, both measured in iOS Safari's real viewports (2026-10-11):
+ *  - at most 30rem (480 px) tall: every landscape phone. Safari leaves 724x257 with
+ *    its tab bar and ~724x300 without; Chrome-sized ones are 360–430 tall, a Plus
+ *    or Pro Max held sideways about 814x312. No portrait phone is that short. A
+ *    desktop window can be (1280x480), and it gets the icons too: they carry no
+ *    `title`, so there they have no tooltip either.
+ *  - under 40rem (640 px) wide AND at most 43.75rem (700 px) tall (`SHORT`): the
+ *    portrait phones in Safari (375x626, ~390x664) and the short ones (375x667,
+ *    360x640), where the header wrapped to two rows (82 px). The width clause keeps
+ *    it off a short laptop window (1366x657), which keeps its text buttons;
+ *    375x812 and 390x844 are taller and unchanged.
+ */
+const COMPACT = `(max-height: 30rem), (max-width: 39.9375rem) and ${SHORT}`;
+
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
@@ -145,6 +166,8 @@ export default {
       // gallery and the event card): below `md`, or on a screen at most 30rem
       // tall. One variant, so the two cannot drift.
       addVariant("phone", `@media ${PHONE}`);
+      // Thin header and transport rows on a short phone, 44 px targets kept.
+      addVariant("compact", `@media ${COMPACT}`);
     }),
   ],
 };

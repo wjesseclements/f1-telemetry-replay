@@ -23,3 +23,18 @@ export const FOCUS_RING =
  */
 export const PEER_FOCUS_RING =
   "peer-focus-visible:ring-2 peer-focus-visible:ring-accent peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-bg";
+
+/**
+ * The rings above, drawn INSIDE the control on a short phone's thin rows (Slice 27).
+ *
+ * There a control's 44 px box fills its row (`touchTarget.ts`): the header's buttons
+ * touch the top of the screen and a landscape transport bar's touch the bottom, so a
+ * ring 2 px outside the box was cut off by the screen edge, and in the transport bar
+ * it drew over the tower above. Inset, it stays whole inside the box. Added beside
+ * `FOCUS_RING` / `PEER_FOCUS_RING`, never instead of them: every other screen keeps
+ * the ring outside.
+ */
+export const COMPACT_FOCUS_RING =
+  "compact:focus-visible:ring-inset compact:focus-visible:ring-offset-0";
+export const COMPACT_PEER_FOCUS_RING =
+  "compact:peer-focus-visible:ring-inset compact:peer-focus-visible:ring-offset-0";

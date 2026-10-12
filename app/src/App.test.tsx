@@ -7,7 +7,12 @@ import {
   fireEvent,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
+import {
+  COMPACT_FOCUS_RING,
+  COMPACT_PEER_FOCUS_RING,
+} from "./components/focus";
 import { SPEED_OPTIONS } from "./components/speedOptions";
+import { TOUCH_TARGET } from "./components/touchTarget";
 import { HUD_HZ, telemetry } from "./telemetry/channel";
 import sampleLap from "./engine/__fixtures__/sample-lap.json";
 import { thermalGradientCss } from "./engine/color";
@@ -107,6 +112,44 @@ describe("App", () => {
         .map((car) => car.driver)
         .join(" ")}`,
     );
+  });
+
+  it("keeps the header's two controls' names, and 44 px targets, behind their short-phone icons (Slice 27)", () => {
+    // On a short phone (`compact:`) each label is swapped for a decorative icon,
+    // and the label stays in the DOM as `sr-only`: the accessible name a screen
+    // reader announces and voice control matches is the text it always was. The
+    // box keeps the ruled 44 px floor and draws its focus ring inside (it touches
+    // the top of the screen there). jsdom applies no media query, so this pins
+    // the classes and the names; the boxes are measured in a real browser
+    // (Slice 27's PLAN entry).
+    useTransport.setState({ replay });
+    render(<App />);
+    const toggle = screen.getByRole("button", { name: "Featured replays" });
+    const label =
+      screen.getByLabelText<HTMLInputElement>("Load replay JSON").labels![0];
+    for (const control of [toggle, label]) {
+      const icon = control.querySelector("svg");
+      expect(icon).toHaveAttribute("aria-hidden", "true");
+      expect(icon).toHaveClass("hidden", "compact:block");
+      expect(control.querySelector("span")).toHaveClass("compact:sr-only");
+      expect(control).toHaveClass(...TOUCH_TARGET.split(" "));
+    }
+    expect(toggle).toHaveClass(...COMPACT_FOCUS_RING.split(" "));
+    expect(label).toHaveClass(...COMPACT_PEER_FOCUS_RING.split(" "));
+    // The thin header still wraps: Slice 26's draft stopped it wrapping and kept
+    // the picker from shrinking, and a failed load's error box then pushed a
+    // 375 px page to 637 px wide (measured in Chrome, Slice 27). Not gated by the
+    // layout check, which never fails a load, so it is pinned here. (No utility
+    // is spelled out in this comment or the matchers: Tailwind scans test files
+    // too, and would ship a rule for it.)
+    const header = toggle.closest("header")!;
+    expect(header).toHaveClass("flex-wrap");
+    const compactNoWrap = header.className
+      .split(" ")
+      .filter((c) => c.startsWith("compact:") && c.endsWith("nowrap"));
+    expect(compactNoWrap).toEqual([]);
+    const picker = label.parentElement!.parentElement!;
+    expect(picker.className.split(" ")).not.toContain("compact:shrink-0");
   });
 
   it("shows the speed legend, generated from the thermal ramp", () => {

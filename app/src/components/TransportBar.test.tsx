@@ -12,6 +12,8 @@ import sampleLap from "../engine/__fixtures__/sample-lap.json";
 import { parseReplay } from "../engine/load";
 import type { Replay } from "../engine/schema";
 import { telemetry } from "../telemetry/channel";
+import { COMPACT_FOCUS_RING } from "./focus";
+import { TOUCH_TARGET } from "./touchTarget";
 import { TransportBar } from "./TransportBar";
 
 const bare = parseReplay(sampleLap, "sample-lap.json");
@@ -146,5 +148,49 @@ describe("TransportBar status flag", () => {
     renderBar(bare, 10);
     const bareSlider = screen.getByRole("slider", { name: "Lap position" });
     expect(bareSlider.style.background).toBe("");
+  });
+});
+
+describe("TransportBar on a short phone (Slice 27)", () => {
+  // jsdom applies no media query, so these pin the `compact:` classes; the boxes
+  // they make (44x44 and up, unobstructed, no two overlapping) are measured in a
+  // real browser in Slice 27's PLAN entry.
+  it("gives every button a 44 px target with its focus ring inside", () => {
+    renderBar(bare, 10);
+    const buttons = screen.getAllByRole("button");
+    // Play/pause, restart and the four speeds: the bar's every button.
+    expect(buttons.map((b) => b.getAttribute("aria-label"))).toEqual([
+      expect.stringMatching(/^(Play|Pause)$/),
+      "Restart lap",
+      "0.5× speed",
+      "1× speed",
+      "2× speed",
+      "4× speed",
+    ]);
+    for (const button of buttons) {
+      expect(button).toHaveClass(...TOUCH_TARGET.split(" "));
+      expect(button).toHaveClass(...COMPACT_FOCUS_RING.split(" "));
+    }
+  });
+
+  it("makes the scrubber 44 px tall and keeps its painted track 4 px", () => {
+    // The tint is clipped to the content box, so the 20 px of padding above and
+    // below are hit area, not paint; `backgroundClip` follows the `background`
+    // shorthand in the style, which would otherwise reset it to the border box.
+    renderBar(
+      withStatus([
+        { status: "green", fromT: 0, toT: 40 },
+        { status: "red", fromT: 40, toT: 58.5 },
+      ]),
+      10,
+    );
+    const slider = screen.getByRole("slider", { name: "Lap position" });
+    expect(slider).toHaveClass(
+      "compact:h-11",
+      "compact:py-5",
+      "bg-clip-content",
+      ...COMPACT_FOCUS_RING.split(" "),
+    );
+    expect(slider.style.backgroundClip).toBe("content-box");
   });
 });

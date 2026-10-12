@@ -1,13 +1,15 @@
 import { useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { FeaturedPanel } from "./components/FeaturedPanel";
-import { FOCUS_RING } from "./components/focus";
+import { COMPACT_FOCUS_RING, FOCUS_RING } from "./components/focus";
 import { Hud } from "./components/Hud";
+import { GalleryIcon } from "./components/icons";
 import { ReplayError } from "./components/ReplayError";
 import { ReplayFilePicker } from "./components/ReplayFilePicker";
 import { ScenarioEvents } from "./components/ScenarioEvents";
 import { StatusBanner } from "./components/StatusBanner";
 import { SpeedLegend } from "./components/SpeedLegend";
+import { TOUCH_TARGET } from "./components/touchTarget";
 import { TransportBar } from "./components/TransportBar";
 import { useTransportKeys } from "./keyboard/useTransportKeys";
 import { TrackCanvas } from "./render/TrackCanvas";
@@ -69,8 +71,15 @@ export default function App({ bootstrapError = null }: AppProps) {
     // `h-dvh`, not `h-screen`: `100vh` on mobile browsers is the viewport WITHOUT the
     // retracting address bar, so the transport bar sat under it until you scrolled.
     <main className="flex h-dvh flex-col bg-bg text-txt">
-      <header className="flex flex-wrap items-baseline gap-x-3 gap-y-2 px-4 py-3">
-        <h1 className="font-mono text-sm font-bold tracking-[0.2em]">
+      {/* On a short phone (`compact:`, tailwind.config.js) the header is one thin
+          row, 44 px instead of 54 (landscape) or 82 (upright, where it wrapped to
+          two rows): no vertical padding, a smaller title, and the two buttons as
+          44 px icon boxes, the ruled touch-target floor (`touchTarget.ts`). Nothing
+          is hidden or moved; every control keeps its place in the tab order and
+          its name. It still wraps, which only a failed load's error box makes it
+          do (measured: a no-wrap row pushed that box off a 375 px screen). */}
+      <header className="flex flex-wrap items-baseline gap-x-3 gap-y-2 px-4 py-3 compact:items-center compact:gap-x-2 compact:px-2 compact:py-0">
+        <h1 className="font-mono text-sm font-bold tracking-[0.2em] compact:shrink-0 compact:text-xs compact:tracking-[0.15em]">
           TELEMETRY REPLAY
         </h1>
         {/* On a wide screen (5:4 and up) or a short one (at most 700 px tall),
@@ -83,7 +92,7 @@ export default function App({ bootstrapError = null }: AppProps) {
             moves to a line of its own instead. The controls still wrap when they
             alone cannot fit. */}
         {replay !== null && (
-          <p className="font-mono text-xs text-dim onerow:min-w-24 onerow:flex-1 onerow:truncate">
+          <p className="font-mono text-xs text-dim onerow:min-w-24 onerow:flex-1 onerow:truncate compact:min-w-0">
             {replay.meta.event} · {replay.meta.session} ·{" "}
             {replay.cars.map((car) => car.driver).join(" ")}
           </p>
@@ -96,9 +105,13 @@ export default function App({ bootstrapError = null }: AppProps) {
           onClick={() => (galleryOpen ? closeGallery() : setGalleryOpen(true))}
           aria-expanded={galleryOpen}
           aria-controls={GALLERY_PANEL_ID}
-          className={`rounded border border-line px-3 py-1.5 font-mono text-xs text-dim transition-colors hover:text-txt ${FOCUS_RING}`}
+          // No `title` tooltip: a touch browser shows none, and wherever the
+          // label is visible it would only repeat it. A desktop window at most
+          // 480 px tall is `compact:` too, and there the icon has no tooltip.
+          className={`rounded border border-line px-3 py-1.5 font-mono text-xs text-dim transition-colors hover:text-txt compact:flex compact:shrink-0 compact:items-center compact:justify-center compact:p-0 ${TOUCH_TARGET} ${FOCUS_RING} ${COMPACT_FOCUS_RING}`}
         >
-          Featured replays
+          <GalleryIcon className="hidden compact:block" />
+          <span className="compact:sr-only">Featured replays</span>
         </button>
 
         {/* The way a real lap from the pipeline gets in. The committed fixture stays

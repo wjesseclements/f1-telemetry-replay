@@ -28,7 +28,7 @@ import { lastInstant } from "../engine/clock";
 import { formatLapTime } from "../engine/format";
 import type { StatusSegment } from "../engine/trackStatus";
 import { segmentGradient } from "./flagTint";
-import { FOCUS_RING } from "./focus";
+import { COMPACT_FOCUS_RING, FOCUS_RING } from "./focus";
 
 export interface ScrubberProps {
   /** Current playback position in seconds, from the telemetry channel. */
@@ -105,8 +105,23 @@ export function Scrubber({
       aria-valuetext={formatLapTime(value)}
       // The tint paints the element's own background over the `bg-line` base;
       // with no abnormal stretches `gradient` is null and the class alone wins.
-      style={gradient === null ? undefined : { background: gradient }}
-      className={`h-1 w-full min-w-0 cursor-pointer appearance-none rounded-full bg-line accent-accent ${FOCUS_RING}`}
+      // `backgroundClip` comes after the shorthand, which would reset it.
+      style={
+        gradient === null
+          ? undefined
+          : { background: gradient, backgroundClip: "content-box" }
+      }
+      // On a short phone (Slice 27, `compact:`) the input is 44 px tall, the
+      // ruled touch-target floor (`touchTarget.ts`): 20 px of padding above and
+      // below a 4 px content box, and the background (tint included) clipped to
+      // that box, so the painted track stays 4 px and the rest is hit area.
+      // `block`, or the inline input sits on a baseline and its line box adds
+      // 6 px under it. The radius is 2px/22px so the clipped 4 px track keeps
+      // round 2 px ends: `rounded-full` on a 44 px box clipped it to a taper.
+      // Elsewhere there is no padding, so the clip changes nothing. iOS Safari
+      // drags a range input by its thumb, whose size this does not set
+      // (unmeasured: no WebKit here); Chrome seeks on a tap anywhere in the box.
+      className={`h-1 w-full min-w-0 cursor-pointer appearance-none rounded-full bg-line bg-clip-content accent-accent compact:block compact:h-11 compact:rounded-[2px/22px] compact:py-5 ${FOCUS_RING} ${COMPACT_FOCUS_RING}`}
     />
   );
 }

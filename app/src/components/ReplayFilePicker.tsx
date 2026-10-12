@@ -15,7 +15,9 @@
 import { useId, useState } from "react";
 import { loadReplayFile } from "../data/loadReplayFile";
 import { useTransport } from "../store/transport";
-import { PEER_FOCUS_RING } from "./focus";
+import { COMPACT_PEER_FOCUS_RING, PEER_FOCUS_RING } from "./focus";
+import { OpenFileIcon } from "./icons";
+import { TOUCH_TARGET } from "./touchTarget";
 
 export function ReplayFilePicker() {
   const inputId = useId();
@@ -48,7 +50,10 @@ export function ReplayFilePicker() {
 
   return (
     <div className="ml-auto flex min-w-0 flex-col items-end gap-2">
-      <div>
+      {/* `flex` on a short phone (Slice 27, `compact:`): the label is a 44 px icon
+          box (`touchTarget.ts`), and an inline-level wrapper would add a line
+          box's descender under it. */}
+      <div className="compact:flex">
         <input
           id={inputId}
           type="file"
@@ -60,14 +65,23 @@ export function ReplayFilePicker() {
         />
         <label
           htmlFor={inputId}
-          className={`cursor-pointer rounded border border-line px-3 py-1.5 font-mono text-xs text-dim transition-colors hover:text-txt ${PEER_FOCUS_RING}`}
+          className={`cursor-pointer rounded border border-line px-3 py-1.5 font-mono text-xs text-dim transition-colors hover:text-txt compact:flex compact:items-center compact:justify-center compact:p-0 ${TOUCH_TARGET} ${PEER_FOCUS_RING} ${COMPACT_PEER_FOCUS_RING}`}
         >
-          Load replay JSON
+          {/* The text stays the input's accessible name (sr-only) when the
+              PLACEHOLDER icon replaces it on a short phone. */}
+          <OpenFileIcon className="hidden compact:block" />
+          <span className="compact:sr-only">Load replay JSON</span>
         </label>
       </div>
 
+      {/* On a short phone the confirmation would add a second line to the thin
+          header; the meta line beside it already names what is loaded. Kept in
+          the DOM for a screen reader. The error below stays visible: it is the
+          one message a failed load has. */}
       {loaded !== null && (
-        <p className="font-mono text-[11px] text-dim">loaded {loaded}</p>
+        <p className="font-mono text-[11px] text-dim compact:sr-only">
+          loaded {loaded}
+        </p>
       )}
 
       {error !== null && (
