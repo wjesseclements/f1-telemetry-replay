@@ -14,6 +14,10 @@
  * rendered elements (`Hud.test.tsx`).
  */
 import { describe, expect, it } from "vitest";
+import {
+  COMPACT_FOCUS_RING,
+  COMPACT_PEER_FOCUS_RING,
+} from "./components/focus";
 import { PHONE_QUERY } from "./components/phoneLayout";
 import css from "./index.css?inline";
 
@@ -89,7 +93,7 @@ describe("the side-by-side layout's variants", () => {
     );
   });
 
-  it("compiles the 44 px touch-target floor and the inset ring under `compact:` (Slice 27)", () => {
+  it("compiles the 44 px touch-target floor and the scrubber's 44 px box under `compact:` (Slice 27)", () => {
     // The human's ruling (2026-10-12): every control in the thin rows keeps a
     // 44x44 CSS px target. A class Tailwind could not compile would vanish with
     // no warning and leave 26 px buttons, and every component test would still
@@ -99,10 +103,6 @@ describe("the side-by-side layout's variants", () => {
       [".compact\\:min-h-11", "min-height:2.75rem"],
       [".compact\\:min-w-11", "min-width:2.75rem"],
       [".compact\\:h-11", "height:2.75rem"],
-      [
-        ".compact\\:focus-visible\\:ring-inset:focus-visible",
-        "--tw-ring-inset:inset",
-      ],
       [".compact\\:rounded-\\[2px\\/22px\\]", "border-radius:2px/22px"],
       // Important, or the tint's inline `background` shorthand resets it.
       [
@@ -112,6 +112,32 @@ describe("the side-by-side layout's variants", () => {
     ]) {
       expect(mediaFor(selector), selector).toBe(compact);
       expect(ruleBody(selector), selector).toContain(declaration);
+    }
+  });
+
+  it("insets both short-phone focus rings, the file picker's label's too (Slice 27)", () => {
+    // On a short phone a control's 44 px box fills its row, and the header's
+    // touch the top of the screen, so a ring drawn outside the box was cut off
+    // (`components/focus.ts`). The file picker's label rings through its peer
+    // input's focus, from a constant of its own. The component tests compare
+    // each control against these constants, so if a constant stopped insetting
+    // no test there would notice; here each is held to the rule it compiles to.
+    const compact = mediaFor(".compact\\:py-0");
+    for (const [ring, cls, selector] of [
+      [
+        COMPACT_FOCUS_RING,
+        "compact:focus-visible:ring-inset",
+        ".compact\\:focus-visible\\:ring-inset:focus-visible",
+      ],
+      [
+        COMPACT_PEER_FOCUS_RING,
+        "compact:peer-focus-visible:ring-inset",
+        ".compact\\:peer-focus-visible\\:ring-inset",
+      ],
+    ]) {
+      expect(ring.split(" "), ring).toContain(cls);
+      expect(mediaFor(selector), selector).toBe(compact);
+      expect(ruleBody(selector), selector).toContain("--tw-ring-inset:inset");
     }
   });
 
