@@ -11,7 +11,7 @@
  *  - **It overlays the canvas; it does not replace it.** The fixture keeps
  *    animating behind the scrim, because motion says "this is alive" in a way a
  *    frozen frame cannot. So the scrim is a plain translucent wash with no backdrop
- *    blur — the moving car has to read through it. From `md` up it covers the
+ *    blur — the moving car has to read through it. On a desktop it covers the
  *    track cell; on a phone, the whole screen (`overlay.ts`, Slice 26).
  *  - **A failed load keeps the replay that is on screen** and leaves the file
  *    picker working, exactly as `ReplayFilePicker` does for a bad file. On a phone

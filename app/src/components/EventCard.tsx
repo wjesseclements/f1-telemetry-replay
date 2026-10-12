@@ -4,7 +4,7 @@
  * A DOM overlay in `FeaturedPanel`'s exact mould: a wash over the canvas, not a
  * replacement for it — the paused frame underneath IS the moment being narrated.
  * `ScenarioEvents` has already paused playback by the time this mounts. Like the
- * panel, it covers the track cell from `md` up and the whole screen on a phone
+ * panel, it covers the track cell on a desktop and the whole screen on a phone
  * (`overlay.ts`, Slice 26), where the cell was too short to show it whole.
  *
  * The copy (`event.title`, `event.body`) is the manifest's, rendered verbatim —

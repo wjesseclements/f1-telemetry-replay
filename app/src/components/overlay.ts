@@ -2,12 +2,12 @@
  * overlay.ts — where the overlay dialogs sit on a phone (Slice 26).
  *
  * The gallery (`FeaturedPanel`) and the event card (`EventCard`) are scrims over
- * the track cell: `absolute inset-0`, inside the cell, so from `md` up the tower
- * and the transport bar stay beside them and usable. Below `md` (`phone:`,
- * `tailwind.config.js`) the track cell is the short part of the screen, so the
- * same scrim is positioned against the VIEWPORT instead and covers the header,
- * the tower and the transport bar too. Measured in headless Chrome at the
- * viewports iPhone Safari leaves the page:
+ * the track cell: `absolute inset-0`, inside the cell, so on a desktop the tower
+ * and the transport bar stay beside them and usable. On a phone — below `md`, or
+ * a screen at most 30rem tall (`phone:`, `tailwind.config.js`) — the track cell
+ * is the short part of the screen, so the same scrim is positioned against the
+ * VIEWPORT instead and covers the header, the tower and the transport bar too.
+ * Measured in headless Chrome at the viewports iPhone Safari leaves the page:
  *
  *   - the gallery at 375x626 went from 216 px with no card whole to 626 px with
  *     three, and at 724x257 from 160 px with none to 257 px with one;

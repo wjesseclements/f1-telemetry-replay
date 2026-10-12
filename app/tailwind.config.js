@@ -60,31 +60,32 @@ const WIDE = "(min-aspect-ratio: 5/4)";
 const SHORT = "(max-height: 43.75rem)";
 
 /**
- * A phone (Slice 26): any screen narrower than `md`, in either orientation.
+ * A phone (Slice 26): a screen narrower than `md`, OR one at most 30rem (480 px)
+ * tall, in either orientation.
  *
- * The exact complement of `md`, written the way Tailwind writes `max-md:`, so at
- * every width exactly one of `md:` and `phone:` applies — no fractional width
- * falls between them. It is the line the app already draws: below it the sidebar
- * is the phone's, the focused readout wraps instead of stacking, and the layout
- * check emulates a mobile device (`MOBILE_BELOW_PX`). Every iPhone's Safari
- * viewport is under it in both orientations: the safe areas take ~88 px of a
- * landscape width, so a 375x812 phone leaves 724x257 (measured from the human's
- * screenshots, 2026-10-11).
+ * The width clause is the exact complement of `md`, written the way Tailwind
+ * writes `max-md:`, so no fractional width falls between `md:` and it. It is the
+ * line the app already draws: below it the sidebar is the phone's, the focused
+ * readout wraps instead of stacking, and the layout check emulates a mobile device
+ * (`MOBILE_BELOW_PX`). It covers every iPhone upright, and the smaller ones held
+ * sideways: the safe areas take ~88 px of a landscape width, so a 375x812 phone
+ * leaves Safari 724x257 (measured from the human's screenshots, 2026-10-11).
+ *
+ * The height clause covers the rest (ruled 2026-10-12). A Plus or Pro Max iPhone
+ * held sideways leaves Safari about 814x312 (932 less 2 x 59 px of safe area;
+ * estimated), which is `md` wide, and its ~215 px track cell held no whole card.
+ * With both clauses every iPhone's Safari viewport is a phone in both
+ * orientations: none is wider than 767 px upright or taller than 480 px sideways.
+ * The cost, accepted in the ruling: a desktop window 480 px tall or less is a
+ * phone too, and gets the full-screen gallery (1280x480: 2 whole cards → 3).
  *
  * The gallery and the event card cover the whole screen here rather than the
- * track cell, because below `md` the track cell is the short part of the screen:
- * 216 px of a 375x626 phone, 160 px of a 724x257 one, and no gallery card fitted
- * whole in either (`src/components/overlay.ts` has the numbers). From `md` up
- * they keep the track cell, unchanged.
- *
- * Width alone misses one kind of phone. A Plus or Pro Max iPhone held sideways
- * leaves Safari about 814 px (932 less 2 x 59 px of safe area), so it is `md`. Its
- * track cell is then about 215 px and holds no whole card, as on a smaller
- * phone. Adding `(max-height: 30rem)` here would cover it, but it would also
- * change md+ desktop windows 480 px tall or less. That was measured and not
- * adopted (Slice 26's PLAN entry).
+ * track cell, because here the track cell is the short part of the screen: 216 px
+ * of a 375x626 phone, 160 px of a 724x257 one, and no gallery card fitted whole
+ * in either (`src/components/overlay.ts` has the numbers). Everywhere else they
+ * keep the track cell, unchanged.
  */
-const PHONE = `not all and (min-width: ${defaultTheme.screens.md})`;
+const PHONE = `not all and (min-width: ${defaultTheme.screens.md}), (max-height: 30rem)`;
 
 /** @type {import('tailwindcss').Config} */
 export default {
@@ -138,7 +139,8 @@ export default {
       // a short one. One variant, so the two cases cannot drift apart.
       addVariant("onerow", `@media ${WIDE}, ${SHORT}`);
       // The overlay dialogs leave the track cell for the whole screen (the
-      // gallery and the event card). One variant, so the two cannot drift.
+      // gallery and the event card): below `md`, or on a screen at most 30rem
+      // tall. One variant, so the two cannot drift.
       addVariant("phone", `@media ${PHONE}`);
     }),
   ],
