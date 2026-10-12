@@ -13,7 +13,9 @@
  *
  * Every assertion prints PASS/FAIL with the numbers it measured. Per viewport,
  * two more rows cover the whole run: no request off the preview origin (from the
- * page, its workers or its frames) and no uncaught page exception.
+ * page, its workers or its frames) and no uncaught page exception. At a
+ * phone-layout viewport (`isPhoneLayout`), A and C each add one: the gallery
+ * covers the whole viewport (Slice 26).
  *
  *     npm run build && npm run check:layout
  *
@@ -85,12 +87,15 @@ const TEARDOWN_STEP_MS = 2_000;
 //
 // Then Slice 26's 375x626, appended last: what an upright iPhone's Safari leaves
 // the page once both its bars are shown (measured from the human's screenshots,
-// 2026-10-11), and the shortest portrait screen gated. Its first-load "last card
-// reachable" row is the one that fails without the phone's full-screen gallery
-// (`phone:fixed`, `src/components/overlay.ts`), measured against main's build.
+// 2026-10-11), and the shortest portrait screen gated. What gates the phone's
+// full-screen gallery (`phone:fixed`, `src/components/overlay.ts`) is the
+// "panel covers the viewport" rows, in A and C at every phone-layout viewport
+// (`isPhoneLayout`, below). 375x626's "last card reachable" also fails with the
+// gallery in the cell, but only by ~10 px of footer copy (Slice 26's review).
 // Safari's landscape size, 724x257, is NOT gated: the header and the transport
 // bar leave its track 160 px, under the 200 px floor in `layout/states.ts`, and
-// that floor is not loosened to admit it. Its other 16 rows pass.
+// that floor is not loosened to admit it (Slice 27's compact bars are its way
+// in). Its other rows pass.
 const VIEWPORTS: readonly { width: number; height: number }[] = [
   { width: 375, height: 812 },
   { width: 1280, height: 720 },
@@ -108,6 +113,17 @@ const VIEWPORTS: readonly { width: number; height: number }[] = [
  * phones emulated side by side.
  */
 const MOBILE_BELOW_PX = 768;
+/**
+ * Whether the app lays a viewport out as a phone: `phone:` in
+ * `tailwind.config.js`, below `md` (768 px) or at most 30rem (480 px) tall,
+ * where the gallery covers the whole screen (Slice 26). Of the gated viewports,
+ * all but 1280x720 and 1440x900. Written out here rather than read from the page
+ * (`matchMedia`), so a variant that stopped matching FAILS the "panel covers the
+ * viewport" rows instead of quietly removing them.
+ */
+function isPhoneLayout(vp: { width: number; height: number }): boolean {
+  return vp.width < 768 || vp.height <= 480;
+}
 
 const report = new Report();
 let currentStep = "starting";
@@ -199,7 +215,13 @@ async function checkViewport(
       features: [{ name: "prefers-reduced-motion", value: "reduce" }],
     });
 
-    const ctx: StateContext = { page, viewport: name, report, step };
+    const ctx: StateContext = {
+      page,
+      viewport: name,
+      report,
+      step,
+      phone: isPhoneLayout(vp),
+    };
     let reached: "none" | "A" | "B" = "none";
     try {
       step(`loading the app at ${name}`);

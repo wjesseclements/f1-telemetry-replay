@@ -14,8 +14,10 @@ import {
   contains,
   intersect,
   overlaps,
+  sameBox,
   size,
   viewportBox,
+  xySpan,
   ySpan,
 } from "./geometry";
 import {
@@ -124,6 +126,13 @@ export interface StateContext {
   report: Report;
   /** Names the step in progress, which is what the hard cap reports on a hang. */
   step: (name: string) => void;
+  /**
+   * Whether the app lays this viewport out as a phone (`phone:`), where the
+   * gallery covers the whole screen. Decided by the check (`isPhoneLayout` in
+   * `layout-check.ts`), never read from the page, so a variant that stops
+   * matching fails the rows it decides rather than removing them.
+   */
+  phone: boolean;
 }
 
 export interface Scenario {
@@ -190,6 +199,14 @@ function recordVisible(
   );
 }
 
+/**
+ * GEOMETRY ONLY: the bar's box lies inside the viewport. It does not say the bar
+ * can be used, and in state A on a phone it cannot: the full-screen gallery
+ * covers it with its wash and the page behind it is inert while it is open
+ * (Slice 26), yet this row passes. That is intended — the bar is laid out where
+ * it will be when the gallery closes — so read the row as "laid out", never as
+ * "the transport works on first load".
+ */
 function recordTransportInView(
   ctx: StateContext,
   state: StateKey,
@@ -239,6 +256,36 @@ function recordPanelHeader(
   );
 }
 
+/**
+ * On a phone the gallery covers the whole screen (`phone:fixed`, Slice 26): its
+ * box IS the viewport's, within 1 px. A direct row, because the full-screen
+ * gallery had none: 375x626's "last card reachable" failed with the gallery in
+ * the cell only because the footer under the last card was ~10 px too tall
+ * (Slice 26's review), and a one-line copy edit would have switched it off.
+ * Recorded only at phone-layout viewports; a desktop gallery sits in the track
+ * cell, and every desktop row already prints where.
+ */
+function recordPanelCovers(
+  ctx: StateContext,
+  state: StateKey,
+  probe: LayoutProbe,
+): void {
+  if (!ctx.phone) return;
+  const what = "panel covers the viewport";
+  if (probe.panel === null) {
+    record(ctx, state, what, false, "dialog not found");
+    return;
+  }
+  const view = viewportBox(probe.viewport.width, probe.viewport.height);
+  record(
+    ctx,
+    state,
+    what,
+    sameBox(probe.panel.box, view),
+    `${xySpan(probe.panel.box)} vs ${xySpan(view)}`,
+  );
+}
+
 /** A — the gallery panel over the committed fixture, as a visitor first sees it. */
 export async function stateA(ctx: StateContext): Promise<void> {
   const { page } = ctx;
@@ -280,6 +327,7 @@ export async function stateA(ctx: StateContext): Promise<void> {
     );
   }
   recordTransportInView(ctx, "A", probe);
+  recordPanelCovers(ctx, "A", probe);
 }
 
 /** B — the largest scenario, loaded the way a visitor loads it: its card. */
@@ -430,4 +478,5 @@ export async function stateC(ctx: StateContext): Promise<void> {
     `${visible.height.toFixed(1)} px (min ${PANEL_MIN_VISIBLE_PX})`,
   );
   recordPanelHeader(ctx, "C", probe);
+  recordPanelCovers(ctx, "C", probe);
 }

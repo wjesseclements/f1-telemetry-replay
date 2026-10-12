@@ -33,11 +33,11 @@
  * `fixed` resolves against the viewport only while no ancestor has a
  * `transform`, `filter` or `contain`. None does. If one ever did, the overlay
  * would go back into the cell on phones. The tests pin this class, not its
- * geometry; what measures the geometry is the layout check's 375x626 viewport
- * (Slice 26), whose first-load "last card reachable" row fails with the gallery
- * in the cell. It is the only row that does: every other row, at every gated
- * viewport, passed with the overlay in the cell too, and nothing gates the
- * event card's.
+ * geometry; what measures the geometry is the layout check's "panel covers the
+ * viewport" rows (Slice 26, ruled 2026-10-12): in states A and C, at every gated
+ * phone-layout viewport, the gallery's box must be the viewport's within 1 px.
+ * Nothing gates the event card's: the layout check never fires a scenario
+ * event.
  */
 import { useLayoutEffect, type RefObject } from "react";
 import { inertOutside } from "./inertOutside";
