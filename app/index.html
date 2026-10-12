@@ -2,12 +2,45 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=auto"
+    />
     <!-- Without an explicit icon the browser asks for /favicon.ico and gets a 404,
          which is a console error on every load. SVG only: it is 700 bytes, scales,
          and the app has no need to ship a raster fallback for browsers it does not
          otherwise support. -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- Add to Home Screen (Slice 27; drafted as Slice 26's F). Launched from the
+         home screen the app runs without Safari's toolbars: an upright 375x812
+         iPhone gives the page about 375x734 to 375x768 instead of 375x626, a
+         landscape one about 724x354 to 724x375 instead of 724x257. Those sizes are
+         estimates from Apple's published safe areas, measured in headless Chrome,
+         never on a phone. Same-origin static files only, and NO service worker:
+         the installed app needs the site exactly as a bookmark does, so the
+         offline rule is unchanged.
+
+         The viewport says viewport-fit=auto on purpose (it is the default, written
+         out so nobody changes it by accident). With `cover` a landscape phone's
+         layout viewport becomes the whole 812 px screen, `md` (768 px) starts to
+         match although only 724 px are usable, and the 224 px column readout comes
+         back. Measured with safe-area padding: a 1-car readout cut 75 px, which
+         `auto` shows whole. With `auto` iOS letterboxes the page into the safe
+         area itself, and no CSS changes.
+
+         Status bar `black`, not `black-translucent`: translucent draws the page
+         under the clock, which only `cover` plus safe-area padding could undo.
+         The colours are --c-bg, pinned to the token by webAppManifest.test.ts.
+         The label under the icon is the human's ruling (2026-10-12), the same
+         string as the manifest's short_name (the test keeps them equal). The
+         icon is a PLACEHOLDER: docs/icons/rasterize-icons.mjs says how to swap it. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#0a0d12" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-title" content="F1 Telemetry" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <meta
       name="description"
       content="Replay a Formula 1 lap from real telemetry: a speed-painted trail around the circuit with live speed, gear, throttle, brake and DRS."

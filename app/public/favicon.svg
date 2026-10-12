@@ -4,8 +4,13 @@
   The gradient is the engine's THERMAL ramp (src/engine/color.ts): cold blue through
   green to hot orange. Written out as literal stops because this file is a static
   asset served before any script runs, so it can reach neither the CSS custom
-  properties nor the engine. It is the one place in the app where a palette value is
-  duplicated; if THERMAL is ever retuned, retune these five stops with it.
+  properties nor the engine. The THERMAL stops are written out in static files
+  here and in the home-screen icon's sources (docs/icons/app-icon.svg, and the
+  proposals beside it until one is chosen; docs/icons/rasterize-icons.mjs renders
+  the live one's PNGs). If THERMAL is ever retuned, retune them all and re-render
+  the PNGs. (The bg colour is repeated too, in
+  manifest.webmanifest and index.html's theme-color; webAppManifest.test.ts keeps
+  those equal to the token.)
 
   It exists at all because the app otherwise served no icon, and the browser's
   fallback request for /favicon.ico 404'd — a console error, and a failed Lighthouse

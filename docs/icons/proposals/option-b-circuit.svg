@@ -1,0 +1,87 @@
+<!--
+  Home-screen icon, option B — "circuit": what the app actually draws.
+
+  A closed circuit on the app's own track ribbon (token line edge, token track-fill
+  asphalt), speed-painted with the THERMAL ramp the way the canvas paints a lap:
+  hot on the straights, cold at the apexes, each segment's colours read off
+  THERMAL at a plausible speed (km/h noted per segment). One car, token txt, at the
+  end of the main straight. Full bleed on token bg; the art keeps inside the maskable
+  safe zone (radius 40%, 205 px of 512).
+
+  One of three proposals in docs/icons/proposals/ (Slice 27; drawn for Slice
+  26's draft F). Which one is the app's icon is the human's choice; the live one
+  is the copy at docs/icons/app-icon.svg. To swap: copy a proposal over that
+  file, run `cd app && npx vite-node ../docs/icons/rasterize-icons.mjs`, and
+  commit the SVG with the four PNGs it rewrites. A full-bleed 512 square: iOS
+  and Android cut their own shape, and the art keeps inside the maskable safe
+  zone (a centred circle of radius 40%, 205 px of 512). Palette values are
+  literal for the favicon's reason: a static asset reaches neither the CSS
+  tokens nor the engine. If THERMAL or a token is retuned, retune this too and
+  re-render.
+
+  (No double hyphen anywhere in this comment: XML forbids it, and the image
+  then fails to decode with no other message.)
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- main straight, 200 -> 280 -> 335 km/h -->
+    <linearGradient id="s1" gradientUnits="userSpaceOnUse" x1="150" y1="360" x2="318" y2="360">
+      <stop offset="0" stop-color="#26d8ab" />
+      <stop offset="0.4" stop-color="#f4e04d" />
+      <stop offset="1" stop-color="#fe6131" />
+    </linearGradient>
+    <!-- T1 braking, 335 -> 150 -> 90 -->
+    <linearGradient id="t1a" gradientUnits="userSpaceOnUse" x1="318" y1="360" x2="384" y2="294">
+      <stop offset="0" stop-color="#fe6131" />
+      <stop offset="0.5" stop-color="#18c3ff" />
+      <stop offset="1" stop-color="#1d60ff" />
+    </linearGradient>
+    <!-- T1 exit, 90 -> 170 -->
+    <linearGradient id="t1b" gradientUnits="userSpaceOnUse" x1="384" y1="294" x2="318" y2="262">
+      <stop offset="0" stop-color="#1d60ff" />
+      <stop offset="1" stop-color="#1dcbde" />
+    </linearGradient>
+    <!-- back section, 170 -> 250 -->
+    <linearGradient id="s2a" gradientUnits="userSpaceOnUse" x1="318" y1="262" x2="238" y2="212">
+      <stop offset="0" stop-color="#1dcbde" />
+      <stop offset="1" stop-color="#90e06c" />
+    </linearGradient>
+    <!-- back section, 250 -> 280 -> 300 -->
+    <linearGradient id="s2b" gradientUnits="userSpaceOnUse" x1="238" y1="212" x2="176" y2="150">
+      <stop offset="0" stop-color="#90e06c" />
+      <stop offset="0.5" stop-color="#f4e04d" />
+      <stop offset="1" stop-color="#f8b243" />
+    </linearGradient>
+    <!-- T2 braking, 300 -> 150 -> 85 -->
+    <linearGradient id="t2a" gradientUnits="userSpaceOnUse" x1="176" y1="150" x2="114" y2="226">
+      <stop offset="0" stop-color="#f8b243" />
+      <stop offset="0.5" stop-color="#18c3ff" />
+      <stop offset="1" stop-color="#1e58ff" />
+    </linearGradient>
+    <!-- T2 exit onto the main straight, 85 -> 150 -> 200 -->
+    <linearGradient id="t2b" gradientUnits="userSpaceOnUse" x1="114" y1="226" x2="150" y2="360">
+      <stop offset="0" stop-color="#1e58ff" />
+      <stop offset="0.5" stop-color="#18c3ff" />
+      <stop offset="1" stop-color="#26d8ab" />
+    </linearGradient>
+    <path
+      id="loop"
+      d="M150 360 L318 360 C372 360 398 326 384 294 C372 268 344 262 318 262 C282 262 262 236 238 212 C214 188 206 150 176 150 C132 150 112 186 114 226 C116 290 118 360 150 360 Z"
+    />
+  </defs>
+  <rect width="512" height="512" fill="#0a0d12" />
+  <g transform="translate(256 256) scale(1.12) translate(-256 -256)">
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <use href="#loop" stroke="#232a34" stroke-width="50" />
+      <use href="#loop" stroke="#0e1218" stroke-width="38" />
+      <path d="M150 360 L318 360" stroke="url(#s1)" stroke-width="16" />
+      <path d="M318 360 C372 360 398 326 384 294" stroke="url(#t1a)" stroke-width="16" />
+      <path d="M384 294 C372 268 344 262 318 262" stroke="url(#t1b)" stroke-width="16" />
+      <path d="M318 262 C282 262 262 236 238 212" stroke="url(#s2a)" stroke-width="16" />
+      <path d="M238 212 C214 188 206 150 176 150" stroke="url(#s2b)" stroke-width="16" />
+      <path d="M176 150 C132 150 112 186 114 226" stroke="url(#t2a)" stroke-width="16" />
+      <path d="M114 226 C116 290 118 360 150 360" stroke="url(#t2b)" stroke-width="16" />
+    </g>
+    <circle cx="296" cy="360" r="17" fill="#e6eaf0" stroke="#0a0d12" stroke-width="6" />
+  </g>
+</svg>
