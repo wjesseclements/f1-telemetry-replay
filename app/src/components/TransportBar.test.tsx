@@ -173,11 +173,24 @@ describe("TransportBar on a short phone (Slice 27)", () => {
     }
   });
 
+  it("is as thin as its controls: no vertical padding, no gap between its rows", () => {
+    // What makes the bar one 45 px row in landscape and three 44 px rows
+    // upright is that it drops `py-2` (8 px above and below) and `gap-y-2` (8 px
+    // between the rows it wraps to upright). Either one gone, the bar fattens
+    // and nothing fails: the canvas floor the layout check gates has room to
+    // spare at most gated sizes (Slice 27's review: each survived the suite and
+    // check:layout).
+    renderBar(bare, 10);
+    const bar = screen.getByRole("region", { name: "Playback controls" });
+    expect(bar).toHaveClass("compact:py-0", "compact:gap-y-0");
+  });
+
   it("makes the scrubber 44 px tall and keeps its painted track 4 px", () => {
     // The tint is clipped to the content box, so the 20 px of padding above and
     // below are hit area, not paint. The clip is an important `compact:` class,
     // because the tint's inline `background` shorthand resets the clip, and the
     // inline style stays exactly what it was so no other screen's pixels move.
+    // `block`, or the inline input's line box adds 6 px under its row.
     renderBar(
       withStatus([
         { status: "green", fromT: 0, toT: 40 },
@@ -187,6 +200,7 @@ describe("TransportBar on a short phone (Slice 27)", () => {
     );
     const slider = screen.getByRole("slider", { name: "Lap position" });
     expect(slider).toHaveClass(
+      "compact:block",
       "compact:h-11",
       "compact:py-5",
       "compact:!bg-clip-content",

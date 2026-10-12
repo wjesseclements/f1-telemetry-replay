@@ -115,6 +115,25 @@ describe("the side-by-side layout's variants", () => {
     }
   });
 
+  it("compiles the thin rows' spacing and title size under `compact:` (Slice 27)", () => {
+    // The header's and the transport bar's thinness is these rules: no vertical
+    // padding, no gap between the bar's wrapped rows, a smaller title, a block
+    // scrubber. The elements are pinned to the classes in `App.test.tsx` and
+    // `TransportBar.test.tsx`; this pins that each class still compiles, and
+    // to what.
+    const compact = mediaFor(".compact\\:py-0");
+    for (const [selector, declaration] of [
+      [".compact\\:py-0", "padding-top:0"],
+      [".compact\\:py-0", "padding-bottom:0"],
+      [".compact\\:gap-y-0", "row-gap:0"],
+      [".compact\\:text-xs", "font-size:0.75rem"],
+      [".compact\\:block", "display:block"],
+    ]) {
+      expect(mediaFor(selector), selector).toBe(compact);
+      expect(ruleBody(selector), selector).toContain(declaration);
+    }
+  });
+
   it("lets a short phone's thin header win over the one-line header (Slice 27)", () => {
     // The meta line's zero minimum width on a short phone must override its 6rem
     // one-line floor where both match (every compact screen is also `onerow:`),

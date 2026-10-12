@@ -130,6 +130,20 @@ describe("App", () => {
     expect(line).toHaveClass("onerow:min-w-24", "compact:min-w-0");
   });
 
+  it("makes the header one 44 px row on a short phone: no vertical padding, a smaller title (Slice 27)", () => {
+    // The row is one control tall because the header drops `py-3` (12 px above
+    // and below) and the title shrinks to fit beside the two icon boxes.
+    // Without the padding the header measured 68 px instead of 44, and still
+    // nothing failed: the canvas floor the layout check gates has room to spare
+    // at most gated sizes (Slice 27's review). jsdom applies no media query, so
+    // the classes are pinned; `layoutVariants.test.ts` pins what they compile to.
+    useTransport.setState({ replay });
+    render(<App />);
+    const title = screen.getByRole("heading", { name: /telemetry replay/i });
+    expect(title.closest("header")).toHaveClass("compact:py-0");
+    expect(title).toHaveClass("compact:text-xs");
+  });
+
   it("keeps the header's two controls' names, and 44 px targets, behind their short-phone icons (Slice 27)", () => {
     // On a short phone (`compact:`) each label is swapped for a decorative icon,
     // and the label stays in the DOM as `sr-only`: the accessible name a screen
