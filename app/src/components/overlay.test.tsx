@@ -18,7 +18,11 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { EventCard } from "./EventCard";
 import { FeaturedPanel } from "./FeaturedPanel";
-import { OVERLAY_PHONE, OVERLAY_PINNED_BAR } from "./overlay";
+import {
+  OVERLAY_CLOSE_TARGET,
+  OVERLAY_PHONE,
+  OVERLAY_PINNED_BAR,
+} from "./overlay";
 
 afterEach(cleanup);
 
@@ -131,6 +135,23 @@ describe("each dialog's heading row is pinned on a phone", () => {
       expect(row.className).not.toMatch(
         /sticky|fixed|absolute|\bm[tbxy]?-|\bp[tbxy]?-/,
       );
+    },
+  );
+
+  it.each(DIALOGS)(
+    "%s: gives the pinned Close a 44x44 px hit box on a phone, and nothing off one",
+    (_, mount) => {
+      // Once a phone panel is scrolled, the pinned Close is the only way out on
+      // screen, so it gets the 44 pt floor ruled for the compact bars (Slice 27):
+      // a minimum height and width of step 11, 11 x 4 px = 44 px, a floor and not
+      // a size. As text it measured 49.1x24.5 px; now 49.1x44 on a phone.
+      mount();
+      const { row } = rowAndBar();
+      const close = within(row).getByRole("button", { name: /^close$/i });
+      expect(close.className).toContain(OVERLAY_CLOSE_TARGET);
+      expect(close).toHaveClass("phone:min-h-11", "phone:min-w-11");
+      // Only under `phone:`: a desktop Close keeps its 24.5 px row.
+      expect(close.className).not.toMatch(/(?:^|\s)min-[hw]-/);
     },
   );
 

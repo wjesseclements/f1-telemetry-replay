@@ -87,6 +87,24 @@ export const OVERLAY_PINNED_BAR =
   "phone:sticky phone:-top-4 phone:-mx-4 phone:-mt-4 phone:rounded-t-xl phone:bg-panel phone:px-4 phone:pt-4";
 
 /**
+ * The pinned Close's hit box on a phone: at least 44x44 CSS px, the floor the
+ * human ruled for the compact bars' controls (Slice 27, 2026-10-12: 44 pt, and a
+ * CSS px is a point on an iPhone), applied here because once a phone panel is
+ * scrolled this Close is the only way out on screen. As plain text in `px-2
+ * py-1` its box was 49x24.5 px. A floor, not a size: Close is already wider than
+ * 44, so only its height grows, and the row and the pinned bar with it. The box
+ * IS the target, as in Slice 27: nothing reaches past it, so what a layout probe
+ * measures with `getBoundingClientRect` is what a finger can hit. Off a phone
+ * nothing changes.
+ *
+ * Measured in Chrome at Safari's four sizes and 814x312: Close 49.1x24.5 →
+ * 49.1x44 px; the pinned bar 48.5 → 68 px (16 + 44 + 8), pinned at y=[0,68] with
+ * Close at y=[16,60]; at rest every card sits 19.5 px lower. The event card
+ * still opens whole: its least room was 34.5 px (724x257), and is now 15.
+ */
+export const OVERLAY_CLOSE_TARGET = "phone:min-h-11 phone:min-w-11";
+
+/**
  * Make an overlay dialog modal while it covers the whole screen (Slice 26, ruled
  * 2026-10-12): on a phone, everything outside `dialog` is inert for as long as it
  * is mounted (`inertOutside`); on a desktop nothing changes. Returns whether it

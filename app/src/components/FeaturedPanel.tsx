@@ -28,7 +28,12 @@ import { applyScenario } from "../data/applyScenario";
 import { parseGalleryManifest, type GalleryScenario } from "../engine/gallery";
 import manifestJson from "../gallery/manifest.json";
 import { FOCUS_RING } from "./focus";
-import { OVERLAY_PHONE, OVERLAY_PINNED_BAR, usePhoneModal } from "./overlay";
+import {
+  OVERLAY_CLOSE_TARGET,
+  OVERLAY_PHONE,
+  OVERLAY_PINNED_BAR,
+  usePhoneModal,
+} from "./overlay";
 
 /**
  * Validated once at module load, not per render.
@@ -121,7 +126,7 @@ export function FeaturedPanel({ onClose, id }: FeaturedPanelProps) {
             <button
               type="button"
               onClick={onClose}
-              className={`rounded px-2 py-1 font-mono text-[11px] text-dim transition-colors hover:text-txt ${FOCUS_RING}`}
+              className={`rounded px-2 py-1 font-mono text-[11px] text-dim transition-colors hover:text-txt ${OVERLAY_CLOSE_TARGET} ${FOCUS_RING}`}
             >
               Close
             </button>

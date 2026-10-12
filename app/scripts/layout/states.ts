@@ -109,7 +109,9 @@ const CANVAS_MIN_WIDTH_FRAC = 0.5;
  * row) and the first scenario card starts at ~70 px, 148.6 px tall at 1440 wide
  * and 166.5 px at 375. So 200 px shows the heading, its Close button and at least
  * 130 px of a card — what the panel is, and something to click in it. Less, and
- * reopening the gallery shows a sliver nobody can use.
+ * reopening the gallery shows a sliver nobody can use. On a phone the row is
+ * Close's 44 px touch floor (`overlay.ts`), so it ends at 77 and the first card
+ * starts at 89, but there the panel is the whole screen.
  */
 const PANEL_MIN_VISIBLE_PX = 200;
 /**
