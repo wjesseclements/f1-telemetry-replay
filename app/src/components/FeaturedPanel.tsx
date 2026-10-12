@@ -28,7 +28,7 @@ import { applyScenario } from "../data/applyScenario";
 import { parseGalleryManifest, type GalleryScenario } from "../engine/gallery";
 import manifestJson from "../gallery/manifest.json";
 import { FOCUS_RING } from "./focus";
-import { OVERLAY_PHONE, OVERLAY_PINNED_BAR } from "./overlay";
+import { OVERLAY_PHONE, OVERLAY_PINNED_BAR, usePhoneModal } from "./overlay";
 
 /**
  * Validated once at module load, not per render.
@@ -49,6 +49,10 @@ export interface FeaturedPanelProps {
 export function FeaturedPanel({ onClose, id }: FeaturedPanelProps) {
   const headingId = `${id}-heading`;
   const firstCardRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  // Modal on a phone, where it covers the whole screen: the page behind is inert
+  // (`overlay.ts`). On a desktop the tower and transport beside it stay usable.
+  const modal = usePhoneModal(dialogRef);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -87,8 +91,9 @@ export function FeaturedPanel({ onClose, id }: FeaturedPanelProps) {
           onClose();
         }
       }}
+      ref={dialogRef}
       role="dialog"
-      aria-modal="false"
+      aria-modal={modal ? "true" : "false"}
       aria-labelledby={headingId}
       id={id}
       // A wash, not a blur: the fixture animating behind this is the point.

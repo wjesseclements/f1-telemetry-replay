@@ -82,8 +82,11 @@ const SHORT = "(max-height: 43.75rem)";
  * The gallery and the event card cover the whole screen here rather than the
  * track cell, because here the track cell is the short part of the screen: 216 px
  * of a 375x626 phone, 160 px of a 724x257 one, and no gallery card fitted whole
- * in either (`src/components/overlay.ts` has the numbers). Everywhere else they
- * keep the track cell, unchanged.
+ * in either (`src/components/overlay.ts` has the numbers). While one is open the
+ * rest of the page is inert. Everywhere else they keep the track cell, unchanged.
+ *
+ * `src/components/phoneLayout.ts` reads the same query in React (`PHONE_QUERY`);
+ * `layoutVariants.test.ts` pins the two to one compiled string.
  */
 const PHONE = `not all and (min-width: ${defaultTheme.screens.md}), (max-height: 30rem)`;
 

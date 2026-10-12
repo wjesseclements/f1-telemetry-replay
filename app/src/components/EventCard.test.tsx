@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GalleryScenario, ScenarioEvent } from "../engine/gallery";
 import { useTransport } from "../store/transport";
 import { EventCard } from "./EventCard";
+import { PHONE_QUERY } from "./phoneLayout";
 import { PLAY_TOGGLE_ID } from "./TransportBar";
 
 vi.mock("../data/applyScenario", () => ({
@@ -116,5 +117,63 @@ describe("EventCard", () => {
     expect(useTransport.getState().isPlaying).toBe(false);
     // Still actionable: the button is enabled again for a retry.
     expect(screen.getByRole("button", { name: /Continue/ })).toBeEnabled();
+  });
+});
+
+/**
+ * On a phone the card covers the whole screen and is MODAL (Slice 26, ruled
+ * 2026-10-12): the page behind is inert while it is open, and the focus it hands
+ * back on close lands on a page that is awake again. `matchMedia` is stubbed to
+ * answer the phone query; jsdom applies no inert behaviour, so the attribute and
+ * its timing are what is pinned.
+ */
+describe("EventCard on a phone", () => {
+  beforeEach(() => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query === PHONE_QUERY,
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+  });
+
+  /** A page with one control outside the card, focused before it appears. */
+  function pageWithCard(card: boolean) {
+    return (
+      <>
+        <button type="button">Elsewhere</button>
+        {card && <EventCard event={event} next={next} onClose={() => {}} />}
+      </>
+    );
+  }
+
+  it("makes the page behind it inert, and says it is modal", () => {
+    const view = render(pageWithCard(false));
+    const elsewhere = screen.getByRole("button", { name: "Elsewhere" });
+    view.rerender(pageWithCard(true));
+    expect(elsewhere).toHaveAttribute("inert");
+    expect(screen.getByRole("dialog")).toHaveAttribute("aria-modal", "true");
+    expect(screen.getByRole("dialog").closest("[inert]")).toBeNull();
+  });
+
+  it("hands focus back to what held it, on a page already awake", () => {
+    const view = render(pageWithCard(false));
+    const elsewhere = screen.getByRole("button", { name: "Elsewhere" });
+    elsewhere.focus();
+    view.rerender(pageWithCard(true));
+    expect(
+      screen.getByRole("button", { name: /Continue: Monza 2026/ }),
+    ).toHaveFocus();
+
+    let awake: boolean | null = null;
+    elsewhere.addEventListener(
+      "focus",
+      () => (awake = !elsewhere.hasAttribute("inert")),
+      { once: true },
+    );
+    view.rerender(pageWithCard(false));
+    expect(awake).toBe(true);
+    expect(elsewhere).toHaveFocus();
+    expect(elsewhere).not.toHaveAttribute("inert");
   });
 });

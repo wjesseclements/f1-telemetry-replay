@@ -20,12 +20,12 @@
  * control that undoes what the card did: the card paused the replay, and the
  * button under focus resumes it.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { applyScenario } from "../data/applyScenario";
 import type { GalleryScenario, ScenarioEvent } from "../engine/gallery";
 import { useTransport } from "../store/transport";
 import { FOCUS_RING } from "./focus";
-import { OVERLAY_PHONE } from "./overlay";
+import { OVERLAY_PHONE, usePhoneModal } from "./overlay";
 import { PLAY_TOGGLE_ID } from "./TransportBar";
 
 export interface EventCardProps {
@@ -40,21 +40,33 @@ export function EventCard({ event, next, onClose }: EventCardProps) {
   const headingId = "event-card-heading";
   const primaryRef = useRef<HTMLButtonElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // What held focus before the card appeared, read in a LAYOUT effect declared
+  // before `usePhoneModal`: on a phone the page behind goes inert in the same
+  // commit, and an element made inert can lose focus, so this must run first.
+  const before = useRef<Element | null>(null);
+  useLayoutEffect(() => {
+    before.current = document.activeElement;
+  }, []);
+  // Modal on a phone, where it covers the whole screen (`overlay.ts`).
+  const modal = usePhoneModal(dialogRef);
+
   // Mount/unmount focus contract — see the header. The captured element is read
   // once, before focus moves into the card. With no chain to offer, the close
-  // button is the primary action.
+  // button is the primary action. Its cleanup is a passive one, so on a phone it
+  // runs after `usePhoneModal` has woken the page it returns focus to.
   useEffect(() => {
-    const before = document.activeElement;
+    const prior = before.current;
     (primaryRef.current ?? closeRef.current)?.focus();
     return () => {
       const target =
-        before instanceof HTMLElement &&
-        document.contains(before) &&
-        before !== document.body
-          ? before
+        prior instanceof HTMLElement &&
+        document.contains(prior) &&
+        prior !== document.body
+          ? prior
           : document.getElementById(PLAY_TOGGLE_ID);
       target?.focus();
     };
@@ -91,8 +103,9 @@ export function EventCard({ event, next, onClose }: EventCardProps) {
           onClose();
         }
       }}
+      ref={dialogRef}
       role="dialog"
-      aria-modal="false"
+      aria-modal={modal ? "true" : "false"}
       aria-labelledby={headingId}
       // A wash, not a blur: the paused frame behind this is what the card is about.
       // `items-start` + the card's `my-auto`, never `items-center`: centred when it

@@ -14,6 +14,7 @@
  * rendered elements (`Hud.test.tsx`).
  */
 import { describe, expect, it } from "vitest";
+import { PHONE_QUERY } from "./components/phoneLayout";
 import css from "./index.css?inline";
 
 /** Where `selector`'s first rule starts in the compiled CSS, or -1. */
@@ -61,6 +62,14 @@ describe("the side-by-side layout's variants", () => {
     expect(mediaFor(".phone\\:fixed")).toBe(
       `notalland${md},(max-height:30rem)`,
     );
+  });
+
+  it("is the query React reads, so the dialog is modal exactly where it is full screen", () => {
+    // `usePhoneModal` makes the page inert behind a phone overlay; the overlay
+    // goes full screen through `phone:`. Two copies of one query, held together
+    // here: modal over a page still usable beside it, or not modal over a page
+    // it covers, would follow from either drifting.
+    expect(PHONE_QUERY.replace(/\s/g, "")).toBe(mediaFor(".phone\\:fixed"));
   });
 
   it("lets the `md` sidebar's size win over the sidebar's below `md`", () => {

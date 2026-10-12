@@ -1,5 +1,6 @@
 /**
- * overlay.ts — where the overlay dialogs sit on a phone (Slice 26).
+ * overlay.ts — where the overlay dialogs sit on a phone, and how they behave
+ * there (Slice 26).
  *
  * The gallery (`FeaturedPanel`) and the event card (`EventCard`) are scrims over
  * the track cell: `absolute inset-0`, inside the cell, so on a desktop the tower
@@ -15,19 +16,19 @@
  *     clip, and at 375x626 its last 11 px cut. It is now whole at both, and at
  *     375x626 the track shows above it through the wash.
  *
- * While either one is open on a phone, nothing behind it takes a tap: not the
- * header (the toggle and "Load replay JSON"), the tower or the transport bar.
- * Close, Escape or a card is the way out, and focus returns where it did before.
- * The replay keeps animating behind the gallery's wash; the event card has
- * already paused it.
+ * While either one is open on a phone it is MODAL (ruled 2026-10-12;
+ * `usePhoneModal`, below): the rest of the page is inert and the dialog says
+ * `aria-modal="true"`, so Tab and a screen reader stay inside it and nothing
+ * behind it takes a tap — not the header (the toggle and "Load replay JSON"),
+ * the tower or the transport bar. Close, Escape or a card is the way out, and
+ * focus returns where it did before. The replay keeps animating behind the
+ * gallery's wash; the event card has already paused it. On a desktop neither is
+ * modal: the tower and the transport bar beside the cell stay usable, as before.
  *
  * Only `position` changes. The element stays where it is in the DOM, inside the
- * track cell after the memoised canvas. So opening and closing it still does not
- * re-render the canvas. The tab order is the same as on desktop too, so on a
- * phone, Tab off either end of the dialog lands on a control under the wash
- * (still non-modal: `aria-modal="false"`; an open question in Slice 26's PLAN
- * entry). Its `z-10` already paints over the header and the transport bar,
- * which are not positioned.
+ * track cell after the memoised canvas, so opening and closing it still does not
+ * re-render the canvas. Its `z-10` already paints over the header and the
+ * transport bar, which are not positioned.
  *
  * `fixed` resolves against the viewport only while no ancestor has a
  * `transform`, `filter` or `contain`. None does. If one ever did, the overlay
@@ -37,9 +38,12 @@
  * in the cell. It is the only row that does: every other row, at every gated
  * viewport, passed with the overlay in the cell too, and nothing gates the
  * event card's.
- *
- * One string, so the two dialogs cannot drift apart.
  */
+import { useLayoutEffect, type RefObject } from "react";
+import { inertOutside } from "./inertOutside";
+import { usePhoneLayout } from "./phoneLayout";
+
+/** Both dialogs' phone position. One string, so the two cannot drift apart. */
 export const OVERLAY_PHONE = "phone:fixed";
 
 /**
@@ -66,3 +70,30 @@ export const OVERLAY_PHONE = "phone:fixed";
  */
 export const OVERLAY_PINNED_BAR =
   "phone:sticky phone:-top-4 phone:-mx-4 phone:-mt-4 phone:mb-0 phone:bg-panel phone:px-4 phone:pb-3 phone:pt-4";
+
+/**
+ * Make an overlay dialog modal while it covers the whole screen (Slice 26, ruled
+ * 2026-10-12): on a phone, everything outside `dialog` is inert for as long as it
+ * is mounted (`inertOutside`); on a desktop nothing changes. Returns whether it
+ * is modal, for the dialog's `aria-modal`.
+ *
+ * A LAYOUT effect, for the order it gives at both ends. On open, the page behind
+ * is inert before any passive effect runs, so the dialog's own focus-on-open
+ * lands with nothing behind it reachable. On close, its cleanup runs in the
+ * commit that removes the dialog, before any passive cleanup, so the event
+ * card's focus return (a passive cleanup) finds the page awake. The gallery's
+ * focus return is `App`'s and runs outside React's commit; it commits the close
+ * synchronously first (`flushSync`), which is what wakes the toggle it focuses.
+ *
+ * It re-runs only when the phone answer changes (`usePhoneLayout`: a resize or a
+ * rotation across the line), never per frame.
+ */
+export function usePhoneModal(dialog: RefObject<HTMLElement>): boolean {
+  const phone = usePhoneLayout();
+  useLayoutEffect(() => {
+    const element = dialog.current;
+    if (!phone || element === null) return;
+    return inertOutside(element);
+  }, [phone, dialog]);
+  return phone;
+}
