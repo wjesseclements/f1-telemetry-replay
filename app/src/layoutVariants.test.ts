@@ -116,12 +116,18 @@ describe("the side-by-side layout's variants", () => {
   });
 
   it("lets a short phone's thin header win over the one-line header (Slice 27)", () => {
-    // `compact:min-w-0` must override `onerow:min-w-24` where both match (every
-    // compact screen is also `onerow:`), or the meta line keeps its 96 px floor in
-    // a header that no longer wraps, and pushes the icons off a 360 px screen.
-    expect(ruleAt(".compact\\:min-w-0")).toBeGreaterThan(
-      ruleAt(".onerow\\:min-w-24"),
-    );
+    // The meta line's zero minimum width on a short phone must override its 6rem
+    // one-line floor where both match (every compact screen is also `onerow:`),
+    // or the floor holds beside the title and the two icon boxes and wraps the
+    // header to 96 px. With equal specificity the later rule wins. That the line
+    // carries the class at all is pinned on the element (`App.test.tsx`). The
+    // class is deliberately not spelled out in this comment: when Tailwind still
+    // scanned test files, a comment here naming it compiled the rule by itself,
+    // and this test passed with the class deleted from the component.
+    const floor = ruleAt(".onerow\\:min-w-24");
+    const compact = ruleAt(".compact\\:min-w-0");
+    expect(floor, "the one-line floor's rule").toBeGreaterThan(-1);
+    expect(compact, "the short phone's rule").toBeGreaterThan(floor);
   });
 
   it("lets the `md` sidebar's size win over the sidebar's below `md`", () => {

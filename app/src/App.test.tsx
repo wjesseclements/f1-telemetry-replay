@@ -114,6 +114,22 @@ describe("App", () => {
     );
   });
 
+  it("drops the meta line's one-line floor on a short phone, so the thin header stays one row (Slice 27)", () => {
+    // Every `compact:` screen is also `onerow:`, and there the line's 6rem floor
+    // would hold beside the title and the two 44 px icon boxes: at 360x640 the
+    // header wrapped from 44 to 96 px and the track fell to exactly the layout
+    // check's 200 px floor, passing it by 0.0 px (measured in Chrome, Slice 27's
+    // review). So nothing else would catch the class going: pinned here on the
+    // element, and `layoutVariants.test.ts` pins that its compiled rule comes
+    // after the floor's, so it wins where both match.
+    useTransport.setState({ replay });
+    render(<App />);
+    const line = screen.getByText(
+      new RegExp(`${replay.meta.event}.*${replay.cars[0].driver}`),
+    );
+    expect(line).toHaveClass("onerow:min-w-24", "compact:min-w-0");
+  });
+
   it("keeps the header's two controls' names, and 44 px targets, behind their short-phone icons (Slice 27)", () => {
     // On a short phone (`compact:`) each label is swapped for a decorative icon,
     // and the label stays in the DOM as `sr-only`: the accessible name a screen
