@@ -190,9 +190,23 @@ export function computeBounds(pts: readonly Point[]): Bounds {
   return { minX, minY, maxX, maxY };
 }
 
+/** A margin per side, in CSS px. */
+export interface Insets {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
 /**
- * Fit `bounds` into a `width` × `height` viewport with `pad` px of margin, preserving
- * aspect ratio and centring the result.
+ * Fit `bounds` into a `width` × `height` viewport inside `pad` px of margin,
+ * preserving aspect ratio and centring the result between the margins.
+ *
+ * `pad` is either one margin for every side or an `Insets` (Slice 26, so the bottom
+ * can keep the speed legend's row while the other sides shrink on a phone). Equal
+ * insets give EXACTLY the numbers a plain `pad` does, bit for bit, at whole-pixel
+ * sizes: `width + left - right` is `width` again before anything is divided — which
+ * is what keeps the draw-call capture's digests unchanged.
  *
  * No flip here, and that is now TRUE rather than merely asserted: the world→screen
  * y negation lives in `toScreenPoint`, upstream of this, so by the time bounds are
@@ -209,12 +223,16 @@ export function fitTransform(
   bounds: Bounds,
   width: number,
   height: number,
-  pad: number,
+  pad: number | Insets,
 ): FitTransform {
+  const { top, right, bottom, left } =
+    typeof pad === "number"
+      ? { top: pad, right: pad, bottom: pad, left: pad }
+      : pad;
   const spanX = bounds.maxX - bounds.minX;
   const spanY = bounds.maxY - bounds.minY;
-  const availW = Math.max(0, width - pad * 2);
-  const availH = Math.max(0, height - pad * 2);
+  const availW = Math.max(0, width - left - right);
+  const availH = Math.max(0, height - top - bottom);
 
   const scaleX = spanX > 0 ? availW / spanX : Infinity;
   const scaleY = spanY > 0 ? availH / spanY : Infinity;
@@ -224,9 +242,67 @@ export function fitTransform(
 
   return {
     scale,
-    offsetX: (width - spanX * scale) / 2 - bounds.minX * scale,
-    offsetY: (height - spanY * scale) / 2 - bounds.minY * scale,
+    offsetX: (width + left - right - spanX * scale) / 2 - bounds.minX * scale,
+    offsetY: (height + top - bottom - spanY * scale) / 2 - bounds.minY * scale,
   };
+}
+
+/**
+ * The margin every desktop canvas gets on every side — and the bottom margin on
+ * EVERY canvas, which never scales: it is the speed legend's row (`canvasInsets`).
+ */
+export const MARGIN_MAX_PX = 46;
+/**
+ * The top, left and right margin on a small canvas.
+ *
+ * The labels sit at FIXED pixel offsets from the track (`render/paths.ts`), so what
+ * they need from the margin does not shrink with the canvas. Measured in headless
+ * Chrome against the five gallery files and the fixture at 16 viewports (Slice 26),
+ * a corner badge on the fitted bounds' extreme reaches 19 + 9 + 0.5 = 28.5 px past
+ * it (offset, radius, half the hairline ring) — several real corners sit exactly
+ * there, pointing out — and the S/F label at most 22.5 px. 32 keeps the worst badge
+ * 3.5 px clear of the canvas edge, so its ring never meets the header's border.
+ */
+export const MARGIN_MIN_PX = 32;
+/**
+ * The top/left/right margin's share of the canvas's shorter side, between the two
+ * bounds.
+ *
+ * Chosen against measured canvases: every desktop one keeps exactly 46 px — the
+ * smallest the layout gate sees is 1056x623 (1280x720), the draw-call capture's is
+ * 1176x657, and 46 px is reached from a 460 px shorter side, ~26% under both — while
+ * every phone canvas measured (shorter side 159–390 px) gets 32–39 px.
+ */
+export const MARGIN_SHARE = 0.1;
+
+/**
+ * The margins, in CSS px, between the fitted track and the canvas edge, for a
+ * canvas of `width` × `height` — `fitTransform`'s `pad`.
+ *
+ * Until Slice 26 this was a fixed 46 px on every side, which left the circuit 68 px
+ * tall on the 468x160 canvas iOS Safari leaves a landscape phone. Now the top, left
+ * and right are a tenth of the shorter side, never under `MARGIN_MIN_PX` nor over
+ * `MARGIN_MAX_PX` (82 px tall there), so a desktop canvas draws exactly what it
+ * always drew.
+ *
+ * The bottom stays at 46 px, by measurement: the speed legend is an overlay in the
+ * canvas's bottom-left corner, 14 px up with a 15 px line box, and the badges at the
+ * bottom of a circuit point down into it — Monza's T1–T3 at most short sizes. No
+ * bottom margin under 57.5 px (29 + 28.5) can keep such a badge off the legend, so
+ * the bottom keeps desktop's 46 and the overlaps main already had stay about as
+ * they were: badge on legend text in 17 of 96 measured cells against main's 14,
+ * none more than 2 px deeper, from badges moving sideways as the circuit grows. A
+ * symmetric margin was measured first and rejected for it: at 36 px a Monza badge
+ * landed on "340 km/h" at every Safari size — 21 cells worse than main, by up to
+ * 7 px. 46 also keeps the ribbon itself 10.5 px clear of the legend's box, where
+ * 35.5 px is the least that clears it at all.
+ */
+export function canvasInsets(width: number, height: number): Insets {
+  const side = Math.min(
+    MARGIN_MAX_PX,
+    Math.max(MARGIN_MIN_PX, MARGIN_SHARE * Math.min(width, height)),
+  );
+  return { top: side, right: side, bottom: MARGIN_MAX_PX, left: side };
 }
 
 /**

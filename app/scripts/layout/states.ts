@@ -67,9 +67,11 @@ const POLL_MS = 50;
 // (623-803 px of canvas, a 623-803 px panel). A threshold that separated the two
 // by a few px would be measuring noise.
 /**
- * The track canvas's minimum height. The track is fitted with `PAD_PX` = 46 px of
- * margin on every side (`src/render/TrackCanvas.tsx`), so a 200 px canvas leaves
- * 108 px for the circuit itself — a thumbnail. That is the floor, not a target.
+ * The track canvas's minimum height. The track is fitted inside margins that
+ * scale with the canvas (`canvasInsets`, `src/engine/geometry.ts`; Slice 26): on a
+ * canvas this short, 32 px at the top and 46 px at the bottom (the speed legend's
+ * row), so a 200 px canvas leaves 122 px for the circuit itself (108 px under the
+ * fixed 46 px a side it replaced) — a thumbnail. That is the floor, not a target.
  */
 const CANVAS_MIN_HEIGHT_PX = 200;
 /**

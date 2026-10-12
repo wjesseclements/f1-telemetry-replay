@@ -93,13 +93,12 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { advanceClock, frameDelta } from "../../app/src/engine/clock";
-import { fitTransform } from "../../app/src/engine/geometry";
+import { canvasInsets, fitTransform } from "../../app/src/engine/geometry";
 import { sampleAt } from "../../app/src/engine/interpolate";
 import { parseReplay } from "../../app/src/engine/load";
 import { readChromeColors } from "../../app/src/render/palette";
 import { buildScenePaths } from "../../app/src/render/paths";
 import { buildScene, drawFrame } from "../../app/src/render/scene";
-import { PAD_PX } from "../../app/src/render/TrackCanvas";
 
 const FIXTURE = new URL(
   "../../app/src/engine/__fixtures__/sample-lap.json",
@@ -257,7 +256,13 @@ function capture(mode, file, cars) {
 
   const { ctx, counts, total, md5 } = hashingContext();
   const scene = buildScene(replay);
-  const fit = fitTransform(scene.bounds, WIDTH, HEIGHT, PAD_PX);
+  // The app's own margin rule (Slice 26): exactly 46 px on every side at this size.
+  const fit = fitTransform(
+    scene.bounds,
+    WIDTH,
+    HEIGHT,
+    canvasInsets(WIDTH, HEIGHT),
+  );
   const view = { width: WIDTH, height: HEIGHT, dpr: DPR, fit };
   const paths = buildScenePaths(scene, fit);
   const colors = readChromeColors();
