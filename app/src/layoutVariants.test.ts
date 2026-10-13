@@ -17,6 +17,8 @@ import { describe, expect, it } from "vitest";
 import {
   COMPACT_FOCUS_RING,
   COMPACT_PEER_FOCUS_RING,
+  FOCUS_RING,
+  PEER_FOCUS_RING,
 } from "./components/focus";
 import { PHONE_QUERY } from "./components/phoneLayout";
 import css from "./index.css?inline";
@@ -149,6 +151,40 @@ describe("the side-by-side layout's variants", () => {
       expect(mediaFor(selector), selector).toBe(compact);
       expect(ruleBody(selector), selector).toContain("--tw-ring-inset:inset");
     }
+  });
+
+  it("draws both short-phone focus rings white, and every other ring in the accent (Slice 27)", () => {
+    // Ruled 2026-10-12: inset, an accent ring looked like the selected speed
+    // button's accent border, so on these rows the ring is `--c-txt`. It must
+    // come after the accent rule it replaces (same specificity, so the later
+    // rule wins), and the desktop rings keep the accent.
+    const compact = mediaFor(".compact\\:py-0");
+    for (const [ring, cls, selector, accent] of [
+      [
+        COMPACT_FOCUS_RING,
+        "compact:focus-visible:ring-txt",
+        ".compact\\:focus-visible\\:ring-txt:focus-visible",
+        ".focus-visible\\:ring-accent:focus-visible",
+      ],
+      [
+        COMPACT_PEER_FOCUS_RING,
+        "compact:peer-focus-visible:ring-txt",
+        ".compact\\:peer-focus-visible\\:ring-txt",
+        ".peer-focus-visible\\:ring-accent",
+      ],
+    ]) {
+      expect(ring.split(" "), ring).toContain(cls);
+      expect(mediaFor(selector), selector).toBe(compact);
+      expect(ruleBody(selector), selector).toContain("var(--c-txt)");
+      expect(ruleBody(accent), accent).toContain("var(--c-accent)");
+      expect(ruleAt(selector), `${selector} after ${accent}`).toBeGreaterThan(
+        ruleAt(accent),
+      );
+    }
+    expect(FOCUS_RING.split(" ")).toContain("focus-visible:ring-accent");
+    expect(PEER_FOCUS_RING.split(" ")).toContain(
+      "peer-focus-visible:ring-accent",
+    );
   });
 
   it("compiles the thin rows' spacing and title size under `compact:` (Slice 27)", () => {
