@@ -117,7 +117,9 @@ export function TransportBar({ replay }: TransportBarProps) {
           `aria-hidden` text beside the `sr-only` name, still 40 of 40; with
           the glyph as generated content, 0 of 40, pixels unchanged. The
           header's buttons expose none because their icons are SVG, not
-          because of how they are named. */}
+          because of how they are named. jsdom cannot see any of this; the
+          layout check's "transport names carry no description" row reads
+          Chrome's answer at every gated viewport. */}
       <button
         type="button"
         id={PLAY_TOGGLE_ID}

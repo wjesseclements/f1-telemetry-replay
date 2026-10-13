@@ -256,7 +256,8 @@ describe("TransportBar tooltips (Slice 27)", () => {
     // text included, so a glyph left as text (labelled by `aria-label` or not)
     // kept "Pause" / "Pause". jsdom always reports a title as the
     // description, so this pins the structure Chrome's result rests on, with
-    // `textContent` as jsdom's stand-in for the rendered text.
+    // `textContent` as jsdom's stand-in for the rendered text. Chrome's own
+    // answer is the layout check's "transport names carry no description" row.
     for (const isPlaying of [true, false]) {
       act(() => useTransport.setState({ isPlaying }));
       const view = renderBar(bare, 10);

@@ -15,7 +15,10 @@
  * two more rows cover the whole run: no request off the preview origin (from the
  * page, its workers or its frames) and no uncaught page exception. At a
  * phone-layout viewport (`isPhoneLayout`), A and C each add one: the gallery
- * covers the whole viewport (Slice 26).
+ * covers the whole viewport (Slice 26). One row in B is not geometry: Chrome's
+ * accessibility tree gives play/pause and restart their names and no
+ * description, so a tooltip is not read as a second name (Slice 27,
+ * `layout/accessibility.ts`).
  *
  *     npm run build && npm run check:layout
  *

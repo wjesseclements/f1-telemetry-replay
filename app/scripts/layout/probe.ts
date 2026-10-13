@@ -30,10 +30,20 @@ export interface Box {
   height: number;
 }
 
-/** Where the check finds things. Existing roles, labels and ids only. */
+/**
+ * Where the check finds things. Existing roles, labels, ids and ARIA attributes
+ * only.
+ */
 export interface Selectors {
   header: string;
   transport: string;
+  /**
+   * The transport's play/pause toggle and its restart button, whose accessible
+   * names and descriptions one row reads over CDP (`accessibility.ts`) rather
+   * than in the page.
+   */
+  playToggle: string;
+  restart: string;
   aside: string;
   tower: string;
   canvas: string;
