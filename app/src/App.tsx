@@ -36,21 +36,30 @@ const GALLERY_LABEL = "Featured replays";
  * puts the track and the tower side by side elsewhere is `display: contents`
  * here, so its two children are the grid's.
  *
+ * The header's row may shrink below its content (`minmax(0,auto)`, and the
+ * header scrolls, `FULL_TRACK_HEADER`). A failed load puts its error box in the
+ * header, which the 256 px column wraps to 264 px: as a plain `auto` row that
+ * pushed the transport bar off a 257 px screen (measured at 724x257). Now the
+ * header takes what the bar leaves (212 px there), the tower's row none, and the
+ * track still the full height. With nothing to wrap the row is the header's
+ * 44 px, as before.
+ *
  * Only with a replay on screen: the error and the no-replay states have no tower
  * to sit above, and keep the header across the top.
  */
 const FULL_TRACK_GRID =
-  "fulltrack:grid fulltrack:grid-cols-[minmax(0,1fr)_16rem] fulltrack:grid-rows-[auto_minmax(0,1fr)_auto]";
+  "fulltrack:grid fulltrack:grid-cols-[minmax(0,1fr)_16rem] fulltrack:grid-rows-[minmax(0,auto)_minmax(0,1fr)_auto]";
 /**
  * The header in that grid: the top of the second column, ruled off from the
  * track like the tower under it. 4 px padding and gaps (8 elsewhere on a short
  * phone) keep it one 44 px row in the 256 px column: the title is 144.4 px and
  * the two boxes 44 each, 248.4 px of a 239 px content box with 8 px, so the
  * header wrapped to 96 px and the tower lost another 52; with 4 px they take
- * 240.4 of 247 (measured in Chrome, SF Mono).
+ * 240.4 of 247 (measured in Chrome, SF Mono). It scrolls when a failed load's
+ * error box makes it taller than its row (`FULL_TRACK_GRID`).
  */
 const FULL_TRACK_HEADER =
-  "fulltrack:col-start-2 fulltrack:row-start-1 fulltrack:gap-x-1 fulltrack:border-l fulltrack:border-line fulltrack:px-1";
+  "fulltrack:col-start-2 fulltrack:row-start-1 fulltrack:gap-x-1 fulltrack:overflow-y-auto fulltrack:border-l fulltrack:border-line fulltrack:px-1";
 
 export interface AppProps {
   /**

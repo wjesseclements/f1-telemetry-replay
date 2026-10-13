@@ -256,6 +256,11 @@ describe("the side-by-side layout's variants", () => {
     expect(block.replace(/\s/g, "")).toContain(
       "grid-template-columns:minmax(0,1fr)16rem",
     );
+    // The header's row shrinks rather than push the transport bar off screen
+    // when a failed load's error box makes the header tall (App.tsx).
+    expect(block.replace(/\s/g, "")).toContain(
+      "grid-template-rows:minmax(0,auto)minmax(0,1fr)auto",
+    );
     for (const [compact, full] of [
       [".compact\\:px-2", ".fulltrack\\:px-1"],
       [".compact\\:gap-x-2", ".fulltrack\\:gap-x-1"],

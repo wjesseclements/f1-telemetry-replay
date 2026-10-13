@@ -236,19 +236,25 @@ describe("App", () => {
     // every driver), and stays in the DOM. jsdom applies no media query, so this
     // pins the classes; the layout check measures the geometry at 724x257, and
     // `layoutVariants.test.ts` what `fulltrack:` compiles to.
+    //
+    // The header's row may shrink below its content, and the header scrolls:
+    // a failed load's error box wraps it to 264 px in the 256 px column, and
+    // as a plain `auto` row that pushed the transport bar off a 257 px screen
+    // (measured). No layout-check state fails a load, so this pin is its guard.
     useTransport.setState({ replay });
     const { container } = render(<App />);
     const main = container.querySelector("main")!;
     expect(main).toHaveClass(
       "fulltrack:grid",
       "fulltrack:grid-cols-[minmax(0,1fr)_16rem]",
-      "fulltrack:grid-rows-[auto_minmax(0,1fr)_auto]",
+      "fulltrack:grid-rows-[minmax(0,auto)_minmax(0,1fr)_auto]",
     );
     expect(main.querySelector(":scope > header")).toHaveClass(
       "fulltrack:col-start-2",
       "fulltrack:row-start-1",
       "fulltrack:px-1",
       "fulltrack:gap-x-1",
+      "fulltrack:overflow-y-auto",
     );
     const trackCell =
       container.querySelector("canvas")!.parentElement!.parentElement!;
