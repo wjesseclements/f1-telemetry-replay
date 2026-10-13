@@ -54,33 +54,48 @@ const WIDE = "(min-aspect-ratio: 5/4)";
  * driver, so a full field wrapped the header to 106–138 px there, and the track
  * paid for it: one line took 375x667 with 22 cars from 200 to 256 px of track,
  * and made 360x640's one-car readout whole (measured on candidate C). 375x812 and
- * 390x844 are taller, and keep the wrapping line. Short desktop windows (1366x657)
- * match too, but they are already `WIDE`.
+ * 390x844 are taller; `UPRIGHT_PHONE` keeps their line to one row instead (Slice
+ * 27). Short desktop windows (1366x657) match too, but they are already `WIDE`.
  */
 const SHORT = "(max-height: 43.75rem)";
 
 /**
- * A phone held upright: under 40rem (640 px) wide AND at most 50rem (800 px)
- * tall. `COMPACT`'s upright clause, and the third case of `onerow:`.
+ * A phone held upright: under 40rem (640 px) wide AND portrait, at any height.
+ * `COMPACT`'s upright clause, and the third case of `onerow:`.
  *
- * At most 43.75rem (`SHORT`) in Slice 27's first cut, which caught Safari's
- * upright 375x626 and ~390x664 and the short phones (375x667, 360x640). Widened
- * to 50rem by the human's ruling (2026-10-12) so the 44 px targets reach taller
- * phones too: the installed app held upright (~375x734 to ~390x797, estimated)
- * and a Pro Max upright in Safari (~430x752, ~440x776, estimated; 430 and 440 px
- * are well under the 640 px line). There the header had wrapped to 82–138 px
- * around 26–33 px controls. Measured with 22 cars, the track went 375x734
- * 267 → 334 px, 375x768 301 → 355, 390x797 330 → 372, 430x752 301 → 345 and
- * 440x776 325 → 359. The one loss is the one-car boot view at 430x752, 376 → 356:
- * at that width its 44 px buttons no longer share a row with the clocks, so the
- * transport bar takes three rows (75 → 133 px).
+ * At most 43.75rem (`SHORT`) tall in Slice 27's first cut, which caught Safari's
+ * upright 375x626 and ~390x664 and the short phones (375x667, 360x640). Then at
+ * most 50rem (800 px), ruled 2026-10-12, for the installed app held upright
+ * (~375x734 to ~390x797, estimated) and a Pro Max upright in Safari (~430x752,
+ * ~440x776, estimated; 430 and 440 px are well under the 640 px line): 22-car
+ * track 375x734 267 → 334 px, 375x768 301 → 355, 390x797 330 → 372, 430x752
+ * 301 → 345, 440x776 325 → 359, and one loss, the one-car boot view at 430x752,
+ * 376 → 356 (its 44 px buttons no longer share a row with the clocks, so the
+ * transport bar takes three rows, 75 → 133 px). The height bound went entirely
+ * on 2026-10-13 (ruled): every upright phone gets the thin rows, so the
+ * taller-than-800 px ones no longer keep 26–33 px controls in a header wrapped
+ * to 82–138 px. Measured, header 138 → 44 and transport 109 → 133 with 22 cars,
+ * the track went 375x812 339 → 381 px and 390x844 358 → 400 (one car: 370 → 416
+ * and 434 → 448).
  *
- * 375x812 and 390x844 are taller, and unchanged. An Android phone upright in
- * Chrome that is at most 800 px tall is caught too; none was measured. The
- * width clause keeps it off a short laptop window (1366x657), which keeps its
- * text buttons.
+ * "Upright" is `(orientation: portrait)`: by the media query's definition, the
+ * viewport at least as tall as it is wide (a square counts). It replaces the
+ * height bound as what keeps a landscape shape out, and the two differ only
+ * where no phone is: a screen under 640 px wide and wider than tall is also
+ * under 640 px tall. Up to 480 px tall the height clause makes it `compact:`
+ * anyway; from 481 to 639 px tall (a 600x500 window) it was compact under the
+ * 800 px bound and keeps its text buttons now (measured there: header 44 → 86,
+ * transport 89 → 75, tower list 142 → 114, the track held at its 200 px
+ * floor). Neither iOS Safari nor Chrome on Android
+ * resizes the layout viewport for the on-screen keyboard by default, so a
+ * keyboard does not flip the orientation; the app has no text field anyway.
+ *
+ * The width clause keeps it off a short laptop window (1366x657). A desktop
+ * window under 640 px wide and taller than wide gets the thin rows and the
+ * icons, each with its label as a tooltip, at any height now: 600x900, 22 cars,
+ * header 122 → 44, transport 75 → 89, track 422 → 460 px.
  */
-const UPRIGHT_PHONE = "(max-width: 39.9375rem) and (max-height: 50rem)";
+const UPRIGHT_PHONE = "(max-width: 39.9375rem) and (orientation: portrait)";
 
 /**
  * A phone (Slice 26): a screen narrower than `md`, OR one at most 30rem (480 px)
@@ -114,8 +129,8 @@ const UPRIGHT_PHONE = "(max-width: 39.9375rem) and (max-height: 50rem)";
 const PHONE = `not all and (min-width: ${defaultTheme.screens.md}), (max-height: 30rem)`;
 
 /**
- * A phone-shaped short screen (Slice 27, the human's option C1): the header and
- * the transport bar become thin rows, and the header's two buttons become icons.
+ * A phone's screen, either way up (Slice 27, the human's option C1): the header
+ * and the transport bar become thin rows, and the header's two buttons become icons.
  * Every control in those rows keeps a 44x44 CSS px target (the human's ruling,
  * `src/components/touchTarget.ts`), so a row is as tall as one control: the
  * header 44 px, the transport bar 45 in landscape and 89–133 (two or three rows)
@@ -127,7 +142,7 @@ const PHONE = `not all and (min-width: ${defaultTheme.screens.md}), (max-height:
  *    or Pro Max held sideways about 814x312. No portrait phone is that short. A
  *    desktop window can be (1280x480), and it gets the icons too, each with its
  *    label as a tooltip (`src/components/compactLayout.ts` reads this query).
- *  - an upright phone (`UPRIGHT_PHONE`).
+ *  - an upright phone, at any height (`UPRIGHT_PHONE`).
  */
 const COMPACT = `(max-height: 30rem), ${UPRIGHT_PHONE}`;
 
@@ -225,7 +240,8 @@ export default {
       // gallery and the event card): below `md`, or on a screen at most 30rem
       // tall. One variant, so the two cannot drift.
       addVariant("phone", `@media ${PHONE}`);
-      // Thin header and transport rows on a short phone, 44 px targets kept.
+      // Thin header and transport rows on a phone, either way up, 44 px
+      // targets kept.
       addVariant("compact", `@media ${COMPACT}`);
       // The header above the tower column on the shortest landscape phones, so
       // the track runs the full height. Last, so it wins over `compact:`.

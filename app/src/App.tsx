@@ -126,10 +126,10 @@ export default function App({ bootstrapError = null }: AppProps) {
     <main
       className={`flex h-dvh flex-col bg-bg text-txt ${replayShown ? FULL_TRACK_GRID : ""}`}
     >
-      {/* On a short phone (`compact:`, tailwind.config.js: any phone held
-          sideways, or one held upright up to 800 px tall) the header is one thin
-          row, 44 px instead of 54 (landscape) or 82–138 (upright, where it
-          wrapped): no vertical padding, a smaller title, and the two buttons as
+      {/* On a phone (`compact:`, tailwind.config.js: any phone held sideways,
+          or held upright at any height) the header is one thin row, 44 px
+          instead of 54 (landscape) or 82–138 (upright, where it wrapped): no
+          vertical padding, a smaller title, and the two buttons as
           44 px icon boxes, the ruled touch-target floor (`touchTarget.ts`). Every
           control keeps its place in the tab order and its name. It still wraps,
           which only a failed load's error box makes it do (measured: a no-wrap
@@ -142,8 +142,8 @@ export default function App({ bootstrapError = null }: AppProps) {
           TELEMETRY REPLAY
         </h1>
         {/* On a wide screen (5:4 and up), a short one (at most 700 px tall) or
-            an upright phone whose header is a thin row (under 640 px wide and at
-            most 800 px tall), `onerow:` in tailwind.config.js, this line takes
+            an upright phone whose header is a thin row (under 640 px wide and
+            portrait), `onerow:` in tailwind.config.js, this line takes
             whatever the title's row leaves and truncates its tail. The tail is
             the driver list, the tower already lists every driver, and the full
             line stays in the DOM.

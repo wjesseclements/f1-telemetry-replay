@@ -61,13 +61,14 @@ describe("the side-by-side layout's variants", () => {
   });
 
   it("compiles `onerow:` to a screen 5:4 or wider, at most 700 px tall, OR `compact:`'s upright phone", () => {
-    // The third clause is Slice 27's (ruled 2026-10-12): wherever the header is
-    // one thin row upright, up to 800 px tall, its meta line keeps to that row.
-    // It is `compact:`'s own upright clause, so every compact screen is
-    // `onerow:` too (the landscape one is inside the 700 px clause).
+    // The third clause is Slice 27's (ruled 2026-10-12, its height bound
+    // removed 2026-10-13): wherever the header is one thin row upright, its
+    // meta line keeps to that row. It is `compact:`'s own upright clause, so
+    // every compact screen is `onerow:` too (the landscape one is inside the
+    // 700 px clause).
     const compact = mediaFor(".compact\\:py-0")!;
     const upright = compact.slice(compact.indexOf(",") + 1);
-    expect(upright).toBe("(max-width:39.9375rem)and(max-height:50rem)");
+    expect(upright).toBe("(max-width:39.9375rem)and(orientation:portrait)");
     expect(mediaFor(".onerow\\:truncate")).toBe(
       `(min-aspect-ratio:5/4),(max-height:43.75rem),${upright}`,
     );
@@ -94,15 +95,14 @@ describe("the side-by-side layout's variants", () => {
     expect(PHONE_QUERY.replace(/\s/g, "")).toBe(mediaFor(".phone\\:fixed"));
   });
 
-  it("compiles `compact:` to a landscape phone OR an upright one up to 800 px tall (Slice 27)", () => {
+  it("compiles `compact:` to a landscape phone OR any upright one (Slice 27)", () => {
     // At most 480 px tall (every landscape phone, Safari's 724x257 included), or
-    // under 640 px wide and at most 800 px tall: Safari's upright 375x626, the
-    // short 375x667/360x640, and (widened from 700 px, ruled 2026-10-12) the
-    // installed app upright, ~375x734 to ~390x797, and a Pro Max upright in
-    // Safari, ~430x752/~440x776. Not 375x812 or 390x844, not a 1366x657 laptop
-    // window.
+    // under 640 px wide and portrait: every phone held upright, at any height
+    // (ruled 2026-10-13; up to 700 px in the first cut, then 800 px), so
+    // 375x812 and 390x844 too. Not a 1366x657 laptop window, and not a narrow
+    // window wider than tall and over 480 px tall (600x500).
     expect(mediaFor(".compact\\:py-0")).toBe(
-      "(max-height:30rem),(max-width:39.9375rem)and(max-height:50rem)",
+      "(max-height:30rem),(max-width:39.9375rem)and(orientation:portrait)",
     );
   });
 
