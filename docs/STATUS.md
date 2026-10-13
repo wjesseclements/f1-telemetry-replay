@@ -33,11 +33,12 @@ layout check gates every build (Slice 22), the six defects visible on the live g
 are fixed (Slice 23), and the reference lap is explicit in the contract —
 `track.referenceLap`, chosen by the pipeline and read by the gap circuit, the tower's
 pace and the ribbon (Slice 24); short and landscape phones get a usable track and
-tower (Slice 25), and phones get a full-screen gallery and a modal overlay (Slice 26).
-Quality state on `main`: `npm run check` green with 1058 tests and 0 warnings, engine
-coverage 100% per file, the layout check 167/167 over nine viewports (Slice 26); 401
-pytest with 100% lines + branches on every module; draw-call fixture digests unchanged
-since Slice 16.
+tower (Slice 25), phones get a full-screen gallery and a modal overlay (Slice 26), and
+short phones get thin bars with 44 px touch targets and an installable home-screen app
+(Slice 27). Quality state on `main`: `npm run check` green with 1081 tests and 0
+warnings, engine coverage 100% per file, the layout check 167/167 over nine viewports
+(Slices 26–27); 401 pytest with 100% lines + branches on every module; draw-call
+fixture digests unchanged since Slice 16.
 
 **What is open, and what is blocked.** **Slices 22, 23 and 24 are MERGED**
 (2026-10-08, #77 → #78 → #79), inserted ahead of the board on the human's direction

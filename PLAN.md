@@ -4819,6 +4819,148 @@ the 2024 pit cycle's swaps reading as moves. The pre-registered 300 ms stands
 untouched — no tune requested. **"NO SIG" ratified** as the compact spelling.
 Push + PR + auto-merge authorised.
 
+### [ ] Slice 27 — compact bars with 44 px touch targets (C1), and Add to Home Screen (F) (built 2026-10-12; awaiting the human's rulings and a phone check)
+
+**Filed 2026-10-12 by the human's rulings on Slice 26's drafts.** Built on
+`feat/slice-27-compact-bars-home-screen`, stacked on Slice 26's final tip; the PR
+squashes it.
+
+**Rulings (human, 2026-10-12).**
+- **C = C1**: thin header and transport rows on short phones, **"keeping 44 pt touch
+  targets even if the rows are a little taller"**.
+- **E = not now.**
+- **F = build it.** The home-screen name is **"F1 Telemetry"** (manifest `short_name`
+  and `apple-mobile-web-app-title`). The manifest's full name may stay the page's
+  `<title>`, "F1 Telemetry Replay".
+- **The icon is still being chosen** (A corner / B circuit / C trace). Wire A as the
+  placeholder and make the swap one documented step.
+
+**C1: thin rows, every control 44x44 CSS px** (39ff136, 6eee1f7).
+- **Trigger.** `compact:` is a plugin variant: at most 30rem tall, OR under 40rem wide
+  and at most 43.75rem tall.
+  - It catches every landscape phone: Safari's 724x257 and 724x300, 667x375, 740x360,
+    and a Plus/Pro Max held sideways (~814x312).
+  - It catches the short upright ones: 375x626, 390x664, 375x667, 360x640.
+  - Not 375x812, 390x844 or 1366x657.
+  - A desktop window ≤480 px tall (1280x480) gets it too, with icons and no tooltip.
+- **Header.** One row. The two buttons become 44 px icon boxes (PLACEHOLDER art,
+  `components/icons.tsx`). Their labels stay in the DOM as sr-only, so names, tab order
+  and test queries are unchanged.
+- **Targets.** `TOUCH_TARGET` (`components/touchTarget.ts`) is a 44 px floor on every
+  button. The box is the target, with no pseudo-element.
+  - The scrubber is 44 px tall: 20 px of padding around a 4 px track, its background
+    clipped to it with `compact:!bg-clip-content`.
+  - The clip is important because the tint's inline shorthand resets it. It is
+    compact-only because a content-box clip moved 3–4 md+ pixels by one level (measured;
+    fixed in 6eee1f7).
+  - Focus rings are inset on these rows (`COMPACT_FOCUS_RING`): an outside ring was cut
+    off at the screen edge.
+- **Measured, header / transport / 22-car track, Slice 26 → 27:**
+
+| viewport | header | transport | track |
+|---|---|---|---|
+| 724x257 | 54 → 44 | 43 → 45 | 160 → 168 |
+| 724x300 | 54 → 44 | 43 → 45 | 203 → 211 |
+| 375x626 | 82 → 44 | 109 → 133 | 215 → 229 |
+| 390x664 | 82 → 44 | 109 → 133 | 253 → 267 |
+| 375x667 | 82 → 44 | 109 → 133 | 256 → 270 |
+| 360x640 | 82 → 44 | 109 → 133 | 229 → 243 |
+| 667x375 | 54 → 44 | 43 → 45 | 278 → 286 |
+| 740x360 | 54 → 44 | 43 → 45 | 263 → 271 |
+| 814x312 | 54 → 44 | 43 → 45 | 215 → 223 |
+
+- **Upright, the transport is three 44 px rows.** The scrubber's own row is 20 px of
+  that: 249 px of track without it at 375x626.
+- **Against the 24 px draft:** 724x257 gets 168 instead of 200, and 375x626 gets 229
+  instead of 293.
+- **Scrubber width** stays within ±10 px of Slice 26 (667x375, 22 cars: 120 → 122). The
+  gaps went from 8 to 6 px and the side margins from 16 to 8 px to keep it.
+- **Touch targets, measured in Chrome** at 10 compact sizes, two scenarios each, Pause
+  included:
+  - every control is ≥44x44;
+  - a 44 px square at each centre is fully hit-testable;
+  - no two controls overlap.
+  - Before: buttons were 26–30 px tall and the scrubber 4 px.
+- **Undone from the draft.** The no-wrap header with a shrink-0 picker pushed a failed
+  load's error box off a 375 px screen (page 637 px wide). The header wraps again.
+
+**F: Add to Home Screen** (e64a73c, built from draft 6bcc8dc/6130ea3/0f640ce).
+- **Manifest.** A static `public/manifest.webmanifest`: display standalone, same-origin
+  paths, colours = `--c-bg`. Its name is the `<title>`; its short_name is the ruled
+  label.
+- **index.html.** The iOS tags and an apple-touch-icon. `viewport-fit=auto` is written
+  out; cover was rejected by measurement in Slice 26.
+- **Icons.** All three proposals are in `docs/icons/proposals/`, and A is copied to
+  `docs/icons/app-icon.svg`. `docs/icons/rasterize-icons.mjs` renders the four PNGs
+  reproducibly.
+- **No service worker.**
+- **What it does not change.** The bundle is byte-identical, check:layout's rows are
+  byte-identical, and Chrome reports no manifest or installability errors.
+- **Estimated standalone sizes:** landscape 724x375 / 724x354 get 286 / 265 px of track.
+- **Upright installed (375x734–768) is not `compact:`** (>700 px tall). It keeps the
+  106–138 px header and the small controls. That is an open ruling.
+
+**The gate.** Nine viewports and 167 rows (Slice 26's), all PASS.
+- Against Slice 26's tip, 36 rows change values only (6 at each of the six compact gated
+  viewports, 814x312 included), all PASS.
+- **724x257 is NOT gated.** 16 of its 17 rows pass; "canvas height" is 168.0 against a
+  200.0 floor. The floor was not loosened.
+- Measured ways to close the 32 px gap:
+  - (a) Header above the tower column at ≤320 px tall below md, prototyped and not
+    committed: 212 px, 187/187 with 724x257/724x300/814x312 appended, tower unchanged.
+    Cost: no room for the event/session/driver line.
+  - (b) C3's auto-hiding bars. The gate would need overlay-aware rows.
+  - (c) A landscape floor, which is a loosening.
+  - (d) Gate 724x300 (211 px) as a stand-in.
+
+**Evidence** (after the review's fix pass and the restack).
+- **`npm run check`:** 1081 tests, 0 warn/error, engine coverage 100%, check:layout
+  167/167.
+- **Draw-call md5s** are unchanged (cb43a0f8… / e30b5b6e…).
+- **Safari matrix:** aa0befbb.
+- **Standard matrix:** md+ UNCHANGED, and 375x812 / 390x844 / 1280x720 / 1440x900 are
+  pixel-identical (20 PNGs).
+- **Mutations caught:** C1 18/18, F 12/12.
+
+**Amendments from the review's fix pass.**
+- **The compact-row guard test could not fail** (the review's blocking finding):
+  Tailwind
+  scanned test files, so a class named only in a test comment still shipped a rule. Test
+  files are now excluded from Tailwind's `content`; 9 dead rules left the bundle and no
+  pixel moved (layout rows and every matrix value unchanged). The meta line's
+  `compact:min-w-0` is pinned on the rendered element instead.
+- The thin header and transport rows, both compact focus rings' inset rule, iOS's
+  `black` status bar and a no-service-worker scan of index.html are now pinned by tests.
+- index.html's install rationale moved into `webAppManifest.test.ts`'s header
+  (dist/index.html 3039 → 1508 bytes).
+- Not pinned: the Tailwind exclusion itself (reverting it passes every test; only the
+  bundle grows by the 9 dead rules).
+
+**Copy flagged, not rewritten.** "Load replay JSON" is named in FeaturedPanel.tsx,
+App.tsx, ReplayError.tsx and the gallery fetch-failure message in loadGalleryReplay.ts,
+but it is an icon on compact screens.
+
+**Device-only, not measured:**
+- the install itself;
+- the real standalone insets;
+- icon masking and the 12-character label;
+- WebKit's range thumb (iOS drags by the thumb, so the scrubber's 44 px height may not
+  help there).
+
+**Follow-ups:**
+- a failed-load state in the layout check;
+- the error box inside the compact landscape header (pre-existing).
+
+**Open for the human (2026-10-12).** The icon (A corner / B circuit / C trace); how to
+close Safari's 724x257 gap (168 px of track against the 200 px floor); whether the 44 pt
+floor should reach taller phones and the installed app held upright (not `compact:`
+today); the compact controls' look (44 px bordered boxes vs smaller chips with invisible
+44 px hit areas); the compact focus ring (accent, alike to the selected speed, vs
+`--c-txt`); a tooltip repeating the existing label on the icon-only buttons; the four
+"Load replay JSON" mentions (copy); accepting that Chrome offers "Install app" on
+desktop
+and Android; and the scrubber's 44 px height on iPhone, where WebKit drags by the thumb.
+
 ### [ ] Slice 20 — colour distinction under the luminance floor
 
 **Filed 2026-09-08 by Slice 17's browser pass.** The floor fixes visibility, not

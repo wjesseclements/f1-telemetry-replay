@@ -82,16 +82,25 @@ from FastF1 data. PRD.md holds the detail; this file holds the law.
   Slice 25's carries the short/landscape matrix and the sizes it still does not gate
   (568x320, near-square split-screen halves, 5:4 windows under 512 px wide); Slice
   26's carries the Safari matrix and why Safari's landscape 724x257 is not gated yet
-  (a 160 px track, under the 200 px floor, which is not loosened to admit it). The
+  (a 168 px track after Slice 27, under the 200 px floor, which is not loosened). The
   layout's side-by-side switch is `side:` (`md`, or any screen 5:4 or wider), the
   header's one-line rule is `onerow:` (5:4 or wider, or at most 43.75rem tall), and
   the overlay dialogs' full-screen rule is `phone:` (below `md`, written as the exact
-  complement of `md:`, or at most 30rem tall): all three are plugin variants in
+  complement of `md:`, or at most 30rem tall), and the thin header and transport rows
+  are `compact:` (at most 30rem tall, or under 40rem wide and at most 43.75rem tall;
+  every control there keeps a 44x44 px target, `TOUCH_TARGET`): all four are plugin variants in
   `tailwind.config.js`, never `theme.screens`, because a raw screen silently disables
   `min-*`/`max-*` variants. React reads `phone:` as `PHONE_QUERY`
   (`src/components/phoneLayout.ts`), pinned to the compiled CSS by
   `layoutVariants.test.ts`; while a phone overlay is open the rest of the page is
   inert (`usePhoneModal`).
+
+- Re-render the home-screen icons after changing `docs/icons/app-icon.svg`: `cd app &&
+  npx vite-node ../docs/icons/rasterize-icons.mjs` (the layout check's system Chrome,
+  offline flags and teardown; two runs give byte-identical PNGs). Commit the SVG with
+  the four PNGs it rewrites. The icon is a PLACEHOLDER (option A) until the human picks
+  one of `docs/icons/proposals/`; swapping is copy, run, commit. Like the perf
+  instruments it lives outside `app/`; `src/webAppManifest.test.ts` checks its output.
 
 ## Architecture rules (non-negotiable — see PRD §Load-bearing decisions)
 
@@ -166,6 +175,11 @@ if it is missing, the build is broken, which is a different category of problem.
 app still **boots** on the committed fixture with zero network; the fetch happens only
 on a human's click.
 
+The web app manifest and the home-screen icons (`public/manifest.webmanifest`,
+`public/icons/`, `public/apple-touch-icon.png`, Slice 27) are same-origin static files
+the BROWSER fetches, like `favicon.svg` — neither app fetches nor an exception. No
+service worker without a ruling; `webAppManifest.test.ts` pins that.
+
 Rules that come with it:
 - **A gallery failure degrades, never blanks.** Keep the replay already on screen,
   render the message, leave the file picker working. Four failure modes are pinned in
@@ -191,6 +205,10 @@ Rules that come with it:
   transient wrong-major vitest and runs it with the REPO ROOT as its root dir; the
   output looks plausible and nothing announces it. Treat the vitest banner's version
   and root (`RUN v4.1.10 …/app`) as part of the evidence for any test run.
+- Tailwind's `content` is `index.html` plus the SHIPPED files under `src/` — test files
+  are excluded (Slice 27). Any word in a shipped file that names a utility still compiles,
+  comments included (Slice 26's `.sticky` and `-top-4` came from comments), so a test
+  that reads the compiled CSS (`?inline`) sees exactly the app's stylesheet.
 - `npm audit` is **clean** as of Slice 10 (Vite 8 + Vitest 4): the old vitest/vite
   criticals left with `esbuild` and `rollup`. If new ones appear, check whether they
   are dev-toolchain only and unreachable as configured before panic-fixing.
