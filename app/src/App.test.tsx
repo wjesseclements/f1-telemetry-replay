@@ -5,6 +5,7 @@ import {
   cleanup,
   act,
   fireEvent,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import {
@@ -76,6 +77,19 @@ describe("App", () => {
   it("shows no canvas until a replay is loaded", () => {
     const { container } = render(<App />);
     expect(container.querySelector("canvas")).toBeNull();
+  });
+
+  it("says how to load a lap when none is loaded, in the ruled words", () => {
+    // The human's copy (ruled 2026-10-13), held verbatim so it cannot drift:
+    // on a short phone the picker is an icon, so the words say which one.
+    render(<App />);
+    const line = screen.getByText(/^No replay loaded\./);
+    expect(line.textContent).toBe(
+      "No replay loaded. Open a lap with Load replay JSON above (the folder icon on small screens): any file the pipeline built.",
+    );
+    expect(
+      within(line).getByText("Load replay JSON", { selector: "span" }),
+    ).toHaveClass("text-txt");
   });
 
   it("mounts the track canvas and labels the replay once one is loaded", () => {
@@ -353,9 +367,16 @@ describe("App bootstrap error", () => {
     expect(screen.getByRole("alert")).toBeInTheDocument();
   });
 
-  it("says nothing about the network, because there is none", () => {
+  it("calls it a data problem, not a network one, in the ruled words", () => {
+    // The human's copy (ruled 2026-10-13), held verbatim so it cannot drift. It
+    // no longer says the app never fetches: the gallery does (Slice 17).
     render(<App bootstrapError={brokenBoot()} />);
-    expect(screen.getByRole("alert")).toHaveTextContent(/data problem/i);
+    const explanation = within(screen.getByRole("alert")).getByText(
+      /^The replay data does not match the schema\./,
+    );
+    expect(explanation.textContent).toBe(
+      "The replay data does not match the schema. This is a data problem, not a network one. Each line above names the field that failed; rebuild the file with the pipeline, or open a different lap with Load replay JSON.",
+    );
   });
 });
 
@@ -775,6 +796,41 @@ describe("the featured-replay gallery", () => {
     render(<App />);
     expect(panel()).toBeInTheDocument();
     expect(toggle()).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("ends with the ruled footer: your own file, and the disclaimer", () => {
+    // The human's copy (ruled 2026-10-13), held verbatim so it cannot drift:
+    // on a short phone the picker is an icon, so the words say which one.
+    render(<App />);
+    const footer = within(panel()!).getByText(/^Or build your own/);
+    expect(footer.textContent).toBe(
+      "Or build your own with the pipeline and open it with Load replay JSON (the folder icon on small screens). Unofficial project, not affiliated with Formula 1; data via FastF1 from the public timing feed.",
+    );
+    expect(
+      within(footer).getByText("Load replay JSON", { selector: "span" }),
+    ).toHaveClass("text-txt");
+  });
+
+  it("names the picker in the ruled words when a scenario cannot be reached", async () => {
+    // The gallery's one network failure, as a visitor sees it: the message the
+    // fetch layer returns, rendered in the panel. Its second line is the
+    // human's copy (ruled 2026-10-13), pinned verbatim in
+    // `loadGalleryReplay.test.ts`; here it is what reaches the screen.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("Failed to fetch");
+      }),
+    );
+    render(<App />);
+
+    await act(async () => {
+      fireEvent.click(firstCard());
+    });
+
+    expect(screen.getByRole("alert").textContent).toBe(
+      `Could not reach /gallery/${SCENARIOS[0].file}: Failed to fetch\nCheck your connection and try again, or load a file with Load replay JSON (the folder icon).`,
+    );
   });
 
   it("renders every manifest scenario as a real button", () => {

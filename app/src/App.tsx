@@ -229,8 +229,8 @@ export default function App({ bootstrapError = null }: AppProps) {
         <div className="flex min-h-0 flex-1 items-center justify-center px-6">
           <p className="max-w-sm text-center font-mono text-xs leading-relaxed text-dim">
             No replay loaded. Open a lap with{" "}
-            <span className="text-txt">Load replay JSON</span> above — any file
-            the pipeline built.
+            <span className="text-txt">Load replay JSON</span> above (the folder
+            icon on small screens): any file the pipeline built.
           </p>
         </div>
       )}

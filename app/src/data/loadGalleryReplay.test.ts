@@ -95,10 +95,12 @@ describe("loadGalleryReplay — every failure degrades, none throws", () => {
     const result = await loadGalleryReplay(scenario);
 
     expect(result.replay).toBeNull();
-    expect(result.error).toMatch(/Could not reach/);
-    expect(result.error).toMatch(/Failed to fetch/);
-    // The degradation contract: the picker is still a way in.
-    expect(result.error).toMatch(/Load replay JSON/);
+    // The degradation contract: the picker is still a way in. The second line
+    // is the human's copy (ruled 2026-10-13), held verbatim so it cannot drift.
+    expect(result.error!.split("\n")).toEqual([
+      `Could not reach /gallery/${scenario.file}: Failed to fetch`,
+      "Check your connection and try again, or load a file with Load replay JSON (the folder icon).",
+    ]);
   });
 
   it("reports a non-200 as a missing deployment, with the status", async () => {

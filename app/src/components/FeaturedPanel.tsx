@@ -184,9 +184,9 @@ export function FeaturedPanel({ onClose, id }: FeaturedPanelProps) {
 
         <p className="mt-3 font-mono text-[10px] leading-relaxed text-dim">
           Or build your own with the pipeline and open it with{" "}
-          <span className="text-txt">Load replay JSON</span>. Unofficial
-          project, not affiliated with Formula 1; data via FastF1 from the
-          public timing feed.
+          <span className="text-txt">Load replay JSON</span> (the folder icon on
+          small screens). Unofficial project, not affiliated with Formula 1;
+          data via FastF1 from the public timing feed.
         </p>
       </div>
     </div>
