@@ -33,10 +33,11 @@ layout check gates every build (Slice 22), the six defects visible on the live g
 are fixed (Slice 23), and the reference lap is explicit in the contract —
 `track.referenceLap`, chosen by the pipeline and read by the gap circuit, the tower's
 pace and the ribbon (Slice 24); short and landscape phones get a usable track and
-tower (Slice 25). Quality state on `main`: `npm run check` green with 966 tests and 0
-warnings, engine coverage 100% per file, the layout check 119/119 over seven viewports
-(Slice 25); 401 pytest with 100% lines + branches on every module; draw-call fixture
-digests unchanged since Slice 16.
+tower (Slice 25), and phones get a full-screen gallery and a modal overlay (Slice 26).
+Quality state on `main`: `npm run check` green with 1058 tests and 0 warnings, engine
+coverage 100% per file, the layout check 167/167 over nine viewports (Slice 26); 401
+pytest with 100% lines + branches on every module; draw-call fixture digests unchanged
+since Slice 16.
 
 **What is open, and what is blocked.** **Slices 22, 23 and 24 are MERGED**
 (2026-10-08, #77 → #78 → #79), inserted ahead of the board on the human's direction
@@ -57,6 +58,15 @@ standing constraint remains: `build_replay.py` fetches only from the human's hom
 network (CLAUDE.md Gotchas) — offline rebuilds from the FastF1 cache work on that
 machine.
 
-**What happens next.** **Slice 26** (filed 2026-10-11 by the human's phone check: a
-phone-first layout measured against Safari's real viewports), then **the board: 18 →
-20**, with the fixture asymmetry overhaul behind them.
+**What happens next.** **Slice 26** (phone-first, measured against Safari's real
+viewports, from the human's 2026-10-11 phone check) is built with every ruling of
+2026-10-12 applied and is PR #81: on phones the gallery and the event card cover the
+whole screen with a pinned 44 px Close and the page behind them inert; a screen at
+most 480 px tall counts as a phone (a Plus/Pro Max iPhone held sideways); the track's
+margins scale with the canvas; the tower scrolls the focused car into view; and the
+layout check gains 375x626 and 814x312 and a direct "panel covers the viewport" row on
+every phone viewport (167 rows over nine). **Slice 27** (compact bars with 44 px touch
+targets, and Add to Home Screen as "F1 Telemetry") is built on top of it as PR #82,
+awaiting the human's rulings on the icon and the open trade-offs. A real-iPhone check
+is the missing evidence for both. Then **the board: 18 → 20**, with the fixture
+asymmetry overhaul behind them.
