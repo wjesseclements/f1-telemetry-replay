@@ -444,6 +444,24 @@ export async function stateB(
       `legend ${ySpan(probe.legend)} · header ${ySpan(probe.header)}`,
     );
   }
+
+  // Ruled 2026-10-13. Since Slice 27 the header is a grid item on the
+  // shortest landscape phones (`fulltrack:`, App.tsx), placed beside the track
+  // rather than above it, and a header placed in the track's cell sat over the
+  // canvas with every other row passing (Slice 27's review, by mutation).
+  // Before, the flex column made that impossible. Both spans, because there
+  // the two are side by side.
+  if (probe.header === null || probe.canvas === null) {
+    record(ctx, "B", "header clear of the track", false, "not found");
+  } else {
+    record(
+      ctx,
+      "B",
+      "header clear of the track",
+      !overlaps(probe.header, probe.canvas),
+      `header ${xySpan(probe.header)} · canvas ${xySpan(probe.canvas)} · overlap ${size(intersect(probe.header, probe.canvas))}`,
+    );
+  }
 }
 
 /** C — the gallery reopened from the header, over the loaded replay. */
