@@ -60,6 +60,29 @@ const WIDE = "(min-aspect-ratio: 5/4)";
 const SHORT = "(max-height: 43.75rem)";
 
 /**
+ * A phone held upright: under 40rem (640 px) wide AND at most 50rem (800 px)
+ * tall. `COMPACT`'s upright clause, and the third case of `onerow:`.
+ *
+ * At most 43.75rem (`SHORT`) in Slice 27's first cut, which caught Safari's
+ * upright 375x626 and ~390x664 and the short phones (375x667, 360x640). Widened
+ * to 50rem by the human's ruling (2026-10-12) so the 44 px targets reach taller
+ * phones too: the installed app held upright (~375x734 to ~390x797, estimated)
+ * and a Pro Max upright in Safari (~430x752, ~440x776, estimated; 430 and 440 px
+ * are well under the 640 px line). There the header had wrapped to 82–138 px
+ * around 26–33 px controls. Measured with 22 cars, the track went 375x734
+ * 267 → 334 px, 375x768 301 → 355, 390x797 330 → 372, 430x752 301 → 345 and
+ * 440x776 325 → 359. The one loss is the one-car boot view at 430x752, 376 → 356:
+ * at that width its 44 px buttons no longer share a row with the clocks, so the
+ * transport bar takes three rows (75 → 133 px).
+ *
+ * 375x812 and 390x844 are taller, and unchanged. An Android phone upright in
+ * Chrome that is at most 800 px tall is caught too; none was measured. The
+ * width clause keeps it off a short laptop window (1366x657), which keeps its
+ * text buttons.
+ */
+const UPRIGHT_PHONE = "(max-width: 39.9375rem) and (max-height: 50rem)";
+
+/**
  * A phone (Slice 26): a screen narrower than `md`, OR one at most 30rem (480 px)
  * tall, in either orientation.
  *
@@ -95,21 +118,17 @@ const PHONE = `not all and (min-width: ${defaultTheme.screens.md}), (max-height:
  * the transport bar become thin rows, and the header's two buttons become icons.
  * Every control in those rows keeps a 44x44 CSS px target (the human's ruling,
  * `src/components/touchTarget.ts`), so a row is as tall as one control: the
- * header 44 px, the transport bar 45 in landscape and 133 (three rows) upright.
+ * header 44 px, the transport bar 45 in landscape and 89–133 (two or three rows)
+ * upright.
  *
  * Two clauses, both measured in iOS Safari's real viewports (2026-10-11):
  *  - at most 30rem (480 px) tall: every landscape phone. Safari leaves 724x257 with
  *    its tab bar and ~724x300 without; Chrome-sized ones are 360–430 tall, a Plus
  *    or Pro Max held sideways about 814x312. No portrait phone is that short. A
- *    desktop window can be (1280x480), and it gets the icons too: they carry no
- *    `title`, so there they have no tooltip either.
- *  - under 40rem (640 px) wide AND at most 43.75rem (700 px) tall (`SHORT`): the
- *    portrait phones in Safari (375x626, ~390x664) and the short ones (375x667,
- *    360x640), where the header wrapped to two rows (82 px). The width clause keeps
- *    it off a short laptop window (1366x657), which keeps its text buttons;
- *    375x812 and 390x844 are taller and unchanged.
+ *    desktop window can be (1280x480), and it gets the icons too.
+ *  - an upright phone (`UPRIGHT_PHONE`).
  */
-const COMPACT = `(max-height: 30rem), (max-width: 39.9375rem) and ${SHORT}`;
+const COMPACT = `(max-height: 30rem), ${UPRIGHT_PHONE}`;
 
 /**
  * A landscape phone at most 20rem (320 px) tall (Slice 27, ruled 2026-10-12): the
@@ -196,9 +215,11 @@ export default {
         "side",
         `@media (min-width: ${defaultTheme.screens.md}), ${WIDE}`,
       );
-      // The header's meta line keeps to one line (App.tsx): on a wide screen OR
-      // a short one. One variant, so the two cases cannot drift apart.
-      addVariant("onerow", `@media ${WIDE}, ${SHORT}`);
+      // The header's meta line keeps to one line (App.tsx): on a wide screen, a
+      // short one, or an upright phone, where the header is one thin row
+      // (`compact:`). One variant, so the cases cannot drift apart, and every
+      // `compact:` screen is `onerow:` too.
+      addVariant("onerow", `@media ${WIDE}, ${SHORT}, ${UPRIGHT_PHONE}`);
       // The overlay dialogs leave the track cell for the whole screen (the
       // gallery and the event card): below `md`, or on a screen at most 30rem
       // tall. One variant, so the two cannot drift.

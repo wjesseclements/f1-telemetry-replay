@@ -28,7 +28,8 @@
  * CSS px target (the human's ruling; `touchTarget.ts`), with no vertical padding,
  * 6 px gaps and 8 px side margins. In landscape it is one 45 px row (43 before);
  * upright it is three 44 px rows, 133 px (109 before) — the scrubber's own 44 px
- * row costs 20 of those, and the header's 38 px saving pays for it. The narrower
+ * row costs 20 of those, and the header's 38 px saving pays for it (at 440 px
+ * wide a one-car bar's buttons share one row, two rows, 89 px). The narrower
  * gaps and margins are what keep the scrubber's width: 122 px at 667x375 with 22
  * cars, where 52 px of extra button width would have left it 92. Same controls,
  * same order, same names; no button changes width between Play and Pause.
