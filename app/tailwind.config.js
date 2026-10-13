@@ -76,7 +76,10 @@ const SHORT = "(max-height: 43.75rem)";
  * taller-than-800 px ones no longer keep 26–33 px controls in a header wrapped
  * to 82–138 px. Measured, header 138 → 44 and transport 109 → 133 with 22 cars,
  * the track went 375x812 339 → 381 px and 390x844 358 → 400 (one car: 370 → 416
- * and 434 → 448).
+ * and 434 → 448). The circuit is width-limited upright, so those pixels are
+ * margin; the tower's second whole row and the 44 px controls are the gain. And
+ * the one-car loss above now reaches ~420–430 px wide at any height (430x932
+ * 556 → 536, 428x926 550 → 530, 420x900 524 → 504; transport 75 → 133).
  *
  * "Upright" is `(orientation: portrait)`: by the media query's definition, the
  * viewport at least as tall as it is wide (a square counts). It replaces the
@@ -86,14 +89,16 @@ const SHORT = "(max-height: 43.75rem)";
  * anyway; from 481 to 639 px tall (a 600x500 window) it was compact under the
  * 800 px bound and keeps its text buttons now (measured there: header 44 → 86,
  * transport 89 → 75, tower list 142 → 114, the track held at its 200 px
- * floor). Neither iOS Safari nor Chrome on Android
- * resizes the layout viewport for the on-screen keyboard by default, so a
- * keyboard does not flip the orientation; the app has no text field anyway.
+ * floor). The app has no text field, so no on-screen keyboard can flip the
+ * orientation; and neither iOS Safari nor Chrome on Android resizes the layout
+ * viewport for one by default.
  *
  * The width clause keeps it off a short laptop window (1366x657). A desktop
  * window under 640 px wide and taller than wide gets the thin rows and the
  * icons, each with its label as a tooltip, at any height now: 600x900, 22 cars,
- * header 122 → 44, transport 75 → 89, track 422 → 460 px.
+ * header 122 → 44, transport 75 → 89, track 422 → 460 px. So does a tablet's
+ * split-view or Slide Over pane (estimated 375x1024 and 590x834: 22-car track
+ * 466 → 508 and 382 → 421, header 138/122 → 44).
  */
 const UPRIGHT_PHONE = "(max-width: 39.9375rem) and (orientation: portrait)";
 

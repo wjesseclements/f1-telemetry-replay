@@ -23,7 +23,7 @@
  * pre-Slice-14 file renders this bar exactly as before. On a closed single-lap file
  * it reads the same lap on every wrap — correct: the data is one lap, replayed.
  *
- * ON A SHORT PHONE (Slice 27, `compact:` in tailwind.config.js) the bar is as thin
+ * ON A COMPACT SCREEN (Slice 27, `compact:` in tailwind.config.js) the bar is as thin
  * as its controls allow and no thinner: every button and the scrubber keep a 44x44
  * CSS px target (the human's ruling; `touchTarget.ts`), with no vertical padding,
  * 6 px gaps and 8 px side margins. In landscape it is one 45 px row (43 before);

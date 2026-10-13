@@ -81,7 +81,7 @@ describe("App", () => {
 
   it("says how to load a lap when none is loaded, in the ruled words", () => {
     // The human's copy (ruled 2026-10-13), held verbatim so it cannot drift:
-    // on a short phone the picker is an icon, so the words say which one.
+    // on a compact screen the picker is an icon, so the words say which one.
     render(<App />);
     const line = screen.getByText(/^No replay loaded\./);
     expect(line.textContent).toBe(
@@ -130,7 +130,7 @@ describe("App", () => {
     );
   });
 
-  it("drops the meta line's one-line floor on a short phone, so the thin header stays one row (Slice 27)", () => {
+  it("drops the meta line's one-line floor on a compact screen, so the thin header stays one row (Slice 27)", () => {
     // Every `compact:` screen is also `onerow:`, and there the line's 6rem floor
     // would hold beside the title and the two 44 px icon boxes: at 360x640 the
     // header wrapped from 44 to 96 px and the track fell to exactly the layout
@@ -146,7 +146,7 @@ describe("App", () => {
     expect(line).toHaveClass("onerow:min-w-24", "compact:min-w-0");
   });
 
-  it("makes the header one 44 px row on a short phone: no vertical padding, a smaller title (Slice 27)", () => {
+  it("makes the header one 44 px row on a compact screen: no vertical padding, a smaller title (Slice 27)", () => {
     // The row is one control tall because the header drops `py-3` (12 px above
     // and below) and the title shrinks to fit beside the two icon boxes.
     // Without the padding the header measured 68 px instead of 44, and still
@@ -161,7 +161,7 @@ describe("App", () => {
   });
 
   it("keeps the header's two controls' names, and 44 px targets, behind their short-phone icons (Slice 27)", () => {
-    // On a short phone (`compact:`) each label is swapped for a decorative icon,
+    // On a compact screen (`compact:`) each label is swapped for a decorative icon,
     // and the label stays in the DOM as `sr-only`: the accessible name a screen
     // reader announces and voice control matches is the text it always was. The
     // box keeps the ruled 44 px floor and draws its focus ring inside (it touches
@@ -800,7 +800,7 @@ describe("the featured-replay gallery", () => {
 
   it("ends with the ruled footer: your own file, and the disclaimer", () => {
     // The human's copy (ruled 2026-10-13), held verbatim so it cannot drift:
-    // on a short phone the picker is an icon, so the words say which one.
+    // on a compact screen the picker is an icon, so the words say which one.
     render(<App />);
     const footer = within(panel()!).getByText(/^Or build your own/);
     expect(footer.textContent).toBe(

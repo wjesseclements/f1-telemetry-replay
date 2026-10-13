@@ -25,7 +25,7 @@ export const PEER_FOCUS_RING =
   "peer-focus-visible:ring-2 peer-focus-visible:ring-accent peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-bg";
 
 /**
- * The rings above, drawn INSIDE the control on a short phone's thin rows (Slice 27).
+ * The rings above, drawn INSIDE the control on a compact screen's thin rows (Slice 27).
  *
  * There a control's 44 px box fills its row (`touchTarget.ts`): the header's buttons
  * touch the top of the screen and a landscape transport bar's touch the bottom, so a

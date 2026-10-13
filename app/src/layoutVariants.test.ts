@@ -138,7 +138,7 @@ describe("the side-by-side layout's variants", () => {
   });
 
   it("insets both short-phone focus rings, the file picker's label's too (Slice 27)", () => {
-    // On a short phone a control's 44 px box fills its row, and the header's
+    // On a compact screen a control's 44 px box fills its row, and the header's
     // touch the top of the screen, so a ring drawn outside the box was cut off
     // (`components/focus.ts`). The file picker's label rings through its peer
     // input's focus, from a constant of its own. The component tests compare
@@ -216,8 +216,8 @@ describe("the side-by-side layout's variants", () => {
     }
   });
 
-  it("lets a short phone's thin header win over the one-line header (Slice 27)", () => {
-    // The meta line's zero minimum width on a short phone must override its 6rem
+  it("lets a compact screen's thin header win over the one-line header (Slice 27)", () => {
+    // The meta line's zero minimum width on a compact screen must override its 6rem
     // one-line floor where both match (every compact screen is also `onerow:`),
     // or the floor holds beside the title and the two icon boxes and wraps the
     // header to 96 px. With equal specificity the later rule wins. That the line
@@ -228,7 +228,7 @@ describe("the side-by-side layout's variants", () => {
     const floor = ruleAt(".onerow\\:min-w-24");
     const compact = ruleAt(".compact\\:min-w-0");
     expect(floor, "the one-line floor's rule").toBeGreaterThan(-1);
-    expect(compact, "the short phone's rule").toBeGreaterThan(floor);
+    expect(compact, "the compact screen's rule").toBeGreaterThan(floor);
   });
 
   it("compiles `fulltrack:` to at most 320 px tall, narrower than `md`, side by side (Slice 27)", () => {

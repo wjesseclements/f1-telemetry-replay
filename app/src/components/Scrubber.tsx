@@ -106,7 +106,7 @@ export function Scrubber({
       // The tint paints the element's own background over the `bg-line` base;
       // with no abnormal stretches `gradient` is null and the class alone wins.
       style={gradient === null ? undefined : { background: gradient }}
-      // On a short phone (Slice 27, `compact:`) the input is 44 px tall, the
+      // On a compact screen (Slice 27, `compact:`) the input is 44 px tall, the
       // ruled touch-target floor (`touchTarget.ts`): 20 px of padding above and
       // below a 4 px content box, and the background (tint included) clipped to
       // that box, so the painted track stays 4 px and the rest is hit area.

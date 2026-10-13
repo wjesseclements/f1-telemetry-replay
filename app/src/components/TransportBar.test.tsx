@@ -152,7 +152,7 @@ describe("TransportBar status flag", () => {
   });
 });
 
-describe("TransportBar on a short phone (Slice 27)", () => {
+describe("TransportBar on a compact screen (Slice 27)", () => {
   // jsdom applies no media query, so these pin the `compact:` classes; the boxes
   // they make (44x44 and up, unobstructed, no two overlapping) are measured in a
   // real browser in Slice 27's PLAN entry.

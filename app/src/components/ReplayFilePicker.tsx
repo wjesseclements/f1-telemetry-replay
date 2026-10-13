@@ -55,7 +55,7 @@ export function ReplayFilePicker() {
 
   return (
     <div className="ml-auto flex min-w-0 flex-col items-end gap-2">
-      {/* `flex` on a short phone (Slice 27, `compact:`): the label is a 44 px icon
+      {/* `flex` on a compact screen (Slice 27, `compact:`): the label is a 44 px icon
           box (`touchTarget.ts`), and an inline-level wrapper would add a line
           box's descender under it. */}
       <div className="compact:flex">
@@ -77,13 +77,13 @@ export function ReplayFilePicker() {
           className={`cursor-pointer rounded border border-line px-3 py-1.5 font-mono text-xs text-dim transition-colors hover:text-txt compact:flex compact:items-center compact:justify-center compact:p-0 ${TOUCH_TARGET} ${PEER_FOCUS_RING} ${COMPACT_PEER_FOCUS_RING}`}
         >
           {/* The text stays the input's accessible name (sr-only) when the
-              PLACEHOLDER icon replaces it on a short phone. */}
+              PLACEHOLDER icon replaces it on a compact screen. */}
           <OpenFileIcon className="hidden compact:block" />
           <span className="compact:sr-only">{PICKER_LABEL}</span>
         </label>
       </div>
 
-      {/* On a short phone the confirmation would add a second line to the thin
+      {/* On a compact screen the confirmation would add a second line to the thin
           header; the meta line beside it already names what is loaded. Kept in
           the DOM for a screen reader. The error below stays visible: it is the
           one message a failed load has. */}

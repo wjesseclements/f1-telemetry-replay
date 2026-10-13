@@ -34,13 +34,13 @@ are fixed (Slice 23), and the reference lap is explicit in the contract —
 `track.referenceLap`, chosen by the pipeline and read by the gap circuit, the tower's
 pace and the ribbon (Slice 24); short and landscape phones get a usable track and
 tower (Slice 25), phones get a full-screen gallery and a modal overlay (Slice 26), and
-phones get thin bars with 44 px touch targets (upright up to 800 px tall), an
+phones get thin bars with 44 px touch targets (every phone, either way up), an
 installable home-screen app, and — on the shortest landscape phones — the header above
-the tower so the track runs the full height (Slice 27). Quality state on `main`: `npm
-run check` green with 1092 tests and 0 warnings, engine coverage 100% per file, the
-layout check 186/186 over ten viewports, Safari's landscape 724x257 now among them
-(Slices 26–27); 401 pytest with 100% lines + branches on every module; draw-call
-fixture digests unchanged since Slice 16.
+the tower so the track runs the full height (Slice 27). Quality state on the Slice 27
+branch: `npm run check` green with 1096 tests and 0 warnings, engine coverage 100% per
+file, the layout check 196/196 over ten viewports, Safari's landscape 724x257 among
+them and a "header clear of the track" row at each (Slices 26–27); 401 pytest with 100%
+lines + branches on every module; draw-call fixture digests unchanged since Slice 16.
 
 **What is open, and what is blocked.** **Slices 22, 23 and 24 are MERGED**
 (2026-10-08, #77 → #78 → #79), inserted ahead of the board on the human's direction
@@ -70,7 +70,10 @@ margins scale with the canvas; the tower scrolls the focused car into view; and 
 layout check gains 375x626 and 814x312 and a direct "panel covers the viewport" row on
 every phone viewport (167 rows over nine). **Slice 27** (compact bars with 44 px touch
 targets, and Add to Home Screen as "F1 Telemetry") is built on top of it as PR #82
-with icon A and two batches of the human's rulings applied; the compact controls' look
-waits for the human's phone check and the "Load replay JSON" wording for the human's
-pick. A real-iPhone check is the missing evidence for both. Then **the board: 18 →
-20**, with the fixture asymmetry overhaul behind them.
+with icon A and three batches of the human's rulings applied. The third (2026-10-13)
+brought the ruled "Load replay JSON" wording, which names the folder icon; the thin
+rows on every upright phone, so 375x812 shows two whole rows of a 22-car tower instead
+of one, with 44 px controls; tooltips on play/pause and restart; and a "header clear of
+the track" layout-check row at every viewport. The compact controls' look waits for the
+human's phone check. A real-iPhone check is the missing evidence for both. Then **the
+board: 18 → 20**, with the fixture asymmetry overhaul behind them.
