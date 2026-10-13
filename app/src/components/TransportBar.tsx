@@ -23,14 +23,17 @@
  * pre-Slice-14 file renders this bar exactly as before. On a closed single-lap file
  * it reads the same lap on every wrap — correct: the data is one lap, replayed.
  *
- * ON A COMPACT SCREEN (Slice 27, `compact:` in tailwind.config.js) the bar is as thin
- * as its controls allow and no thinner: every button and the scrubber keep a 44x44
- * CSS px target (the human's ruling; `touchTarget.ts`), with no vertical padding,
- * 6 px gaps and 8 px side margins. In landscape it is one 45 px row (43 before);
- * upright it is three 44 px rows, 133 px (109 before) — the scrubber's own 44 px
- * row costs 20 of those, and the header's 38 px saving pays for it (at 440 px
- * wide a one-car bar's buttons share one row, two rows, 89 px). The narrower
- * gaps and margins are what keep the scrubber's width: 122 px at 667x375 with 22
+ * ON A COMPACT SCREEN (Slice 27, `compact:` in tailwind.config.js) the bar is as
+ * thin as its controls allow and no thinner: every button and the scrubber keep a
+ * 44x44 CSS px target (the human's ruling; `touchTarget.ts`), with no vertical
+ * padding, 6 px gaps and 8 px side margins. In landscape it is one 45 px row (43
+ * before). On a ~375 px upright phone it is three 44 px rows, 133 px (109
+ * before): the scrubber's own 44 px row costs 20 of those, and the header's
+ * saving pays for it. Not everywhere upright: at ~420–430 px wide a one-car bar
+ * was two text rows (75 px) and is three now, so its canvas loses 20 px
+ * (`UPRIGHT_PHONE` in tailwind.config.js has the numbers); at 440 px, and on a
+ * 600 px window, the buttons share one row, two rows, 89 px. The narrower gaps
+ * and margins are what keep the scrubber's width: 122 px at 667x375 with 22
  * cars, where 52 px of extra button width would have left it 92. Same controls,
  * same order, same names; no button changes width between Play and Pause.
  * On the shortest landscape phones (`fulltrack:`) the page is a grid (App.tsx,

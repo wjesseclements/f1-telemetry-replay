@@ -160,7 +160,7 @@ describe("App", () => {
     expect(title).toHaveClass("compact:text-xs");
   });
 
-  it("keeps the header's two controls' names, and 44 px targets, behind their short-phone icons (Slice 27)", () => {
+  it("keeps the header's two controls' names, and 44 px targets, behind their compact-screen icons (Slice 27)", () => {
     // On a compact screen (`compact:`) each label is swapped for a decorative icon,
     // and the label stays in the DOM as `sr-only`: the accessible name a screen
     // reader announces and voice control matches is the text it always was. The

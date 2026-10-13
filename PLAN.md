@@ -4975,7 +4975,8 @@ squash drops them.
     "Pause"). The header buttons, named by their sr-only text, show no description.
     VoiceOver is unmeasured.
 
-- **Ruling 5: "header clear of the track"** (58b1abf), the tenth row of state B.
+- **Ruling 5: "header clear of the track"** (58b1abf), the ninth and last row of
+  state B.
   - The header's and the canvas's boxes may not intersect beyond 1 px (`overlaps`, like
     the other rows). The row prints both boxes' x and y spans.
   - Ten new rows, 196 in all. No existing row changed.
@@ -4998,7 +4999,7 @@ squash drops them.
 |---|---|---|---|---|---|
 | 375x812 | 370 → 416 | 358 → 381 | 339 → 381 | 114/106/138 → 44 | 109 → 133 |
 | 390x844 | 434 → 448 | 377 → 400 | 358 → 400 | 82/106/138 → 44 | 109 → 133 |
-| 430x932 (Pro Max, Safari) | **556 → 536** | 425 → 468 | 421 → 453 | 82/114/122 → 44 | 75/109/109 → 133 |
+| 430x932 (Pro Max, whole screen) | **556 → 536** | 425 → 468 | 421 → 453 | 82/114/122 → 44 | 75/109/109 → 133 |
 | 428x926 | **550 → 530** | 422 → 462 | 417 → 449 | 82/114/122 → 44 | 75/109/109 → 133 |
 | 420x900 | **524 → 504** | 406 → 436 | 401 → 434 | 82/114/122 → 44 | 75/109/109 → 133 |
 | 600x900 (narrow desktop window) | 557 → 585 | 456 → 484 | 422 → 460 | 86/86/122 → 44 | 75 → 89 |
@@ -5019,8 +5020,9 @@ squash drops them.
     extended Safari matrix did.
   - **A narrow desktop window taller than wide is compact now** (600x900: icons with
     tooltips, 44 px rows). Before, it was compact only up to 800 px tall.
-  - **So is a tablet's split-view or Slide Over pane** (estimated 375x1024 and 590x834:
-    22-car canvas 466 → 508 and 382 → 421, header 138/122 → 44).
+  - **So is a tablet's split-view or Slide Over pane under 640 px wide** (estimated
+    375x1024 and 590x834: 22-car canvas 466 → 508 and 382 → 421, header 138/122 →
+    44). 640x900 is unchanged.
   - **A narrow window wider than tall and 481–639 px tall loses compact** (600x500):
     text buttons, the tower list 142 → 114, and the track held at its 200 px floor. No
     phone has that shape.
@@ -5044,11 +5046,18 @@ squash drops them.
 | B legend clear of header | legend y=[448.0,463.0] · header y=[0.0,138.0] | legend y=[396.0,411.0] · header y=[0.0,44.0] |
 | B header clear of the track (new) | header y=[0.0,138.0] · canvas y=[138.0,477.0] | header y=[0.0,44.0] · canvas y=[44.0,425.0] |
 
-- **From the review, in the docs commit:** "short phone" in comments and test names now
-  says "compact screen" (focus.ts, Scrubber.tsx, TransportBar.tsx, ReplayFilePicker.tsx
-  and three test files), and `UPRIGHT_PHONE`'s comment gains the 420–430 px loss, the
-  width-limited circuit, the tablet panes and the no-text-field reason. Comments and
-  test names only.
+- **From the reviews, in the two docs commits** (a2bc3e7 and its follow-up). Comments,
+  test names and docs only:
+  - "short phone" now says "compact screen" wherever it means `compact:`: App.tsx,
+    focus.ts, Scrubber.tsx, TransportBar.tsx, ReplayFilePicker.tsx and test names in
+    three test files.
+  - `UPRIGHT_PHONE`'s comment gains the 420–430 px loss, the width-limited circuit and
+    the tablet panes, and now gives the no-text-field reason first.
+  - Numbers the third batch made stale: Hud.tsx's strip-cap comment (375x812's 22-car
+    track 339 → 381 px; a three-car list scrolls its last 33 px, not 48; 375x667 and
+    360x640 get 243–270 px, not 229–257), TransportBar.tsx's upright bar (three rows on
+    a ~375 px phone, not everywhere upright), and layout-check.ts's 814x312 row count
+    (19 was Slice 26's).
 
 **Evidence (after the third batch, HEAD 3ac31be; the review re-ran all of it).**
 - **`npm run check`:** 1096 tests, 0 warn/error in the full log, engine coverage 100%,
@@ -5070,15 +5079,19 @@ squash drops them.
     exceptions.
 - **The review's extended Safari matrix** (those 20 plus 430x932, 440x956, 412x915,
   393x852, 360x780, 639x640 and 640x900; then 414x896, 420x900, 428x926, 428x746,
-  436x900, 439x900, 375x1024 and 590x834): layout moved only at the upright sizes,
-  600x900 and 600x500; 7/7 controls hit-test everywhere, no horizontal overflow, 0
-  off-origin requests, 0 exceptions. Its digests (ef4e9a7e → bb40f281) come from a 27-size
-  instrument and do not compare with the 20-size ones; every shared cell agrees.
+  436x900, 439x900, 375x1024 and 590x834):
+  - layout moved only at the upright sizes over 800 px tall and under 640 px wide
+    (600x900 among them), and at 600x500;
+  - every upright size up to 800 px tall, and 640x900, is unchanged;
+  - 7/7 controls hit-test everywhere, no horizontal overflow, 0 off-origin requests, 0
+    exceptions;
+  - its digests (ef4e9a7e → bb40f281) come from a 27-size instrument and do not
+    compare with the 20-size ones; every shared cell agrees.
 - **Mutations:** 18/18 caught by vitest (copy 9, tooltips 5, the upright clause 4), plus
   the two gate mutations.
-- **The docs commit:** `npm run check` green, 1096 tests, 0 warn/error in the full log,
-  engine coverage 100%, check:layout 196/196. The bundle is byte-identical to 3ac31be's
-  (index-CU9vuco6.css, index-DtmbJPHn.js).
+- **The two docs commits:** each ran `npm run check` green, 1096 tests, 0 warn/error in
+  the full log, engine coverage 100%, check:layout 196/196. The bundle is
+  byte-identical to 3ac31be's (index-CU9vuco6.css, index-DtmbJPHn.js).
 
 **C1: thin rows, every control 44x44 CSS px** (39ff136, 6eee1f7).
 - **Trigger.** `compact:` is a plugin variant: at most 30rem tall, OR under 40rem wide
@@ -5090,9 +5103,10 @@ squash drops them.
     390x844, 430x932 and the installed sizes.
   - It does not catch 1366x657, or a narrow window wider than tall and over 480 px tall
     (600x500).
-  - A desktop window ≤480 px tall (1280x480), a window under 640 px wide and taller than
-    wide (600x900), and a tablet's split-view pane get it too, with the header's labels
-    as tooltips.
+  - A desktop window ≤480 px tall (1280x480), and a window or tablet split-view pane
+    under 640 px wide and taller than wide (600x900; 375x1024 and 590x834, estimated),
+    get it too, with the header's labels as tooltips. A wider pane does not (640x900
+    is unchanged).
 - **Header.** One row. The two buttons become 44 px icon boxes (PLACEHOLDER art,
   `components/icons.tsx`). Their labels stay in the DOM as sr-only, so names, tab order
   and test queries are unchanged.
@@ -5147,16 +5161,18 @@ squash drops them.
 - **What it does not change.** The bundle is byte-identical, check:layout's rows are
   byte-identical, and Chrome reports no manifest or installability errors.
 - **Estimated standalone sizes:** landscape 724x375 / 724x354 get 286 / 265 px of track.
-- **Upright installed (~375x734 to ~390x797) is `compact:`** since ruling 3. Header 44,
-  transport 133, 22-car track 267–330 → 334–372.
+- **Upright installed (~375x734 to ~390x797) is `compact:`** since the second batch's
+  ruling 3. Header 44, transport 133, 22-car track 267–330 → 334–372.
 
 **The gate.** Ten viewports, 196 rows, all PASS: 724x257 by the second batch's ruling 2,
 and "header clear of the track" at every viewport by the third batch's ruling 5.
-- 724x257 is appended after the nine. Its 19 rows pass strictly: canvas 212.0 (min
-  200.0); aside y=[44,212] beside canvas y=[0,212]; header y=[0,44]; bar y=[212,257].
-- The first 167 rows are byte-identical to the tip (adda83b).
-- Narrowing `fulltrack:` to 15rem fails the row (168.0, 185/186): it is the one viewport
-  where `fulltrack:` decides.
+- 724x257 is appended after the nine. Its 20 rows (19 before the third batch's header
+  row) pass strictly: canvas 212.0 (min 200.0); aside y=[44,212] beside canvas
+  y=[0,212]; header y=[0,44]; bar y=[212,257]; header clear of the track, overlap
+  0.0x44.0.
+- At the second batch, the first 167 rows were byte-identical to the tip (adda83b).
+- Narrowing `fulltrack:` to 15rem failed the canvas-height row at the second batch
+  (168.0, 185/186): it is the one viewport where `fulltrack:` decides.
 - 724x300 is not gated. It passes with the header in either place (255 or 211 px), so
   none of its rows can fail on this layout's account.
 - Of the four ways to close 724x257's 32 px gap, (a) was ruled.
@@ -5211,8 +5227,8 @@ wording, pinned verbatim.
 - Play/Restart tooltips: Chrome exposes each as a description equal to the name. Keep
   `aria-label` plus `title`, or name the two buttons by sr-only text as the header
   buttons are?
-- The `(orientation: portrait)` reading: 600x500-style windows lose compact; 600x900-
-  style windows and tablet split-view panes gain it.
+- The `(orientation: portrait)` reading: 600x500-style windows lose compact;
+  600x900-style windows and narrow tablet split-view panes gain it.
 - The gallery-failure message's dropped quotation marks.
 - Whether to gate 724x300.
 - The 6.6 px margin of the one-row header above the tower (a device font check).

@@ -99,7 +99,7 @@ const TEARDOWN_STEP_MS = 2_000;
 // viewport" rows are what fail if that clause is dropped; before it, only
 // `layoutVariants.test.ts`'s compiled string did. Emulated as every viewport
 // 768 px or wider is (`mobile: false`); measured with `mobile: true` as well,
-// its 19 rows are byte-identical.
+// its 19 rows (Slice 26's count) were byte-identical.
 //
 // Then Safari's landscape size, 724x257, appended last (Slice 27): a 375x812
 // iPhone held sideways with Safari's tab bar shown (measured from the human's

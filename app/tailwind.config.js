@@ -97,8 +97,9 @@ const SHORT = "(max-height: 43.75rem)";
  * window under 640 px wide and taller than wide gets the thin rows and the
  * icons, each with its label as a tooltip, at any height now: 600x900, 22 cars,
  * header 122 → 44, transport 75 → 89, track 422 → 460 px. So does a tablet's
- * split-view or Slide Over pane (estimated 375x1024 and 590x834: 22-car track
- * 466 → 508 and 382 → 421, header 138/122 → 44).
+ * split-view or Slide Over pane that narrow (375x1024 and 590x834, estimated;
+ * 640x900 is unchanged). Measured on those two panes, the 22-car track went
+ * 466 → 508 and 382 → 421 px, and the header 138/122 → 44.
  */
 const UPRIGHT_PHONE = "(max-width: 39.9375rem) and (orientation: portrait)";
 

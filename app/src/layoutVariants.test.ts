@@ -137,7 +137,7 @@ describe("the side-by-side layout's variants", () => {
     }
   });
 
-  it("insets both short-phone focus rings, the file picker's label's too (Slice 27)", () => {
+  it("insets both compact focus rings, the file picker's label's too (Slice 27)", () => {
     // On a compact screen a control's 44 px box fills its row, and the header's
     // touch the top of the screen, so a ring drawn outside the box was cut off
     // (`components/focus.ts`). The file picker's label rings through its peer
@@ -163,7 +163,7 @@ describe("the side-by-side layout's variants", () => {
     }
   });
 
-  it("draws both short-phone focus rings white, and every other ring in the accent (Slice 27)", () => {
+  it("draws both compact focus rings white, and every other ring in the accent (Slice 27)", () => {
     // Ruled 2026-10-12: inset, an accent ring looked like the selected speed
     // button's accent border, so on these rows the ring is `--c-txt`. It must
     // come after the accent rule it replaces (same specificity, so the later

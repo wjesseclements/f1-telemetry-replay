@@ -105,8 +105,8 @@ from FastF1 data. PRD.md holds the detail; this file holds the law.
     - `phone:` is the overlay dialogs' full-screen rule: below `md` (written as the
       exact complement of `md:`), or at most 30rem tall.
     - `compact:` gives the thin header and transport rows: at most 30rem tall, or
-      `UPRIGHT_PHONE`. That is every phone either way up, and also a desktop window
-      under 40rem wide that is taller than wide, or a tablet's split-view pane. Every
+      `UPRIGHT_PHONE`. That is every phone either way up, and also a desktop window or
+      a tablet's split-view pane under 40rem wide that is taller than wide. Every
       control there keeps a 44x44 px target (`TOUCH_TARGET`) and an inset white focus
       ring (`COMPACT_FOCUS_RING`).
     - `fulltrack:` puts the header above the tower column, a page grid in App.tsx: at

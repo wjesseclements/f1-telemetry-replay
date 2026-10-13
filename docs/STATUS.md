@@ -75,5 +75,5 @@ brought the ruled "Load replay JSON" wording, which names the folder icon; the t
 rows on every upright phone, so 375x812 shows two whole rows of a 22-car tower instead
 of one, with 44 px controls; tooltips on play/pause and restart; and a "header clear of
 the track" layout-check row at every viewport. The compact controls' look waits for the
-human's phone check. A real-iPhone check is the missing evidence for both. Then **the
+human's phone check; a real-iPhone check is the missing evidence for it. Then **the
 board: 18 → 20**, with the fixture asymmetry overhaul behind them.

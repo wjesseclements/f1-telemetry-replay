@@ -300,7 +300,8 @@ export function Hud({ replay }: HudProps) {
     //
     //  - 40%, the cap. Uncapped, a full field took the whole region: the canvas
     //    measured 0 px at 375x812 and the strip ran on under the transport bar.
-    //    40% leaves the track at least 60% (339 px there with 22 cars).
+    //    40% leaves the track at least 60% (381 px there with 22 cars since
+    //    Slice 27's thin rows; 339 under the wrapped header before them).
     //  - 13.75rem (220 px), the floor: a strip that fits keeps its height. The
     //    one-car fixture's strip measures 219 px (a 194 px readout at every point
     //    of its lap, + `p-3` + the border); 40% alone cut it to 178 px at 375x667
@@ -324,10 +325,11 @@ export function Hud({ replay }: HudProps) {
     //    667x375 and 740x360 when those stacked.
     //
     // Measured: 375x812 and taller are as the bare 40% left them (a three-car
-    // window scrolls its last ~48 px). At 375x667 and 360x640 the header's meta
-    // line keeps to one line (`onerow:`, App.tsx), so neither bound binds: every
-    // strip keeps its 220 px floor (the one-car list whole) and the track gets
-    // 229–257 px. With the wrapping header, 360x640 was where the two floors met
+    // window scrolls its last 33 px since Slice 27's thin rows; 48 before). At
+    // 375x667 and 360x640 the header's meta line keeps to one line (`onerow:`,
+    // App.tsx), so neither bound binds: every strip keeps its 220 px floor (the
+    // one-car list whole) and the 22-car track gets 243–270 px (229–256 before
+    // Slice 27). With the wrapping header, 360x640 was where the two floors met
     // and the track won (the one-car list 192 of 194 px, the track 200). A screen
     // 5:4 or wider never stacks (`side:`, `tailwind.config.js`), and the sidebar
     // needs no cap (`side:max-h-none`): its row bounds it.
