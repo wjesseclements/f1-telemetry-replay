@@ -58,49 +58,69 @@ from FastF1 data. PRD.md holds the detail; this file holds the law.
   is right. Its header carries the procedure and the measured noise floor; Slice 9h's
   PLAN entry carries the baseline to compare a re-run against. Same family as the three
   above: outside `app/`, no gate adopts it.
-- Measure the **layout in a real browser**, which jsdom cannot (every jsdom box is
-  0x0): `cd app && npm run build && npm run check:layout`. It drives the system Chrome
-  headless over the DevTools Protocol (zero dependencies; `CHROME_PATH` overrides)
-  against the built `dist/`, at nine viewports: 375x812, 1280x720 and 1440x900, then
-  Slice 25's short portrait phones 375x667 and 360x640 and landscape phones 667x375
-  and 740x360, then Slice 26's 375x626 (what an upright iPhone's Safari leaves the
-  page) and 814x312 (a Plus/Pro Max iPhone held sideways), each group appended so the earlier rows print first and stay comparable run
-  to run. It visits first load, the largest gallery scenario loaded by its card,
-  and the gallery reopened; every assertion prints PASS/FAIL with what it measured.
-  At the seven phone-layout viewports (every one but 1280x720 and 1440x900), first
-  load and the reopened gallery each add "panel covers the viewport": the phone's
-  full-screen gallery box must equal the viewport's within 1 px (Slice 26; 167 rows).
-  Which viewports are phones is written out in the check (`isPhoneLayout`), not read
-  from the page, so a variant that stops matching fails those rows instead of
-  removing them. Offline inside the browser too: every host but loopback is
-  unresolvable (`--host-resolver-rules` + `--no-proxy-server`), and any request off
-  the preview origin — page, workers, frames — is a FAIL, as is an uncaught page
-  exception. Exit 1 = the run finished with a FAIL row (read the table); 2 = it did
-  not finish (no build, no Chrome, the 90 s cap — read the ABORTED line). About 5 s.
-  **Gated** (Slice 23): it runs last in `npm run check` and as a step of CI's
-  `verify`. Slice 22's PLAN entry carries the failing baseline it was built against;
-  Slice 25's carries the short/landscape matrix and the sizes it still does not gate
-  (568x320, near-square split-screen halves, 5:4 windows under 512 px wide); Slice
-  26's carries the Safari matrix and why Safari's landscape 724x257 is not gated yet
-  (a 168 px track after Slice 27, under the 200 px floor, which is not loosened). The
-  layout's side-by-side switch is `side:` (`md`, or any screen 5:4 or wider), the
-  header's one-line rule is `onerow:` (5:4 or wider, or at most 43.75rem tall), and
-  the overlay dialogs' full-screen rule is `phone:` (below `md`, written as the exact
-  complement of `md:`, or at most 30rem tall), and the thin header and transport rows
-  are `compact:` (at most 30rem tall, or under 40rem wide and at most 43.75rem tall;
-  every control there keeps a 44x44 px target, `TOUCH_TARGET`): all four are plugin variants in
-  `tailwind.config.js`, never `theme.screens`, because a raw screen silently disables
-  `min-*`/`max-*` variants. React reads `phone:` as `PHONE_QUERY`
-  (`src/components/phoneLayout.ts`), pinned to the compiled CSS by
-  `layoutVariants.test.ts`; while a phone overlay is open the rest of the page is
-  inert (`usePhoneModal`).
+- Measure the **layout in a real browser**, which jsdom cannot (every jsdom box is 0x0):
+  `cd app && npm run build && npm run check:layout`.
+  - **How it runs.** It drives the system Chrome headless over the DevTools Protocol
+    (zero dependencies; `CHROME_PATH` overrides) against the built `dist/`.
+  - **Viewports (ten).** Each group is appended so the earlier rows print first and stay
+    comparable from run to run:
+    - 375x812, 1280x720 and 1440x900;
+    - Slice 25's short portrait phones 375x667 and 360x640, and landscape phones 667x375
+      and 740x360;
+    - Slice 26's 375x626 (what an upright iPhone's Safari leaves the page) and 814x312
+      (a Plus/Pro Max iPhone held sideways);
+    - Slice 27's 724x257 (Safari on a 375x812 iPhone held sideways, tab bar shown). It
+      is the one viewport where `fulltrack:` decides the layout.
+  - **States.** It visits first load, the largest gallery scenario loaded by its card,
+    and the gallery reopened. Every assertion prints PASS/FAIL with what it measured.
+  - **Phone rows.** At the eight phone-layout viewports (every one but 1280x720 and
+    1440x900), first load and the reopened gallery each add "panel covers the viewport":
+    the full-screen gallery's box must equal the viewport's within 1 px (Slice 26). That
+    makes 186 rows.
+    - Which viewports are phones is written out in the check (`isPhoneLayout`), not read
+      from the page, so a variant that stops matching fails those rows instead of
+      removing them.
+  - **Offline inside the browser too.** Every host but loopback is unresolvable
+    (`--host-resolver-rules` + `--no-proxy-server`). Any request off the preview origin
+    (page, workers, frames) is a FAIL, as is an uncaught page exception.
+  - **Exit codes.** 1 = the run finished with a FAIL row (read the table). 2 = it did
+    not finish: no build, no Chrome, or the 90 s cap (read the ABORTED line). A run
+    takes about 5 s.
+  - **Gated** (Slice 23): it runs last in `npm run check` and as a step of CI's
+    `verify`.
+  - **PLAN entries that carry its history:**
+    - Slice 22's: the failing baseline it was built against.
+    - Slice 25's: the short/landscape matrix and the sizes it still does not gate
+      (568x320, near-square split-screen halves, 5:4 windows under 512 px wide).
+    - Slice 26's: the Safari matrix.
+    - Slice 27's: why 724x300 is not gated (it passes with the header in either place)
+      and that no failed-load state is gated.
+  - **The layout variants:**
+    - `side:` is the side-by-side switch: `md`, or any screen 5:4 or wider.
+    - `onerow:` is the header's one-line rule: 5:4 or wider, at most 43.75rem tall, or
+      an upright phone (`UPRIGHT_PHONE`, under 40rem wide and at most 50rem tall).
+    - `phone:` is the overlay dialogs' full-screen rule: below `md` (written as the
+      exact complement of `md:`), or at most 30rem tall.
+    - `compact:` gives the thin header and transport rows: at most 30rem tall, or
+      `UPRIGHT_PHONE`. Every control there keeps a 44x44 px target (`TOUCH_TARGET`) and
+      an inset white focus ring (`COMPACT_FOCUS_RING`).
+    - `fulltrack:` puts the header above the tower column, a page grid in App.tsx: at
+      most 20rem tall, below `md`, and 5:4 or wider.
+  - All five are plugin variants in `tailwind.config.js`, never `theme.screens`, because
+    a raw screen silently disables `min-*`/`max-*` variants.
+  - **React reads two of them:** `phone:` as `PHONE_QUERY`
+    (`src/components/phoneLayout.ts`) and `compact:` as `COMPACT_QUERY`
+    (`src/components/compactLayout.ts`, for the icon buttons' tooltips). Both are
+    matchMedia subscriptions (`mediaQuery.ts`) that change only on a resize or rotation,
+    and both are pinned to the compiled CSS by `layoutVariants.test.ts`. While a phone
+    overlay is open the rest of the page is inert (`usePhoneModal`).
 
 - Re-render the home-screen icons after changing `docs/icons/app-icon.svg`: `cd app &&
   npx vite-node ../docs/icons/rasterize-icons.mjs` (the layout check's system Chrome,
   offline flags and teardown; two runs give byte-identical PNGs). Commit the SVG with
-  the four PNGs it rewrites. The icon is a PLACEHOLDER (option A) until the human picks
-  one of `docs/icons/proposals/`; swapping is copy, run, commit. Like the perf
-  instruments it lives outside `app/`; `src/webAppManifest.test.ts` checks its output.
+  the four PNGs it rewrites. The icon is option A, "corner" — the human's choice
+  (2026-10-12); B and C stay in `docs/icons/proposals/`. Like the perf instruments it
+  lives outside `app/`; `src/webAppManifest.test.ts` checks its output.
 
 ## Architecture rules (non-negotiable — see PRD §Load-bearing decisions)
 

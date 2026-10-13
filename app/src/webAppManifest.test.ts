@@ -24,8 +24,8 @@
  * THE STATUS BAR IS `black`, not `black-translucent`: translucent draws the page
  * under the clock, which only `cover` plus safe-area padding could undo.
  *
- * THE ICON IS A PLACEHOLDER: `docs/icons/rasterize-icons.mjs` says how to swap
- * it.
+ * THE ICON is option A, "corner" — the human's choice (2026-10-12);
+ * `docs/icons/rasterize-icons.mjs` says how to change it.
  *
  * The manifest, the icons and the iOS tags are static files that no component
  * renders, so no component test can see them break. A wrong icon size or a

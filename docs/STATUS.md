@@ -34,9 +34,11 @@ are fixed (Slice 23), and the reference lap is explicit in the contract —
 `track.referenceLap`, chosen by the pipeline and read by the gap circuit, the tower's
 pace and the ribbon (Slice 24); short and landscape phones get a usable track and
 tower (Slice 25), phones get a full-screen gallery and a modal overlay (Slice 26), and
-short phones get thin bars with 44 px touch targets and an installable home-screen app
-(Slice 27). Quality state on `main`: `npm run check` green with 1081 tests and 0
-warnings, engine coverage 100% per file, the layout check 167/167 over nine viewports
+phones get thin bars with 44 px touch targets (upright up to 800 px tall), an
+installable home-screen app, and — on the shortest landscape phones — the header above
+the tower so the track runs the full height (Slice 27). Quality state on `main`: `npm
+run check` green with 1092 tests and 0 warnings, engine coverage 100% per file, the
+layout check 186/186 over ten viewports, Safari's landscape 724x257 now among them
 (Slices 26–27); 401 pytest with 100% lines + branches on every module; draw-call
 fixture digests unchanged since Slice 16.
 
@@ -67,7 +69,8 @@ most 480 px tall counts as a phone (a Plus/Pro Max iPhone held sideways); the tr
 margins scale with the canvas; the tower scrolls the focused car into view; and the
 layout check gains 375x626 and 814x312 and a direct "panel covers the viewport" row on
 every phone viewport (167 rows over nine). **Slice 27** (compact bars with 44 px touch
-targets, and Add to Home Screen as "F1 Telemetry") is built on top of it as PR #82,
-awaiting the human's rulings on the icon and the open trade-offs. A real-iPhone check
-is the missing evidence for both. Then **the board: 18 → 20**, with the fixture
-asymmetry overhaul behind them.
+targets, and Add to Home Screen as "F1 Telemetry") is built on top of it as PR #82
+with icon A and two batches of the human's rulings applied; the compact controls' look
+waits for the human's phone check and the "Load replay JSON" wording for the human's
+pick. A real-iPhone check is the missing evidence for both. Then **the board: 18 →
+20**, with the fixture asymmetry overhaul behind them.

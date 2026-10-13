@@ -7,17 +7,17 @@
  * commit both. Nothing in `npm run check` runs it (it lives outside `app/`, like
  * `docs/perf/`); `src/webAppManifest.test.ts` checks what it wrote.
  *
- * THE ICON IS A PLACEHOLDER (Slice 27). `docs/icons/proposals/` holds three
+ * THE ICON IS OPTION A, "corner" — the human's choice (2026-10-12). `docs/icons/proposals/` holds the three
  * designs: A "corner" (the favicon's speed-painted corner, grown up), B "circuit"
  * (a closed circuit on the app's track ribbon, one car) and C "trace" (a lap's
- * speed trace, height is speed). `app-icon.svg` is a byte-for-byte copy of A until
- * the human chooses. Swapping is one step, from the repo root:
+ * speed trace, height is speed). `app-icon.svg` is a byte-for-byte copy of A.
+ * Changing it is one step, from the repo root:
  *
  *   cp docs/icons/proposals/option-b-circuit.svg docs/icons/app-icon.svg
  *   cd app && npx vite-node ../docs/icons/rasterize-icons.mjs
  *
  * then commit `app-icon.svg` with the four PNGs it rewrote (git shows exactly
- * those five files). Once one is chosen, `proposals/` can go.
+ * those five files).
  *
  * USAGE (from `app/`, where the toolchain lives — CLAUDE.md's Gotchas):
  *

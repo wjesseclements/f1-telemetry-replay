@@ -4819,7 +4819,7 @@ the 2024 pit cycle's swaps reading as moves. The pre-registered 300 ms stands
 untouched — no tune requested. **"NO SIG" ratified** as the compact spelling.
 Push + PR + auto-merge authorised.
 
-### [ ] Slice 27 — compact bars with 44 px touch targets (C1), and Add to Home Screen (F) (built 2026-10-12; awaiting the human's rulings and a phone check)
+### [ ] Slice 27 — compact bars with 44 px touch targets (C1), and Add to Home Screen (F) (built 2026-10-12; two batches of rulings applied; awaiting ruling 4, the copy and a phone check)
 
 **Filed 2026-10-12 by the human's rulings on Slice 26's drafts.** Built on
 `feat/slice-27-compact-bars-home-screen`, stacked on Slice 26's final tip; the PR
@@ -4832,12 +4832,101 @@ squashes it.
 - **F = build it.** The home-screen name is **"F1 Telemetry"** (manifest `short_name`
   and `apple-mobile-web-app-title`). The manifest's full name may stay the page's
   `<title>`, "F1 Telemetry Replay".
-- **The icon is still being chosen** (A corner / B circuit / C trace). Wire A as the
-  placeholder and make the swap one documented step.
+- **The icon is option A, "corner"** (today's favicon, grown up) — the human's final
+  choice, 2026-10-12. B and C stay in `docs/icons/proposals/` for reference.
+
+**Rulings, second batch (human, 2026-10-12).**
+- **2. Header above the tower column at ≤320 px tall.** The track runs from the top of
+  the screen to the transport bar. The event/session/drivers line is dropped there (the
+  tower lists the drivers), and every control keeps its 44 px target. Gate 724x257; gate
+  724x300 too if it adds coverage and passes. Loosen nothing.
+- **3. 44 pt compact controls up to ~800 px tall.** `compact:`'s upright clause goes
+  43.75rem → 50rem tall, still under 40rem wide, with the meta line on one row there.
+- **4. The compact controls' look:** deferred until the human tries the preview.
+  Unchanged.
+- **5. The compact focus ring is white** (`--c-txt`), so it no longer looks like the
+  selected speed. Desktop rings unchanged.
+- **6. Tooltips on the icon-only header buttons:** a `title` repeating the EXISTING
+  label verbatim, only where the label is visually hidden.
+- **7. The four "Load replay JSON" mentions** are copy the human will pick. Unchanged.
+- **8. Chrome's "Install app"** is accepted as is.
+- **The icon is option A** (final).
+
+**Applied** (c281f92, b7b1754, 3044824, 3888feb, 0076da4).
+
+- **2: `fulltrack:`** (c281f92, 0076da4) = at most 20rem tall, AND under md
+  (47.9375rem), AND 5:4 or wider.
+  - The page becomes a grid: the track cell spans the top two rows, and the header and
+    the tower share a 16rem second column. The track/tower wrapper is `display:
+    contents`, so DOM and tab order are unchanged.
+  - It applies only while a replay is laid out; the error and no-replay states keep the
+    header across the top.
+  - In that column the header uses 4 px padding and gaps. With 8 px it wrapped to 96 px
+    (title 144.4 + 2×44 = 248.4 > 239).
+  - The meta line is `sr-only` there.
+  - Measured, 22 cars:
+    - 724x257: track 168 → 212, the tower unchanged at 168 (list 152), header 44,
+      transport 45.
+    - 724x300: 211 → 255.
+    - 568x320: 231.
+  - **Not at md+:** 814x312 keeps the header across the top (223 px; gated rows
+    byte-identical). Its column is 224 px with the md readout, and the header needs
+    248.4.
+  - **Failed load** (0076da4): a plain `auto` header row grew to 264 px with the error
+    box and pushed the bar off a 257 px screen (y 264–309, page 309 tall). The row is
+    now `minmax(0,auto)` and the header scrolls: bar at y 212–257, track 212, the error
+    readable in the header column, tower row 0. Ungated.
+
+- **3: `UPRIGHT_PHONE`** = under 40rem wide and at most 50rem tall (b7b1754).
+  - `compact:` = at most 30rem tall, or `UPRIGHT_PHONE`.
+  - `onerow:` gains `UPRIGHT_PHONE` as its third case, so every compact screen stays
+    onerow and `compact:min-w-0` still wins.
+  - 430/440 px are 26.9/27.5rem, so the Pro Max upright sizes are caught.
+  - Measured, 22-car track, Safari matrix:
+
+| size | track | header | transport |
+|---|---|---|---|
+| 375x734 | 267 → 334 | 138 → 44 | 109 → 133 |
+| 375x768 | 301 → 355 | 138 → 44 | 109 → 133 |
+| 390x797 | 330 → 372 | 138 → 44 | 109 → 133 |
+| 430x752 | 301 → 345 | 122 → 44 | 109 → 133 |
+| 440x776 | 325 → 359 | 122 → 44 | 109 → 133 |
+
+  - **The one loss:** the one-car boot view at 430x752, 376 → 356. Its transport takes
+    three rows (75 → 133).
+  - 375x812, 390x844 and md+ are unchanged: standard digest 5a321ac1, identical to the
+    tip.
+
+- **5: the compact rings add `ring-txt`** (3044824). Measured after a real Tab press:
+  - 724x257 and 375x734: every control's ring is #e6eaf0, inset. The selected 2× keeps
+    its accent border with the white ring inside.
+  - 375x812 and 1440x900: the accent, outside, unchanged.
+
+- **6: `useCompactLayout`** (compactLayout.ts, 3888feb) reads `COMPACT_QUERY`, pinned to
+  the compiled `compact:` string.
+  - It is Slice 26's matchMedia store, now shared in mediaQuery.ts, so it re-renders
+    only on a resize or rotation across the line.
+  - The `title` repeats each label from the same constant as its sr-only text: on the
+    toggle, and on the picker's label.
+  - Present at 724x257, 375x734, 430x752 and 1280x480; absent at 375x812 and 1440x900.
+  - Chrome: names unchanged, no description. VoiceOver is unmeasured.
+
+**Evidence (after the second batch, HEAD 0076da4).**
+- `npm run check`: 1092 tests, 0 warn/error in the full log, engine coverage 100%,
+  check:layout 186/186. Every commit was green at its own state.
+- Draw-call md5s are unchanged (cb43a0f8… / e30b5b6e…).
+- Extended Safari matrix (12 sizes): digest 0d2f30fd, with 0 off-origin requests and 0
+  exceptions.
+- Standard matrix: digest 5a321ac1 (unchanged). 34/55 screenshots are byte-identical,
+  including all of 1280x720, 1440x900, 375x812 and 390x844. The other 21 differ only in
+  the toggle's 320-px inset ring (ruling 5).
+- Touch targets at 724x257, 375x734 and 430x752: every control is ≥44x44, a 44 px centre
+  square hit-tests 1.00, and nothing overlaps.
+- Mutations: 24/24 caught, plus the gate mutation.
 
 **C1: thin rows, every control 44x44 CSS px** (39ff136, 6eee1f7).
 - **Trigger.** `compact:` is a plugin variant: at most 30rem tall, OR under 40rem wide
-  and at most 43.75rem tall.
+  and at most 50rem tall (`UPRIGHT_PHONE`; 43.75rem until ruling 3).
   - It catches every landscape phone: Safari's 724x257 and 724x300, 667x375, 740x360,
     and a Plus/Pro Max held sideways (~814x312).
   - It catches the short upright ones: 375x626, 390x664, 375x667, 360x640.
@@ -4897,21 +4986,18 @@ squashes it.
 - **What it does not change.** The bundle is byte-identical, check:layout's rows are
   byte-identical, and Chrome reports no manifest or installability errors.
 - **Estimated standalone sizes:** landscape 724x375 / 724x354 get 286 / 265 px of track.
-- **Upright installed (375x734–768) is not `compact:`** (>700 px tall). It keeps the
-  106–138 px header and the small controls. That is an open ruling.
+- **Upright installed (~375x734 to ~390x797) is `compact:`** since ruling 3. Header 44,
+  transport 133, 22-car track 267–330 → 334–372.
 
-**The gate.** Nine viewports and 167 rows (Slice 26's), all PASS.
-- Against Slice 26's tip, 36 rows change values only (6 at each of the six compact gated
-  viewports, 814x312 included), all PASS.
-- **724x257 is NOT gated.** 16 of its 17 rows pass; "canvas height" is 168.0 against a
-  200.0 floor. The floor was not loosened.
-- Measured ways to close the 32 px gap:
-  - (a) Header above the tower column at ≤320 px tall below md, prototyped and not
-    committed: 212 px, 187/187 with 724x257/724x300/814x312 appended, tower unchanged.
-    Cost: no room for the event/session/driver line.
-  - (b) C3's auto-hiding bars. The gate would need overlay-aware rows.
-  - (c) A landscape floor, which is a loosening.
-  - (d) Gate 724x300 (211 px) as a stand-in.
+**The gate.** Ten viewports, 186 rows, all PASS (ruling 2).
+- 724x257 is appended after the nine. Its 19 rows pass strictly: canvas 212.0 (min
+  200.0); aside y=[44,212] beside canvas y=[0,212]; header y=[0,44]; bar y=[212,257].
+- The first 167 rows are byte-identical to the tip (adda83b).
+- Narrowing `fulltrack:` to 15rem fails the row (168.0, 185/186): it is the one viewport
+  where `fulltrack:` decides.
+- 724x300 is not gated. It passes with the header in either place (255 or 211 px), so
+  none of its rows can fail on this layout's account.
+- Of the four ways to close 724x257's 32 px gap, (a) was ruled.
 
 **Evidence** (after the review's fix pass and the restack).
 - **`npm run check`:** 1081 tests, 0 warn/error, engine coverage 100%, check:layout
@@ -4951,15 +5037,16 @@ but it is an icon on compact screens.
 - a failed-load state in the layout check;
 - the error box inside the compact landscape header (pre-existing).
 
-**Open for the human (2026-10-12).** The icon (A corner / B circuit / C trace); how to
-close Safari's 724x257 gap (168 px of track against the 200 px floor); whether the 44 pt
-floor should reach taller phones and the installed app held upright (not `compact:`
-today); the compact controls' look (44 px bordered boxes vs smaller chips with invisible
-44 px hit areas); the compact focus ring (accent, alike to the selected speed, vs
-`--c-txt`); a tooltip repeating the existing label on the icon-only buttons; the four
-"Load replay JSON" mentions (copy); accepting that Chrome offers "Install app" on
-desktop
-and Android; and the scrubber's 44 px height on iPhone, where WebKit drags by the thumb.
+**Open for the human (2026-10-12, after the second batch).**
+- Ruling 4 (the compact controls' look) and ruling 7 (the four "Load replay JSON"
+  mentions).
+- Whether `fulltrack:` should reach md-wide short screens (814x312).
+- Whether to gate 724x300 anyway.
+- The 430x752 one-car boot view's −20 px.
+- The 6.6 px margin of the one-row header above the tower (a device font check).
+- VoiceOver with a `title` equal to the name.
+- Device-only: WebKit's range thumb, the real standalone viewports, the white inset
+  ring, and the install.
 
 ### [ ] Slice 20 — colour distinction under the luminance floor
 
