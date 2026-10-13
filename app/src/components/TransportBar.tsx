@@ -32,6 +32,8 @@
  * gaps and margins are what keep the scrubber's width: 122 px at 667x375 with 22
  * cars, where 52 px of extra button width would have left it 92. Same controls,
  * same order, same names; no button changes width between Play and Pause.
+ * On the shortest landscape phones (`fulltrack:`) the page is a grid (App.tsx,
+ * `FULL_TRACK_GRID`), and the bar is its bottom row, across both columns.
  */
 import { useMemo } from "react";
 import { formatLapIndicator, formatLapTime } from "../engine/format";
@@ -80,7 +82,7 @@ export function TransportBar({ replay }: TransportBarProps) {
   return (
     <section
       aria-label="Playback controls"
-      className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-line bg-panel px-4 py-2 compact:gap-x-1.5 compact:gap-y-0 compact:px-2 compact:py-0"
+      className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-line bg-panel px-4 py-2 compact:gap-x-1.5 compact:gap-y-0 compact:px-2 compact:py-0 fulltrack:col-span-full fulltrack:row-start-3"
     >
       <button
         type="button"

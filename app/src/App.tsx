@@ -17,6 +17,38 @@ import { useTransport } from "./store/transport";
 
 const GALLERY_PANEL_ID = "featured-replays";
 
+/**
+ * On the shortest landscape phones (`fulltrack:`, tailwind.config.js; Safari's
+ * 724x257) the page is a grid instead of a column, so the header can sit above
+ * the tower rather than across the top of the screen:
+ *
+ *     track | header
+ *     track | tower        the track cell spans both rows: the full height
+ *     transport bar        from the top of the screen to the transport bar.
+ *
+ * The second column is the tower's own width below `md` (`side:w-64` in Hud.tsx,
+ * 16rem), written out so the header's one row cannot widen it; the rows are the
+ * header's height, the rest, and the transport bar's. DOM order, and with it the
+ * tab order, is unchanged: header, track, tower, transport bar. The wrapper that
+ * puts the track and the tower side by side elsewhere is `display: contents`
+ * here, so its two children are the grid's.
+ *
+ * Only with a replay on screen: the error and the no-replay states have no tower
+ * to sit above, and keep the header across the top.
+ */
+const FULL_TRACK_GRID =
+  "fulltrack:grid fulltrack:grid-cols-[minmax(0,1fr)_16rem] fulltrack:grid-rows-[auto_minmax(0,1fr)_auto]";
+/**
+ * The header in that grid: the top of the second column, ruled off from the
+ * track like the tower under it. 4 px padding and gaps (8 elsewhere on a short
+ * phone) keep it one 44 px row in the 256 px column: the title is 144.4 px and
+ * the two boxes 44 each, 248.4 px of a 239 px content box with 8 px, so the
+ * header wrapped to 96 px and the tower lost another 52; with 4 px they take
+ * 240.4 of 247 (measured in Chrome, SF Mono).
+ */
+const FULL_TRACK_HEADER =
+  "fulltrack:col-start-2 fulltrack:row-start-1 fulltrack:gap-x-1 fulltrack:border-l fulltrack:border-line fulltrack:px-1";
+
 export interface AppProps {
   /**
    * A bootstrap load failure, or `null`. A prop rather than store state: the
@@ -67,18 +99,27 @@ export default function App({ bootstrapError = null }: AppProps) {
   // `TrackCanvas` — a subscription up here would re-render the canvas with them.
   useTransportKeys(replay);
 
+  // Whether the replay's layout is on screen: the one with a tower column for
+  // the header to sit above on the shortest phones (`FULL_TRACK_GRID`).
+  const replayShown = bootstrapError === null && replay !== null;
+
   return (
     // `h-dvh`, not `h-screen`: `100vh` on mobile browsers is the viewport WITHOUT the
     // retracting address bar, so the transport bar sat under it until you scrolled.
-    <main className="flex h-dvh flex-col bg-bg text-txt">
+    <main
+      className={`flex h-dvh flex-col bg-bg text-txt ${replayShown ? FULL_TRACK_GRID : ""}`}
+    >
       {/* On a short phone (`compact:`, tailwind.config.js) the header is one thin
           row, 44 px instead of 54 (landscape) or 82 (upright, where it wrapped to
           two rows): no vertical padding, a smaller title, and the two buttons as
-          44 px icon boxes, the ruled touch-target floor (`touchTarget.ts`). Nothing
-          is hidden or moved; every control keeps its place in the tab order and
-          its name. It still wraps, which only a failed load's error box makes it
-          do (measured: a no-wrap row pushed that box off a 375 px screen). */}
-      <header className="flex flex-wrap items-baseline gap-x-3 gap-y-2 px-4 py-3 compact:items-center compact:gap-x-2 compact:px-2 compact:py-0">
+          44 px icon boxes, the ruled touch-target floor (`touchTarget.ts`). Every
+          control keeps its place in the tab order and its name. It still wraps,
+          which only a failed load's error box makes it do (measured: a no-wrap
+          row pushed that box off a 375 px screen). On the shortest landscape
+          phones it moves above the tower column (`FULL_TRACK_HEADER`). */}
+      <header
+        className={`flex flex-wrap items-baseline gap-x-3 gap-y-2 px-4 py-3 compact:items-center compact:gap-x-2 compact:px-2 compact:py-0 ${replayShown ? FULL_TRACK_HEADER : ""}`}
+      >
         <h1 className="font-mono text-sm font-bold tracking-[0.2em] compact:shrink-0 compact:text-xs compact:tracking-[0.15em]">
           TELEMETRY REPLAY
         </h1>
@@ -90,9 +131,11 @@ export default function App({ bootstrapError = null }: AppProps) {
             phone and 56 px of a 375x667 one (Slice 25). `min-w-24` keeps it from
             being squeezed to "M…": with under 6rem left beside the title it
             moves to a line of its own instead. The controls still wrap when they
-            alone cannot fit. */}
+            alone cannot fit. Above the tower column (`fulltrack:`) there is no
+            room for it at all, and it is dropped from view (ruled 2026-10-12;
+            the tower lists every driver); a screen reader still reads it. */}
         {replay !== null && (
-          <p className="font-mono text-xs text-dim onerow:min-w-24 onerow:flex-1 onerow:truncate compact:min-w-0">
+          <p className="font-mono text-xs text-dim onerow:min-w-24 onerow:flex-1 onerow:truncate compact:min-w-0 fulltrack:sr-only">
             {replay.meta.event} · {replay.meta.session} ·{" "}
             {replay.cars.map((car) => car.driver).join(" ")}
           </p>
@@ -130,9 +173,11 @@ export default function App({ bootstrapError = null }: AppProps) {
               up, `tailwind.config.js`), and stack otherwise. `min-h-0`/`min-w-0` on
               the canvas cell in BOTH directions: a flex item defaults to its
               content's minimum size, and the canvas would otherwise refuse to shrink
-              and push the HUD off screen. */}
-          <div className="flex min-h-0 flex-1 flex-col side:flex-row">
-            <div className="relative min-h-0 min-w-0 flex-1">
+              and push the HUD off screen. On the shortest landscape phones the
+              wrapper steps aside (`contents`) and the track cell spans the
+              page grid's top two rows (`FULL_TRACK_GRID`). */}
+          <div className="flex min-h-0 flex-1 flex-col side:flex-row fulltrack:contents">
+            <div className="relative min-h-0 min-w-0 flex-1 fulltrack:col-start-1 fulltrack:row-span-2 fulltrack:row-start-1">
               {/* The canvas is memoised, so mounting and unmounting the panel
                   beside it does not re-render it — the replay animates behind the
                   scrim without interruption. Pinned in `App.test.tsx`. On a

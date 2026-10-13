@@ -348,9 +348,13 @@ export function Hud({ replay }: HudProps) {
     // the list 222 px for that 227 px block. Tailwind prints `md:` after `side:`,
     // so `md:w-56` and `md:p-4` win from 768 px up (pinned in
     // `layoutVariants.test.ts`).
+    //
+    // On the shortest landscape phones (`fulltrack:`, Slice 27) the page is a
+    // grid and the header sits above this column (App.tsx, `FULL_TRACK_GRID`):
+    // the sidebar is the second column's lower row, the 256 px width unchanged.
     <aside
       aria-label="Telemetry"
-      className="flex max-h-[max(40%,min(13.75rem,100%-max(12.5rem,30dvh+1px)))] shrink-0 flex-col border-t border-line bg-panel p-3 side:max-h-none side:w-64 side:border-l side:border-t-0 side:py-2 md:w-56 md:p-4"
+      className="flex max-h-[max(40%,min(13.75rem,100%-max(12.5rem,30dvh+1px)))] shrink-0 flex-col border-t border-line bg-panel p-3 side:max-h-none side:w-64 side:border-l side:border-t-0 side:py-2 md:w-56 md:p-4 fulltrack:col-start-2 fulltrack:row-start-2"
     >
       {/* `overflow-y-auto` + `min-h-0` because twenty cars are taller than any
           sidebar or strip: the list shrinks to what the aside allows and scrolls,

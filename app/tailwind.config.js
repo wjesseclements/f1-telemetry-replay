@@ -111,6 +111,36 @@ const PHONE = `not all and (min-width: ${defaultTheme.screens.md}), (max-height:
  */
 const COMPACT = `(max-height: 30rem), (max-width: 39.9375rem) and ${SHORT}`;
 
+/**
+ * A landscape phone at most 20rem (320 px) tall (Slice 27, ruled 2026-10-12): the
+ * header leaves the top of the screen for the top of the tower column, so the
+ * track runs the whole height from the top of the screen to the transport bar.
+ *
+ * Safari on a 375x812 iPhone held sideways leaves the page 724x257 with its tab
+ * bar shown. There the header (44 px) and the transport bar (45) left the track
+ * 168 px, under the layout check's 200 px floor; with the header above the tower
+ * the track is 212 px, and the tower keeps its 168 (it was already under the
+ * header). The header's meta line has no room beside the title and the two 44 px
+ * boxes in the 256 px column, and is dropped there (ruled; the tower lists every
+ * driver): `sr-only`, so a screen reader still reads it.
+ *
+ * Three clauses, all needed:
+ *  - at most 20rem tall: 724x257 and 724x300 (Safari, tab bar shown or not) and
+ *    the smallest phone held sideways (568x320); not 667x375 or 740x360, whose
+ *    track already clears the floor with the header across the top;
+ *  - narrower than `md`, where the tower column is `side:w-64` (Hud.tsx), 256 px,
+ *    room for the header's one row. From `md` the column is 224 px with the
+ *    column readout, so 814x312 (a Plus or Pro Max held sideways, 223 px of
+ *    track already) keeps the header across the top. 47.9375rem, as `COMPACT`
+ *    writes its width; a fractional width just under 768 px falls to the header
+ *    across the top, the layout every other short screen has;
+ *  - `WIDE`, so the track and the tower are side by side (`side:`), the only
+ *    layout with a tower column to sit above. Every landscape phone is.
+ *
+ * The grid itself is App.tsx's: this variant only says where it applies.
+ */
+const FULL_TRACK = `(max-height: 20rem) and (max-width: 47.9375rem) and ${WIDE}`;
+
 /** @type {import('tailwindcss').Config} */
 export default {
   // What ships, never its tests. Tailwind compiles every word in these files that
@@ -175,6 +205,9 @@ export default {
       addVariant("phone", `@media ${PHONE}`);
       // Thin header and transport rows on a short phone, 44 px targets kept.
       addVariant("compact", `@media ${COMPACT}`);
+      // The header above the tower column on the shortest landscape phones, so
+      // the track runs the full height. Last, so it wins over `compact:`.
+      addVariant("fulltrack", `@media ${FULL_TRACK}`);
     }),
   ],
 };

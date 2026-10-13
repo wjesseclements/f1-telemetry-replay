@@ -175,6 +175,42 @@ describe("the side-by-side layout's variants", () => {
     expect(compact, "the short phone's rule").toBeGreaterThan(floor);
   });
 
+  it("compiles `fulltrack:` to at most 320 px tall, narrower than `md`, side by side (Slice 27)", () => {
+    // Ruled 2026-10-12: the header above the tower column on the shortest
+    // landscape phones (Safari's 724x257). Narrower than `md`, where the tower
+    // column is 256 px; and 5:4 or wider, the `side:` shape, so the grid never
+    // forms on a stacked page with no tower column to sit above.
+    expect(mediaFor(".fulltrack\\:grid")).toBe(
+      "(max-height:20rem)and(max-width:47.9375rem)and(min-aspect-ratio:5/4)",
+    );
+    expect(ruleBody(".fulltrack\\:grid")).toContain("display:grid");
+    expect(ruleBody(".fulltrack\\:contents")).toContain("display:contents");
+  });
+
+  it("makes the grid's second column the tower's own width, and its header spacing win (Slice 27)", () => {
+    // The column is written out (App.tsx, `FULL_TRACK_GRID`) so the header's one
+    // row cannot widen it: it has to be the width `side:w-64` gives the tower
+    // below `md`, or the tower would sit in a column of another width. And the
+    // header's 4 px padding and gaps, which keep it one row in that column, must
+    // come after the thin header's 8 px ones, which match there too.
+    const block = css.slice(
+      css.lastIndexOf("@media", ruleAt(".fulltrack\\:grid")),
+    );
+    expect(ruleBody(".side\\:w-64")).toBe("width:16rem;");
+    expect(block.replace(/\s/g, "")).toContain(
+      "grid-template-columns:minmax(0,1fr)16rem",
+    );
+    for (const [compact, full] of [
+      [".compact\\:px-2", ".fulltrack\\:px-1"],
+      [".compact\\:gap-x-2", ".fulltrack\\:gap-x-1"],
+    ]) {
+      expect(ruleAt(compact), compact).toBeGreaterThan(-1);
+      expect(ruleAt(full), `${full} after ${compact}`).toBeGreaterThan(
+        ruleAt(compact),
+      );
+    }
+  });
+
   it("lets the `md` sidebar's size win over the sidebar's below `md`", () => {
     // The aside is `side:w-64 side:py-2 md:w-56 md:p-4` (Hud.tsx). From 768 px
     // up both variants match, and with equal specificity the later rule wins.

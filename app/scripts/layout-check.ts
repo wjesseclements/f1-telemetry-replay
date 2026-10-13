@@ -4,7 +4,7 @@
  * jsdom has no layout engine: every box it reports is 0x0, so the app's tests can
  * prove WHAT renders but never WHERE. This drives the system's headless Chrome
  * over the DevTools Protocol against the BUILT app (`dist/`, served by Vite's own
- * `preview()`) and asserts the geometric facts a visitor depends on, at nine
+ * `preview()`) and asserts the geometric facts a visitor depends on, at ten
  * viewports (`VIEWPORTS`) and in three states (`layout/states.ts`):
  *
  *   A  first load — the gallery panel open over the committed fixture;
@@ -92,11 +92,6 @@ const TEARDOWN_STEP_MS = 2_000;
 // "panel covers the viewport" rows, in A and C at every phone-layout viewport
 // (`isPhoneLayout`, below). 375x626's "last card reachable" also fails with the
 // gallery in the cell, but only by ~10 px of footer copy (Slice 26's review).
-// Safari's landscape size, 724x257, is NOT gated: even with Slice 27's thin
-// header and transport rows (44 and 45 px, every control a 44 px target) its
-// track is 168 px (160 before them), under the 200 px floor in
-// `layout/states.ts`, and that floor is not loosened to admit it. Closing the
-// last 32 px is an open ruling (Slice 27's PLAN entry). Its other rows pass.
 //
 // Then 814x312, appended last (Slice 26's review): a Plus or Pro Max iPhone held
 // sideways, `md` wide but at most 30rem tall. It is the one gated viewport where
@@ -105,6 +100,17 @@ const TEARDOWN_STEP_MS = 2_000;
 // `layoutVariants.test.ts`'s compiled string did. Emulated as every viewport
 // 768 px or wider is (`mobile: false`); measured with `mobile: true` as well,
 // its 19 rows are byte-identical.
+//
+// Then Safari's landscape size, 724x257, appended last (Slice 27): a 375x812
+// iPhone held sideways with Safari's tab bar shown (measured from the human's
+// screenshots, 2026-10-11). It is the one gated viewport where `fulltrack:`
+// (`tailwind.config.js`) decides the layout: with the header above the tower
+// column its track is 212 px, and with the header across the top it was 168,
+// under the 200 px floor in `layout/states.ts`, which was not loosened to admit
+// it. So its "canvas height" row is what fails if that variant stops matching.
+// Safari's other landscape size, ~724x300 with the tab bar hidden, is not
+// gated: it passes with the header in either place (255 px of track, or 211),
+// so no row of it could fail on this layout's account.
 const VIEWPORTS: readonly { width: number; height: number }[] = [
   { width: 375, height: 812 },
   { width: 1280, height: 720 },
@@ -115,6 +121,7 @@ const VIEWPORTS: readonly { width: number; height: number }[] = [
   { width: 360, height: 640 },
   { width: 375, height: 626 },
   { width: 814, height: 312 },
+  { width: 724, height: 257 },
 ];
 /**
  * Below this width the emulated device is a phone (`mobile: true`: meta-viewport

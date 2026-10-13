@@ -182,6 +182,67 @@ describe("App", () => {
     expect(picker.className.split(" ")).not.toContain("compact:shrink-0");
   });
 
+  it("puts the header above the tower on the shortest landscape phones, the track the full height (Slice 27)", () => {
+    // Ruled 2026-10-12: at most 320 px tall (`fulltrack:`; Safari's 724x257) the
+    // page is a grid, the track cell spans its top two rows, and the header and
+    // the tower share the second column. Across the top, the header left the
+    // track 168 px there, under the layout check's 200 px floor; above the tower
+    // it is 212. The meta line is dropped from view there (ruled; the tower lists
+    // every driver), and stays in the DOM. jsdom applies no media query, so this
+    // pins the classes; the layout check measures the geometry at 724x257, and
+    // `layoutVariants.test.ts` what `fulltrack:` compiles to.
+    useTransport.setState({ replay });
+    const { container } = render(<App />);
+    const main = container.querySelector("main")!;
+    expect(main).toHaveClass(
+      "fulltrack:grid",
+      "fulltrack:grid-cols-[minmax(0,1fr)_16rem]",
+      "fulltrack:grid-rows-[auto_minmax(0,1fr)_auto]",
+    );
+    expect(main.querySelector(":scope > header")).toHaveClass(
+      "fulltrack:col-start-2",
+      "fulltrack:row-start-1",
+      "fulltrack:px-1",
+      "fulltrack:gap-x-1",
+    );
+    const trackCell =
+      container.querySelector("canvas")!.parentElement!.parentElement!;
+    expect(trackCell).toHaveClass(
+      "fulltrack:col-start-1",
+      "fulltrack:row-start-1",
+      "fulltrack:row-span-2",
+    );
+    expect(trackCell.parentElement).toHaveClass("fulltrack:contents");
+    expect(
+      screen.getByRole("complementary", { name: "Telemetry" }),
+    ).toHaveClass("fulltrack:col-start-2", "fulltrack:row-start-2");
+    expect(
+      screen.getByRole("region", { name: "Playback controls" }),
+    ).toHaveClass("fulltrack:col-span-full", "fulltrack:row-start-3");
+    const line = screen.getByText(
+      new RegExp(`${replay.meta.event}.*${replay.cars[0].driver}`),
+    );
+    expect(line).toHaveClass("fulltrack:sr-only");
+  });
+
+  it("keeps the header across the top when no replay is laid out (Slice 27)", () => {
+    // The error and the no-replay states have no tower for the header to sit
+    // above. With the grid on `main` regardless, the error panel would fill the
+    // first free cell, beside the header in the top row.
+    for (const ui of [
+      <App key="none" />,
+      <App key="error" bootstrapError="x" />,
+    ]) {
+      const { container, unmount } = render(ui);
+      const main = container.querySelector("main")!;
+      const fullTrack = (el: Element) =>
+        [...el.classList].filter((c) => c.startsWith("fulltrack:"));
+      expect(fullTrack(main)).toEqual([]);
+      expect(fullTrack(main.querySelector(":scope > header")!)).toEqual([]);
+      unmount();
+    }
+  });
+
   it("shows the speed legend, generated from the thermal ramp", () => {
     useTransport.setState({ replay });
     const { container } = render(<App />);
