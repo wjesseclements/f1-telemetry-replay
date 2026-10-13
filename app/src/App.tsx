@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { flushSync } from "react-dom";
+import { useCompactLayout } from "./components/compactLayout";
 import { FeaturedPanel } from "./components/FeaturedPanel";
 import { COMPACT_FOCUS_RING, FOCUS_RING } from "./components/focus";
 import { Hud } from "./components/Hud";
@@ -16,6 +17,8 @@ import { TrackCanvas } from "./render/TrackCanvas";
 import { useTransport } from "./store/transport";
 
 const GALLERY_PANEL_ID = "featured-replays";
+/** The gallery toggle's label: its text, or its `sr-only` name and tooltip. */
+const GALLERY_LABEL = "Featured replays";
 
 /**
  * On the shortest landscape phones (`fulltrack:`, tailwind.config.js; Safari's
@@ -99,6 +102,11 @@ export default function App({ bootstrapError = null }: AppProps) {
   // `TrackCanvas` — a subscription up here would re-render the canvas with them.
   useTransportKeys(replay);
 
+  // Whether the header's buttons are icons (`compact:`), for the toggle's
+  // tooltip. Changes on a resize or rotation across the line, never per frame;
+  // the canvas is memoised, so App re-rendering then does not redraw it.
+  const compact = useCompactLayout();
+
   // Whether the replay's layout is on screen: the one with a tower column for
   // the header to sit above on the shortest phones (`FULL_TRACK_GRID`).
   const replayShown = bootstrapError === null && replay !== null;
@@ -127,9 +135,9 @@ export default function App({ bootstrapError = null }: AppProps) {
         {/* On a wide screen (5:4 and up), a short one (at most 700 px tall) or
             an upright phone whose header is a thin row (under 640 px wide and at
             most 800 px tall), `onerow:` in tailwind.config.js, this line takes
-            whatever the title's
-            row leaves and truncates its tail. The tail is the driver list, the
-            tower already lists every driver, and the full line stays in the DOM.
+            whatever the title's row leaves and truncates its tail. The tail is
+            the driver list, the tower already lists every driver, and the full
+            line stays in the DOM.
             Wrapped, 22 drivers cost the track 52–68 px of a 360–412 px landscape
             phone and 56 px of a 375x667 one (Slice 25). `min-w-24` keeps it from
             being squeezed to "M…": with under 6rem left beside the title it
@@ -151,13 +159,15 @@ export default function App({ bootstrapError = null }: AppProps) {
           onClick={() => (galleryOpen ? closeGallery() : setGalleryOpen(true))}
           aria-expanded={galleryOpen}
           aria-controls={GALLERY_PANEL_ID}
-          // No `title` tooltip: a touch browser shows none, and wherever the
-          // label is visible it would only repeat it. A desktop window at most
-          // 480 px tall is `compact:` too, and there the icon has no tooltip.
+          // The label as a tooltip, only where it is visually hidden behind the
+          // icon (ruled 2026-10-12): a desktop window at most 480 px tall is
+          // `compact:` too, and a mouse there gets a name for the icon. Where the
+          // label shows, a tooltip would only repeat it.
+          title={compact ? GALLERY_LABEL : undefined}
           className={`rounded border border-line px-3 py-1.5 font-mono text-xs text-dim transition-colors hover:text-txt compact:flex compact:shrink-0 compact:items-center compact:justify-center compact:p-0 ${TOUCH_TARGET} ${FOCUS_RING} ${COMPACT_FOCUS_RING}`}
         >
           <GalleryIcon className="hidden compact:block" />
-          <span className="compact:sr-only">Featured replays</span>
+          <span className="compact:sr-only">{GALLERY_LABEL}</span>
         </button>
 
         {/* The way a real lap from the pipeline gets in. The committed fixture stays

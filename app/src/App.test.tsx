@@ -26,6 +26,7 @@ import {
   type RecordingContext,
 } from "./test/canvas";
 import App from "./App";
+import { COMPACT_QUERY } from "./components/compactLayout";
 import { PHONE_QUERY } from "./components/phoneLayout";
 import { TrackCanvas } from "./render/TrackCanvas";
 import { parseGalleryManifest } from "./engine/gallery";
@@ -181,6 +182,49 @@ describe("App", () => {
     expect(compactNoWrap).toEqual([]);
     const picker = label.parentElement!.parentElement!;
     expect(picker.className.split(" ")).not.toContain("compact:shrink-0");
+  });
+
+  it("repeats each icon button's label verbatim as a tooltip, only where the label is hidden (Slice 27)", () => {
+    // Ruled 2026-10-12: on `compact:` screens the two header buttons are icons
+    // with `sr-only` labels, so a mouse (a short desktop window) gets the label
+    // as a `title`. Where the label shows, no `title`: it would only repeat it.
+    // The answer comes from a `matchMedia` subscription (`useCompactLayout`),
+    // which a rotation across the line flips; jsdom has no media queries, so
+    // `matchMedia` is stubbed to answer the compact query.
+    let compact = true;
+    const listeners = new Set<() => void>();
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      get matches() {
+        return compact && query === COMPACT_QUERY;
+      },
+      media: query,
+      addEventListener: (_: string, l: () => void) => listeners.add(l),
+      removeEventListener: (_: string, l: () => void) => listeners.delete(l),
+    }));
+    useTransport.setState({ replay });
+    render(<App />);
+    const toggle = screen.getByRole("button", { name: "Featured replays" });
+    const label =
+      screen.getByLabelText<HTMLInputElement>("Load replay JSON").labels![0];
+    const controls = [
+      [toggle, "Featured replays"],
+      [label, "Load replay JSON"],
+    ] as const;
+    for (const [control, text] of controls) {
+      expect(control).toHaveAttribute("title", text);
+      expect(control.querySelector("span")).toHaveTextContent(text);
+    }
+    // The names a screen reader announces are unchanged.
+    expect(toggle).toHaveAccessibleName("Featured replays");
+    expect(screen.getByLabelText("Load replay JSON")).toHaveAccessibleName(
+      "Load replay JSON",
+    );
+
+    // Rotated out of `compact:`: the labels show, and the tooltips go.
+    compact = false;
+    act(() => listeners.forEach((l) => l()));
+    for (const [control] of controls)
+      expect(control).not.toHaveAttribute("title");
   });
 
   it("puts the header above the tower on the shortest landscape phones, the track the full height (Slice 27)", () => {

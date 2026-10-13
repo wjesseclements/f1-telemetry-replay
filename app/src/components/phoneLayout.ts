@@ -9,37 +9,20 @@
  * `layoutVariants.test.ts` pins the two to one compiled string, so the dialog
  * cannot be modal on a screen where it sits in the track cell, or the reverse.
  *
- * A `matchMedia` subscription through `useSyncExternalStore`. The value changes
- * only when the query's answer does — a resize or a rotation across the line —
- * so a component reading it re-renders then and at no other time: nothing here
- * runs per frame (rule 1). Where there is no `matchMedia` (jsdom, a server
- * render) the answer is "not a phone", as `motion.ts` answers for reduced motion.
+ * A `matchMedia` subscription (`mediaQuery.ts`): it re-renders a component only
+ * when the answer changes — a resize or a rotation across the line — never per
+ * frame (rule 1). Where there is no `matchMedia` the answer is "not a phone".
  */
 import { useSyncExternalStore } from "react";
+import { mediaQueryStore } from "./mediaQuery";
 
 /** Below `md`, or at most 30rem tall: exactly what `phone:` compiles to. */
 export const PHONE_QUERY =
   "not all and (min-width: 768px), (max-height: 30rem)";
 
-function phoneQuery(): MediaQueryList | null {
-  return typeof window !== "undefined" &&
-    typeof window.matchMedia === "function"
-    ? window.matchMedia(PHONE_QUERY)
-    : null;
-}
-
-function subscribe(onChange: () => void): () => void {
-  const list = phoneQuery();
-  if (list === null) return () => {};
-  list.addEventListener("change", onChange);
-  return () => list.removeEventListener("change", onChange);
-}
-
-function isPhone(): boolean {
-  return phoneQuery()?.matches ?? false;
-}
+const phone = mediaQueryStore(PHONE_QUERY);
 
 /** Whether `phone:` applies right now; re-renders only when that changes. */
 export function usePhoneLayout(): boolean {
-  return useSyncExternalStore(subscribe, isPhone, () => false);
+  return useSyncExternalStore(phone.subscribe, phone.matches, () => false);
 }

@@ -15,12 +15,17 @@
 import { useId, useState } from "react";
 import { loadReplayFile } from "../data/loadReplayFile";
 import { useTransport } from "../store/transport";
+import { useCompactLayout } from "./compactLayout";
 import { COMPACT_PEER_FOCUS_RING, PEER_FOCUS_RING } from "./focus";
 import { OpenFileIcon } from "./icons";
 import { TOUCH_TARGET } from "./touchTarget";
 
+/** The picker's label: its text, or its `sr-only` name and tooltip. */
+const PICKER_LABEL = "Load replay JSON";
+
 export function ReplayFilePicker() {
   const inputId = useId();
+  const compact = useCompactLayout();
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState<string | null>(null);
 
@@ -63,14 +68,18 @@ export function ReplayFilePicker() {
           // its native Space/Enter activation. The label carries the focus ring.
           className="peer sr-only"
         />
+        {/* The label as a tooltip where the icon replaces it (ruled 2026-10-12;
+            `compactLayout.ts`), as the gallery toggle beside it has. On the
+            label, which is what the pointer is over: the input is `sr-only`. */}
         <label
           htmlFor={inputId}
+          title={compact ? PICKER_LABEL : undefined}
           className={`cursor-pointer rounded border border-line px-3 py-1.5 font-mono text-xs text-dim transition-colors hover:text-txt compact:flex compact:items-center compact:justify-center compact:p-0 ${TOUCH_TARGET} ${PEER_FOCUS_RING} ${COMPACT_PEER_FOCUS_RING}`}
         >
           {/* The text stays the input's accessible name (sr-only) when the
               PLACEHOLDER icon replaces it on a short phone. */}
           <OpenFileIcon className="hidden compact:block" />
-          <span className="compact:sr-only">Load replay JSON</span>
+          <span className="compact:sr-only">{PICKER_LABEL}</span>
         </label>
       </div>
 

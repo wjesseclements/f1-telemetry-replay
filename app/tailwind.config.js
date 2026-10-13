@@ -125,7 +125,8 @@ const PHONE = `not all and (min-width: ${defaultTheme.screens.md}), (max-height:
  *  - at most 30rem (480 px) tall: every landscape phone. Safari leaves 724x257 with
  *    its tab bar and ~724x300 without; Chrome-sized ones are 360–430 tall, a Plus
  *    or Pro Max held sideways about 814x312. No portrait phone is that short. A
- *    desktop window can be (1280x480), and it gets the icons too.
+ *    desktop window can be (1280x480), and it gets the icons too, each with its
+ *    label as a tooltip (`src/components/compactLayout.ts` reads this query).
  *  - an upright phone (`UPRIGHT_PHONE`).
  */
 const COMPACT = `(max-height: 30rem), ${UPRIGHT_PHONE}`;

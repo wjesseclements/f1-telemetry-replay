@@ -20,6 +20,7 @@ import {
   FOCUS_RING,
   PEER_FOCUS_RING,
 } from "./components/focus";
+import { COMPACT_QUERY } from "./components/compactLayout";
 import { PHONE_QUERY } from "./components/phoneLayout";
 import css from "./index.css?inline";
 
@@ -103,6 +104,15 @@ describe("the side-by-side layout's variants", () => {
     expect(mediaFor(".compact\\:py-0")).toBe(
       "(max-height:30rem),(max-width:39.9375rem)and(max-height:50rem)",
     );
+  });
+
+  it("is the query React reads, so a tooltip shows exactly where the label is an icon (Slice 27)", () => {
+    // The header's two buttons carry their label as a `title` only on
+    // `compact:` screens, where the label is `sr-only` behind an icon (ruled
+    // 2026-10-12; `useCompactLayout`). Two copies of one query, held together
+    // here: a tooltip repeating a visible label, or an icon with none, would
+    // follow from either drifting.
+    expect(COMPACT_QUERY.replace(/\s/g, "")).toBe(mediaFor(".compact\\:py-0"));
   });
 
   it("compiles the 44 px touch-target floor and the scrubber's 44 px box under `compact:` (Slice 27)", () => {
