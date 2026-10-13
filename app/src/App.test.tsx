@@ -829,7 +829,7 @@ describe("the featured-replay gallery", () => {
     });
 
     expect(screen.getByRole("alert").textContent).toBe(
-      `Could not reach /gallery/${SCENARIOS[0].file}: Failed to fetch\nCheck your connection and try again, or load a file with Load replay JSON (the folder icon).`,
+      `Could not reach /gallery/${SCENARIOS[0].file}: Failed to fetch\nCheck your connection and try again, or load a file with Load replay JSON (the folder icon on small screens).`,
     );
   });
 

@@ -99,7 +99,7 @@ describe("loadGalleryReplay — every failure degrades, none throws", () => {
     // is the human's copy (ruled 2026-10-13), held verbatim so it cannot drift.
     expect(result.error!.split("\n")).toEqual([
       `Could not reach /gallery/${scenario.file}: Failed to fetch`,
-      "Check your connection and try again, or load a file with Load replay JSON (the folder icon).",
+      "Check your connection and try again, or load a file with Load replay JSON (the folder icon on small screens).",
     ]);
   });
 

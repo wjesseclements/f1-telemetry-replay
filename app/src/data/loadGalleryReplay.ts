@@ -48,7 +48,7 @@ export async function loadGalleryReplay(
     // trying again, so it is the one that says so.
     return {
       replay: null,
-      error: `Could not reach ${url}: ${messageOf(err)}\nCheck your connection and try again, or load a file with Load replay JSON (the folder icon).`,
+      error: `Could not reach ${url}: ${messageOf(err)}\nCheck your connection and try again, or load a file with Load replay JSON (the folder icon on small screens).`,
     };
   }
 
