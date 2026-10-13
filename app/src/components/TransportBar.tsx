@@ -62,6 +62,13 @@ export const PLAY_TOGGLE_ID = "transport-play-toggle";
 /** The restart button's name, and its tooltip. */
 const RESTART_LABEL = "Restart lap";
 
+/**
+ * Paints a span's `data-glyph` as its `::before` content, so the glyph is seen
+ * but is not text (see the buttons below). Written out whole: Tailwind compiles
+ * only class names it finds verbatim in a shipped file.
+ */
+const GLYPH = "before:content-[attr(data-glyph)]";
+
 export interface TransportBarProps {
   replay: Replay;
 }
@@ -98,11 +105,19 @@ export function TransportBar({ replay }: TransportBarProps) {
           constant for both, so the two cannot drift. The header's buttons have
           a tooltip only where their text label is hidden (App.tsx).
 
-          Named by `sr-only` text, as the header's buttons are, and never by
-          `aria-label` (ruled 2026-10-13). With `aria-label` Chrome exposed the
-          `title` as a description equal to the name ("Pause" / "Pause"), which a
-          screen reader may read twice; named from content, it exposes none. The
-          glyph is `aria-hidden` so it stays out of the name. */}
+          So that the tooltip is not read as a second copy of the name, each
+          button's TEXT is exactly its name: the name is `sr-only` text, never
+          `aria-label` (ruled 2026-10-13), and the glyph is CSS generated
+          content on an `aria-hidden` span (`data-glyph`), never text. Measured
+          in Chrome 155 (2026-10-13, ten viewports, playing and paused): it
+          exposes a `title` as a description unless the title equals the
+          button's rendered text, `aria-hidden` text included. With
+          `aria-label` and the glyph as text, the description repeated the name
+          ("Pause" / "Pause") in 40 of 40 readings; with the glyph as
+          `aria-hidden` text beside the `sr-only` name, still 40 of 40; with
+          the glyph as generated content, 0 of 40, pixels unchanged. The
+          header's buttons expose none because their icons are SVG, not
+          because of how they are named. */}
       <button
         type="button"
         id={PLAY_TOGGLE_ID}
@@ -111,7 +126,11 @@ export function TransportBar({ replay }: TransportBarProps) {
         aria-keyshortcuts="Space"
         className={`rounded border border-line px-3 py-1 font-mono text-xs font-bold text-txt hover:border-accent ${TOUCH_TARGET} ${FOCUS_RING} ${COMPACT_FOCUS_RING}`}
       >
-        <span aria-hidden="true">{isPlaying ? "❚❚" : "▶"}</span>
+        <span
+          aria-hidden="true"
+          data-glyph={isPlaying ? "❚❚" : "▶"}
+          className={GLYPH}
+        />
         <span className="sr-only">{playLabel}</span>
       </button>
 
@@ -122,7 +141,7 @@ export function TransportBar({ replay }: TransportBarProps) {
         aria-keyshortcuts="Home"
         className={`rounded border border-line px-3 py-1 font-mono text-xs text-dim hover:text-txt ${TOUCH_TARGET} ${FOCUS_RING} ${COMPACT_FOCUS_RING}`}
       >
-        <span aria-hidden="true">↺</span>
+        <span aria-hidden="true" data-glyph="↺" className={GLYPH} />
         <span className="sr-only">{RESTART_LABEL}</span>
       </button>
 
