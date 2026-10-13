@@ -96,28 +96,34 @@ export function TransportBar({ replay }: TransportBarProps) {
       {/* Play/pause and restart are icons at every size, so each repeats its
           name as a tooltip, verbatim and everywhere (ruled 2026-10-13): one
           constant for both, so the two cannot drift. The header's buttons have
-          a tooltip only where their text label is hidden (App.tsx). */}
+          a tooltip only where their text label is hidden (App.tsx).
+
+          Named by `sr-only` text, as the header's buttons are, and never by
+          `aria-label` (ruled 2026-10-13). With `aria-label` Chrome exposed the
+          `title` as a description equal to the name ("Pause" / "Pause"), which a
+          screen reader may read twice; named from content, it exposes none. The
+          glyph is `aria-hidden` so it stays out of the name. */}
       <button
         type="button"
         id={PLAY_TOGGLE_ID}
         onClick={togglePlay}
-        aria-label={playLabel}
         title={playLabel}
         aria-keyshortcuts="Space"
         className={`rounded border border-line px-3 py-1 font-mono text-xs font-bold text-txt hover:border-accent ${TOUCH_TARGET} ${FOCUS_RING} ${COMPACT_FOCUS_RING}`}
       >
-        {isPlaying ? "❚❚" : "▶"}
+        <span aria-hidden="true">{isPlaying ? "❚❚" : "▶"}</span>
+        <span className="sr-only">{playLabel}</span>
       </button>
 
       <button
         type="button"
         onClick={() => seek(0)}
-        aria-label={RESTART_LABEL}
         title={RESTART_LABEL}
         aria-keyshortcuts="Home"
         className={`rounded border border-line px-3 py-1 font-mono text-xs text-dim hover:text-txt ${TOUCH_TARGET} ${FOCUS_RING} ${COMPACT_FOCUS_RING}`}
       >
-        ↺
+        <span aria-hidden="true">↺</span>
+        <span className="sr-only">{RESTART_LABEL}</span>
       </button>
 
       {/* tabular-nums so the digits do not jitter the layout as the clock runs. */}

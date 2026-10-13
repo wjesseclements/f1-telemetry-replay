@@ -160,14 +160,18 @@ describe("TransportBar on a compact screen (Slice 27)", () => {
     renderBar(bare, 10);
     const buttons = screen.getAllByRole("button");
     // Play/pause, restart and the four speeds: the bar's every button.
-    expect(buttons.map((b) => b.getAttribute("aria-label"))).toEqual([
-      expect.stringMatching(/^(Play|Pause)$/),
+    const names = [
+      /^(Play|Pause)$/,
       "Restart lap",
       "0.5× speed",
       "1× speed",
       "2× speed",
       "4× speed",
-    ]);
+    ];
+    expect(buttons).toHaveLength(names.length);
+    buttons.forEach((button, i) =>
+      expect(button).toHaveAccessibleName(names[i]),
+    );
     for (const button of buttons) {
       expect(button).toHaveClass(...TOUCH_TARGET.split(" "));
       expect(button).toHaveClass(...COMPACT_FOCUS_RING.split(" "));
@@ -237,6 +241,35 @@ describe("TransportBar tooltips (Slice 27)", () => {
       act(() => useTransport.setState({ isPlaying: false }));
       expect(toggle).toHaveAccessibleName("Play");
       expect(toggle).toHaveAttribute("title", "Play");
+      view.unmount();
+    }
+  });
+
+  it("names both by sr-only text, never aria-label, so the tooltip is not a second reading", () => {
+    // Ruled 2026-10-13. With `aria-label` plus an equal `title`, Chrome exposed
+    // the title as a description repeating the name; named from their content,
+    // as the header's buttons are, they expose none (measured in Chrome — jsdom
+    // always reports a title as the description, so this pins the structure
+    // that Chrome's measurement rests on).
+    for (const isPlaying of [true, false]) {
+      act(() => useTransport.setState({ isPlaying }));
+      const view = renderBar(bare, 10);
+      const label = isPlaying ? "Pause" : "Play";
+      for (const [name, glyph] of [
+        [label, isPlaying ? "❚❚" : "▶"],
+        ["Restart lap", "↺"],
+      ]) {
+        const button = screen.getByRole("button", { name });
+        expect(button).not.toHaveAttribute("aria-label");
+        expect(button).not.toHaveAttribute("aria-labelledby");
+        expect(button).toHaveAttribute("title", name);
+        const hidden = button.querySelector(".sr-only");
+        expect(hidden).toHaveTextContent(new RegExp(`^${name}$`));
+        // The glyph is seen, not read: it would otherwise join the name.
+        const shown = button.querySelector('[aria-hidden="true"]');
+        expect(shown).toHaveTextContent(glyph);
+        expect(button.childElementCount).toBe(2);
+      }
       view.unmount();
     }
   });
