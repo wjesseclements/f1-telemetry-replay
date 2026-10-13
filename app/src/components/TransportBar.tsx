@@ -56,6 +56,9 @@ import { TOUCH_TARGET } from "./touchTarget";
  */
 export const PLAY_TOGGLE_ID = "transport-play-toggle";
 
+/** The restart button's name, and its tooltip. */
+const RESTART_LABEL = "Restart lap";
+
 export interface TransportBarProps {
   replay: Replay;
 }
@@ -69,6 +72,8 @@ export function TransportBar({ replay }: TransportBarProps) {
   const seek = useTransport((s) => s.seek);
 
   const { duration, sampleRateHz } = replay.meta;
+  // The play/pause toggle's name, and its tooltip: what a press will do.
+  const playLabel = isPlaying ? "Pause" : "Play";
   const lap = leaderLap(replay, clock);
   // The flag under the playhead: a scan over a handful of intervals at ≤30 Hz,
   // the same species of transport-derived readout as `leaderLap` beside it.
@@ -85,11 +90,16 @@ export function TransportBar({ replay }: TransportBarProps) {
       aria-label="Playback controls"
       className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-line bg-panel px-4 py-2 compact:gap-x-1.5 compact:gap-y-0 compact:px-2 compact:py-0 fulltrack:col-span-full fulltrack:row-start-3"
     >
+      {/* Play/pause and restart are icons at every size, so each repeats its
+          name as a tooltip, verbatim and everywhere (ruled 2026-10-13): one
+          constant for both, so the two cannot drift. The header's buttons have
+          a tooltip only where their text label is hidden (App.tsx). */}
       <button
         type="button"
         id={PLAY_TOGGLE_ID}
         onClick={togglePlay}
-        aria-label={isPlaying ? "Pause" : "Play"}
+        aria-label={playLabel}
+        title={playLabel}
         aria-keyshortcuts="Space"
         className={`rounded border border-line px-3 py-1 font-mono text-xs font-bold text-txt hover:border-accent ${TOUCH_TARGET} ${FOCUS_RING} ${COMPACT_FOCUS_RING}`}
       >
@@ -99,7 +109,8 @@ export function TransportBar({ replay }: TransportBarProps) {
       <button
         type="button"
         onClick={() => seek(0)}
-        aria-label="Restart lap"
+        aria-label={RESTART_LABEL}
+        title={RESTART_LABEL}
         aria-keyshortcuts="Home"
         className={`rounded border border-line px-3 py-1 font-mono text-xs text-dim hover:text-txt ${TOUCH_TARGET} ${FOCUS_RING} ${COMPACT_FOCUS_RING}`}
       >

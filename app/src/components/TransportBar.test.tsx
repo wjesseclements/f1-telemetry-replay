@@ -6,11 +6,12 @@
  * readout, which must exist exactly when the data carries laps (the rule-8
  * shape) and must read the HIGHEST lap across cars, not any particular car's.
  */
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { act, cleanup, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import sampleLap from "../engine/__fixtures__/sample-lap.json";
 import { parseReplay } from "../engine/load";
 import type { Replay } from "../engine/schema";
+import { useTransport } from "../store/transport";
 import { telemetry } from "../telemetry/channel";
 import { COMPACT_FOCUS_RING } from "./focus";
 import { TOUCH_TARGET } from "./touchTarget";
@@ -207,5 +208,36 @@ describe("TransportBar on a short phone (Slice 27)", () => {
       ...COMPACT_FOCUS_RING.split(" "),
     );
     expect(slider.style.backgroundClip).toBe("");
+  });
+});
+
+describe("TransportBar tooltips (Slice 27)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("repeats play/pause's and restart's names as tooltips, verbatim, at every size", () => {
+    // Ruled 2026-10-13. Both are icons on every screen (▶/❚❚ and ↺), so no
+    // media query decides their tooltips, unlike the header's two buttons
+    // (`useCompactLayout`): the same with `compact:` matching and not.
+    for (const compact of [true, false]) {
+      vi.stubGlobal("matchMedia", (query: string) => ({
+        matches: compact,
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      }));
+      act(() => useTransport.setState({ isPlaying: true }));
+      const view = renderBar(bare, 10);
+      const toggle = screen.getByRole("button", { name: "Pause" });
+      expect(toggle).toHaveAttribute("title", "Pause");
+      expect(
+        screen.getByRole("button", { name: "Restart lap" }),
+      ).toHaveAttribute("title", "Restart lap");
+
+      // The toggle's tooltip follows its name: what a press will do.
+      act(() => useTransport.setState({ isPlaying: false }));
+      expect(toggle).toHaveAccessibleName("Play");
+      expect(toggle).toHaveAttribute("title", "Play");
+      view.unmount();
+    }
   });
 });
