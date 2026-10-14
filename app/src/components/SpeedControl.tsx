@@ -7,8 +7,9 @@
  * wrong. A radiogroup would be fewer tab stops but would need arrow-key management that
  * this slice has no other reason to build.
  */
-import { FOCUS_RING } from "./focus";
+import { COMPACT_FOCUS_RING, FOCUS_RING } from "./focus";
 import { SPEED_OPTIONS } from "./speedOptions";
+import { TOUCH_TARGET } from "./touchTarget";
 
 export interface SpeedControlProps {
   speedMult: number;
@@ -36,7 +37,7 @@ export function SpeedControl({ speedMult, onChange }: SpeedControlProps) {
             // "click zero point five times" and being ignored. Caught by Lighthouse's
             // `label-content-name-mismatch` in Slice 7.
             aria-label={`${rate}× speed`}
-            className={`rounded border px-2 py-1 font-mono text-xs tabular-nums transition-colors ${FOCUS_RING} ${
+            className={`rounded border px-2 py-1 font-mono text-xs tabular-nums transition-colors ${TOUCH_TARGET} ${FOCUS_RING} ${COMPACT_FOCUS_RING} ${
               active
                 ? "border-accent text-accent"
                 : "border-line text-dim hover:text-txt"

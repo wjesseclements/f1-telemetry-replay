@@ -5,9 +5,15 @@ import {
   cleanup,
   act,
   fireEvent,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
+import {
+  COMPACT_FOCUS_RING,
+  COMPACT_PEER_FOCUS_RING,
+} from "./components/focus";
 import { SPEED_OPTIONS } from "./components/speedOptions";
+import { TOUCH_TARGET } from "./components/touchTarget";
 import { HUD_HZ, telemetry } from "./telemetry/channel";
 import sampleLap from "./engine/__fixtures__/sample-lap.json";
 import { thermalGradientCss } from "./engine/color";
@@ -21,6 +27,7 @@ import {
   type RecordingContext,
 } from "./test/canvas";
 import App from "./App";
+import { COMPACT_QUERY } from "./components/compactLayout";
 import { PHONE_QUERY } from "./components/phoneLayout";
 import { TrackCanvas } from "./render/TrackCanvas";
 import { parseGalleryManifest } from "./engine/gallery";
@@ -72,6 +79,19 @@ describe("App", () => {
     expect(container.querySelector("canvas")).toBeNull();
   });
 
+  it("says how to load a lap when none is loaded, in the ruled words", () => {
+    // The human's copy (ruled 2026-10-13), held verbatim so it cannot drift:
+    // on a compact screen the picker is an icon, so the words say which one.
+    render(<App />);
+    const line = screen.getByText(/^No replay loaded\./);
+    expect(line.textContent).toBe(
+      "No replay loaded. Open a lap with Load replay JSON above (the folder icon on small screens): any file the pipeline built.",
+    );
+    expect(
+      within(line).getByText("Load replay JSON", { selector: "span" }),
+    ).toHaveClass("text-txt");
+  });
+
   it("mounts the track canvas and labels the replay once one is loaded", () => {
     useTransport.setState({ replay });
     const { container } = render(<App />);
@@ -88,8 +108,9 @@ describe("App", () => {
     // Slice 25: every driver code is in this line, so a full field wrapped the
     // header to 106–138 px and the track paid for it (22 cars: 200 px of track at
     // 375x667, 117–127 px stacked on landscape phones). `onerow:` is a screen 5:4
-    // or wider OR at most 700 px tall, so 375x812 and 390x844 keep the wrapping
-    // line. The ellipsis is visual only: the whole line stays in the DOM. jsdom
+    // or wider, at most 700 px tall, OR an upright phone whose header is a thin
+    // row (Slice 27; at any height since 2026-10-13, so 375x812 and 390x844
+    // too). The ellipsis is visual only: the whole line stays in the DOM. jsdom
     // applies no media query, so this pins the classes; the layout check measures
     // the geometry, and `layoutVariants.test.ts` the compiled query.
     useTransport.setState({ replay });
@@ -107,6 +128,184 @@ describe("App", () => {
         .map((car) => car.driver)
         .join(" ")}`,
     );
+  });
+
+  it("drops the meta line's one-line floor on a compact screen, so the thin header stays one row (Slice 27)", () => {
+    // Every `compact:` screen is also `onerow:`, and there the line's 6rem floor
+    // would hold beside the title and the two 44 px icon boxes: at 360x640 the
+    // header wrapped from 44 to 96 px and the track fell to exactly the layout
+    // check's 200 px floor, passing it by 0.0 px (measured in Chrome, Slice 27's
+    // review). So nothing else would catch the class going: pinned here on the
+    // element, and `layoutVariants.test.ts` pins that its compiled rule comes
+    // after the floor's, so it wins where both match.
+    useTransport.setState({ replay });
+    render(<App />);
+    const line = screen.getByText(
+      new RegExp(`${replay.meta.event}.*${replay.cars[0].driver}`),
+    );
+    expect(line).toHaveClass("onerow:min-w-24", "compact:min-w-0");
+  });
+
+  it("makes the header one 44 px row on a compact screen: no vertical padding, a smaller title (Slice 27)", () => {
+    // The row is one control tall because the header drops `py-3` (12 px above
+    // and below) and the title shrinks to fit beside the two icon boxes.
+    // Without the padding the header measured 68 px instead of 44, and still
+    // nothing failed: the canvas floor the layout check gates has room to spare
+    // at most gated sizes (Slice 27's review). jsdom applies no media query, so
+    // the classes are pinned; `layoutVariants.test.ts` pins what they compile to.
+    useTransport.setState({ replay });
+    render(<App />);
+    const title = screen.getByRole("heading", { name: /telemetry replay/i });
+    expect(title.closest("header")).toHaveClass("compact:py-0");
+    expect(title).toHaveClass("compact:text-xs");
+  });
+
+  it("keeps the header's two controls' names, and 44 px targets, behind their compact-screen icons (Slice 27)", () => {
+    // On a compact screen (`compact:`) each label is swapped for a decorative icon,
+    // and the label stays in the DOM as `sr-only`: the accessible name a screen
+    // reader announces and voice control matches is the text it always was. The
+    // box keeps the ruled 44 px floor and draws its focus ring inside (it touches
+    // the top of the screen there). jsdom applies no media query, so this pins
+    // the classes and the names; the boxes are measured in a real browser
+    // (Slice 27's PLAN entry).
+    useTransport.setState({ replay });
+    render(<App />);
+    const toggle = screen.getByRole("button", { name: "Featured replays" });
+    const label =
+      screen.getByLabelText<HTMLInputElement>("Load replay JSON").labels![0];
+    for (const control of [toggle, label]) {
+      const icon = control.querySelector("svg");
+      expect(icon).toHaveAttribute("aria-hidden", "true");
+      expect(icon).toHaveClass("hidden", "compact:block");
+      expect(control.querySelector("span")).toHaveClass("compact:sr-only");
+      expect(control).toHaveClass(...TOUCH_TARGET.split(" "));
+    }
+    expect(toggle).toHaveClass(...COMPACT_FOCUS_RING.split(" "));
+    expect(label).toHaveClass(...COMPACT_PEER_FOCUS_RING.split(" "));
+    // The thin header still wraps: Slice 26's draft stopped it wrapping and kept
+    // the picker from shrinking, and a failed load's error box then pushed a
+    // 375 px page to 637 px wide (measured in Chrome, Slice 27). Not gated by the
+    // layout check, which never fails a load, so it is pinned here. (The
+    // matchers avoid spelling the utility out, from when Tailwind scanned test
+    // files and shipped a rule for whatever they named; it no longer does.)
+    const header = toggle.closest("header")!;
+    expect(header).toHaveClass("flex-wrap");
+    const compactNoWrap = header.className
+      .split(" ")
+      .filter((c) => c.startsWith("compact:") && c.endsWith("nowrap"));
+    expect(compactNoWrap).toEqual([]);
+    const picker = label.parentElement!.parentElement!;
+    expect(picker.className.split(" ")).not.toContain("compact:shrink-0");
+  });
+
+  it("repeats each icon button's label verbatim as a tooltip, only where the label is hidden (Slice 27)", () => {
+    // Ruled 2026-10-12: on `compact:` screens the two header buttons are icons
+    // with `sr-only` labels, so a mouse (a short desktop window) gets the label
+    // as a `title`. Where the label shows, no `title`: it would only repeat it.
+    // The answer comes from a `matchMedia` subscription (`useCompactLayout`),
+    // which a rotation across the line flips; jsdom has no media queries, so
+    // `matchMedia` is stubbed to answer the compact query.
+    let compact = true;
+    const listeners = new Set<() => void>();
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      get matches() {
+        return compact && query === COMPACT_QUERY;
+      },
+      media: query,
+      addEventListener: (_: string, l: () => void) => listeners.add(l),
+      removeEventListener: (_: string, l: () => void) => listeners.delete(l),
+    }));
+    useTransport.setState({ replay });
+    render(<App />);
+    const toggle = screen.getByRole("button", { name: "Featured replays" });
+    const label =
+      screen.getByLabelText<HTMLInputElement>("Load replay JSON").labels![0];
+    const controls = [
+      [toggle, "Featured replays"],
+      [label, "Load replay JSON"],
+    ] as const;
+    for (const [control, text] of controls) {
+      expect(control).toHaveAttribute("title", text);
+      expect(control.querySelector("span")).toHaveTextContent(text);
+    }
+    // The names a screen reader announces are unchanged.
+    expect(toggle).toHaveAccessibleName("Featured replays");
+    expect(screen.getByLabelText("Load replay JSON")).toHaveAccessibleName(
+      "Load replay JSON",
+    );
+
+    // Rotated out of `compact:`: the labels show, and the tooltips go.
+    compact = false;
+    act(() => listeners.forEach((l) => l()));
+    for (const [control] of controls)
+      expect(control).not.toHaveAttribute("title");
+  });
+
+  it("puts the header above the tower on the shortest landscape phones, the track the full height (Slice 27)", () => {
+    // Ruled 2026-10-12: at most 320 px tall (`fulltrack:`; Safari's 724x257) the
+    // page is a grid, the track cell spans its top two rows, and the header and
+    // the tower share the second column. Across the top, the header left the
+    // track 168 px there, under the layout check's 200 px floor; above the tower
+    // it is 212. The meta line is dropped from view there (ruled; the tower lists
+    // every driver), and stays in the DOM. jsdom applies no media query, so this
+    // pins the classes; the layout check measures the geometry at 724x257, and
+    // `layoutVariants.test.ts` what `fulltrack:` compiles to.
+    //
+    // The header's row may shrink below its content, and the header scrolls:
+    // a failed load's error box wraps it to 264 px in the 256 px column, and
+    // as a plain `auto` row that pushed the transport bar off a 257 px screen
+    // (measured). No layout-check state fails a load, so this pin is its guard.
+    useTransport.setState({ replay });
+    const { container } = render(<App />);
+    const main = container.querySelector("main")!;
+    expect(main).toHaveClass(
+      "fulltrack:grid",
+      "fulltrack:grid-cols-[minmax(0,1fr)_16rem]",
+      "fulltrack:grid-rows-[minmax(0,auto)_minmax(0,1fr)_auto]",
+    );
+    expect(main.querySelector(":scope > header")).toHaveClass(
+      "fulltrack:col-start-2",
+      "fulltrack:row-start-1",
+      "fulltrack:px-1",
+      "fulltrack:gap-x-1",
+      "fulltrack:overflow-y-auto",
+    );
+    const trackCell =
+      container.querySelector("canvas")!.parentElement!.parentElement!;
+    expect(trackCell).toHaveClass(
+      "fulltrack:col-start-1",
+      "fulltrack:row-start-1",
+      "fulltrack:row-span-2",
+    );
+    expect(trackCell.parentElement).toHaveClass("fulltrack:contents");
+    expect(
+      screen.getByRole("complementary", { name: "Telemetry" }),
+    ).toHaveClass("fulltrack:col-start-2", "fulltrack:row-start-2");
+    expect(
+      screen.getByRole("region", { name: "Playback controls" }),
+    ).toHaveClass("fulltrack:col-span-full", "fulltrack:row-start-3");
+    const line = screen.getByText(
+      new RegExp(`${replay.meta.event}.*${replay.cars[0].driver}`),
+    );
+    expect(line).toHaveClass("fulltrack:sr-only");
+  });
+
+  it("keeps the header across the top when no replay is laid out (Slice 27)", () => {
+    // The error and the no-replay states have no tower for the header to sit
+    // above. With the grid on `main` regardless, the error panel would fill the
+    // first free cell, beside the header in the top row.
+    for (const ui of [
+      <App key="none" />,
+      <App key="error" bootstrapError="x" />,
+    ]) {
+      const { container, unmount } = render(ui);
+      const main = container.querySelector("main")!;
+      const fullTrack = (el: Element) =>
+        [...el.classList].filter((c) => c.startsWith("fulltrack:"));
+      expect(fullTrack(main)).toEqual([]);
+      expect(fullTrack(main.querySelector(":scope > header")!)).toEqual([]);
+      unmount();
+    }
   });
 
   it("shows the speed legend, generated from the thermal ramp", () => {
@@ -168,9 +367,16 @@ describe("App bootstrap error", () => {
     expect(screen.getByRole("alert")).toBeInTheDocument();
   });
 
-  it("says nothing about the network, because there is none", () => {
+  it("calls it a data problem, not a network one, in the ruled words", () => {
+    // The human's copy (ruled 2026-10-13), held verbatim so it cannot drift. It
+    // no longer says the app never fetches: the gallery does (Slice 17).
     render(<App bootstrapError={brokenBoot()} />);
-    expect(screen.getByRole("alert")).toHaveTextContent(/data problem/i);
+    const explanation = within(screen.getByRole("alert")).getByText(
+      /^The replay data does not match the schema\./,
+    );
+    expect(explanation.textContent).toBe(
+      "The replay data does not match the schema. This is a data problem, not a network one. Each line above names the field that failed; rebuild the file with the pipeline, or open a different lap with Load replay JSON.",
+    );
   });
 });
 
@@ -590,6 +796,41 @@ describe("the featured-replay gallery", () => {
     render(<App />);
     expect(panel()).toBeInTheDocument();
     expect(toggle()).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("ends with the ruled footer: your own file, and the disclaimer", () => {
+    // The human's copy (ruled 2026-10-13), held verbatim so it cannot drift:
+    // on a compact screen the picker is an icon, so the words say which one.
+    render(<App />);
+    const footer = within(panel()!).getByText(/^Or build your own/);
+    expect(footer.textContent).toBe(
+      "Or build your own with the pipeline and open it with Load replay JSON (the folder icon on small screens). Unofficial project, not affiliated with Formula 1; data via FastF1 from the public timing feed.",
+    );
+    expect(
+      within(footer).getByText("Load replay JSON", { selector: "span" }),
+    ).toHaveClass("text-txt");
+  });
+
+  it("names the picker in the ruled words when a scenario cannot be reached", async () => {
+    // The gallery's one network failure, as a visitor sees it: the message the
+    // fetch layer returns, rendered in the panel. Its second line is the
+    // human's copy (ruled 2026-10-13), pinned verbatim in
+    // `loadGalleryReplay.test.ts`; here it is what reaches the screen.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("Failed to fetch");
+      }),
+    );
+    render(<App />);
+
+    await act(async () => {
+      fireEvent.click(firstCard());
+    });
+
+    expect(screen.getByRole("alert").textContent).toBe(
+      `Could not reach /gallery/${SCENARIOS[0].file}: Failed to fetch\nCheck your connection and try again, or load a file with Load replay JSON (the folder icon on small screens).`,
+    );
   });
 
   it("renders every manifest scenario as a real button", () => {

@@ -4819,6 +4819,580 @@ the 2024 pit cycle's swaps reading as moves. The pre-registered 300 ms stands
 untouched — no tune requested. **"NO SIG" ratified** as the compact spelling.
 Push + PR + auto-merge authorised.
 
+### [ ] Slice 27 — compact bars with 44 px touch targets (C1), and Add to Home Screen (F) (built 2026-10-12; four batches of rulings applied; MERGED 2026-10-14 as #82 on the human's direction; awaiting the compact controls' look and a phone check)
+
+**Filed 2026-10-12 by the human's rulings on Slice 26's drafts.** Built on
+`feat/slice-27-compact-bars-home-screen`, stacked on Slice 26's final tip; the PR
+squashes it.
+
+**Rulings (human, 2026-10-12).**
+- **C = C1**: thin header and transport rows on short phones, **"keeping 44 pt touch
+  targets even if the rows are a little taller"**.
+- **E = not now.**
+- **F = build it.** The home-screen name is **"F1 Telemetry"** (manifest `short_name`
+  and `apple-mobile-web-app-title`). The manifest's full name may stay the page's
+  `<title>`, "F1 Telemetry Replay".
+- **The icon is option A, "corner"** (today's favicon, grown up) — the human's final
+  choice, 2026-10-12. B and C stay in `docs/icons/proposals/` for reference.
+
+**Rulings, second batch (human, 2026-10-12).**
+- **2. Header above the tower column at ≤320 px tall.** The track runs from the top of
+  the screen to the transport bar. The event/session/drivers line is dropped there (the
+  tower lists the drivers), and every control keeps its 44 px target. Gate 724x257; gate
+  724x300 too if it adds coverage and passes. Loosen nothing.
+- **3. 44 pt compact controls up to ~800 px tall.** `compact:`'s upright clause goes
+  43.75rem → 50rem tall, still under 40rem wide, with the meta line on one row there.
+- **4. The compact controls' look:** deferred until the human tries the preview.
+  Unchanged.
+- **5. The compact focus ring is white** (`--c-txt`), so it no longer looks like the
+  selected speed. Desktop rings unchanged.
+- **6. Tooltips on the icon-only header buttons:** a `title` repeating the EXISTING
+  label verbatim, only where the label is visually hidden.
+- **7. The four "Load replay JSON" mentions** are copy the human will pick. Unchanged.
+- **8. Chrome's "Install app"** is accepted as is.
+- **The icon is option A** (final).
+
+**Applied** (c281f92, b7b1754, 3044824, 3888feb, 0076da4).
+
+- **2: `fulltrack:`** (c281f92, 0076da4) = at most 20rem tall, AND under md
+  (47.9375rem), AND 5:4 or wider.
+  - The page becomes a grid: the track cell spans the top two rows, and the header and
+    the tower share a 16rem second column. The track/tower wrapper is `display:
+    contents`, so DOM and tab order are unchanged.
+  - It applies only while a replay is laid out; the error and no-replay states keep the
+    header across the top.
+  - In that column the header uses 4 px padding and gaps. With 8 px it wrapped to 96 px
+    (title 144.4 + 2×44 = 248.4 > 239).
+  - The meta line is `sr-only` there.
+  - Measured, 22 cars:
+    - 724x257: track 168 → 212, the tower unchanged at 168 (list 152), header 44,
+      transport 45.
+    - 724x300: 211 → 255.
+    - 568x320: 231.
+  - **Not at md+:** 814x312 keeps the header across the top (223 px; gated rows
+    byte-identical). Its column is 224 px with the md readout, and the header needs
+    248.4.
+  - **Failed load** (0076da4): a plain `auto` header row grew to 264 px with the error
+    box and pushed the bar off a 257 px screen (y 264–309, page 309 tall). The row is
+    now `minmax(0,auto)` and the header scrolls: bar at y 212–257, track 212, the error
+    readable in the header column, tower row 0. Ungated.
+
+- **3: `UPRIGHT_PHONE`** = under 40rem wide and at most 50rem tall (b7b1754).
+  - `compact:` = at most 30rem tall, or `UPRIGHT_PHONE`.
+  - `onerow:` gains `UPRIGHT_PHONE` as its third case, so every compact screen stays
+    onerow and `compact:min-w-0` still wins.
+  - 430/440 px are 26.9/27.5rem, so the Pro Max upright sizes are caught.
+  - Measured, 22-car track, Safari matrix:
+
+| size | track | header | transport |
+|---|---|---|---|
+| 375x734 | 267 → 334 | 138 → 44 | 109 → 133 |
+| 375x768 | 301 → 355 | 138 → 44 | 109 → 133 |
+| 390x797 | 330 → 372 | 138 → 44 | 109 → 133 |
+| 430x752 | 301 → 345 | 122 → 44 | 109 → 133 |
+| 440x776 | 325 → 359 | 122 → 44 | 109 → 133 |
+
+  - **The one loss:** the one-car boot view at 430x752, 376 → 356. Its transport takes
+    three rows (75 → 133).
+  - 375x812, 390x844 and md+ are unchanged: standard digest 5a321ac1, identical to the
+    tip.
+
+- **5: the compact rings add `ring-txt`** (3044824). Measured after a real Tab press:
+  - 724x257 and 375x734: every control's ring is #e6eaf0, inset. The selected 2× keeps
+    its accent border with the white ring inside.
+  - 375x812 and 1440x900: the accent, outside, unchanged.
+
+- **6: `useCompactLayout`** (compactLayout.ts, 3888feb) reads `COMPACT_QUERY`, pinned to
+  the compiled `compact:` string.
+  - It is Slice 26's matchMedia store, now shared in mediaQuery.ts, so it re-renders
+    only on a resize or rotation across the line.
+  - The `title` repeats each label from the same constant as its sr-only text: on the
+    toggle, and on the picker's label.
+  - Present at 724x257, 375x734, 430x752 and 1280x480; absent at 375x812 and 1440x900.
+  - Chrome: names unchanged, no description. VoiceOver is unmeasured.
+
+**Evidence (after the second batch, HEAD 0076da4).**
+- `npm run check`: 1092 tests, 0 warn/error in the full log, engine coverage 100%,
+  check:layout 186/186. Every commit was green at its own state.
+- Draw-call md5s are unchanged (cb43a0f8… / e30b5b6e…).
+- Extended Safari matrix (12 sizes): digest 0d2f30fd, with 0 off-origin requests and 0
+  exceptions.
+- Standard matrix: digest 5a321ac1 (unchanged). 34/55 screenshots are byte-identical,
+  including all of 1280x720, 1440x900, 375x812 and 390x844. The other 21 differ only in
+  the toggle's 320-px inset ring (ruling 5).
+- Touch targets at 724x257, 375x734 and 430x752: every control is ≥44x44, a 44 px centre
+  square hit-tests 1.00, and nothing overlaps.
+- Mutations: 24/24 caught, plus the gate mutation.
+
+**Rulings, third batch (human, 2026-10-13).** Numbered as the human answered them.
+- **1. The copy, Style 1** ("keep the name, point at the icon"), applied verbatim:
+  - Gallery footer: "Or build your own with the pipeline and open it with Load replay
+    JSON (the folder icon on small screens). Unofficial project, not affiliated with
+    Formula 1; data via FastF1 from the public timing feed."
+  - No-replay screen: "No replay loaded. Open a lap with Load replay JSON above (the
+    folder icon on small screens): any file the pipeline built."
+  - Error screen: "This is a data problem, not a network one — the app ships with its
+    replay and never fetches." becomes "This is a data problem, not a network one." The
+    rest of the paragraph is unchanged.
+  - Gallery failure, last sentence: "Check your connection and try again, or load a
+    file with Load replay JSON (the folder icon)."
+- **2. No 800 px cut-off.** Every upright phone gets the compact layout: `UPRIGHT_PHONE`
+  = under 40rem wide and portrait, for both `compact:` and `onerow:`.
+- **3. The tower's rows and VS buttons stay as they are** (no 44 px there).
+- **4. Tooltips on play/pause and restart.** Each gets a `title` repeating its existing
+  accessible label verbatim, at every size.
+- **5. A layout-check row, "header clear of the track",** at every gated viewport.
+- **6. 814x312 stays as it is:** `fulltrack:` does not reach md-wide short screens.
+- **Still deferred:** the compact controls' look (the second batch's ruling 4), until
+  the human's phone check.
+
+**Applied** (5f6bf34, 296bd68, 58b1abf, 3ac31be). The branch's commit messages number
+the four applied rulings 1–4 in the brief's order (tooltips 3, the header row 4); the
+squash drops them.
+
+- **Ruling 1: the copy** (5f6bf34).
+  - Each string is pinned whole:
+    - the footer, the no-replay line and the error paragraph in App.test.tsx, with "Load
+      replay JSON" still in its `text-txt` span;
+    - the failure message in loadGalleryReplay.test.ts, and again as App renders it.
+  - The failure message's label lost its quotation marks, because the ruled sentence has
+    none.
+  - Read back in headless Chrome, all four render character for character: 28 strings
+    at seven sizes from 375x626 to 1440x900, 0 mismatches (the review).
+  - **The footer is one line longer, so 14 gate rows moved. All still PASS:**
+    - "last card reachable" at all ten viewports. Where the panel scrolls, scrollTop
+      grows 16–17 px (375x812: 99 → 116; 1280x720: 157 → 173). At 1440x900 it stays 0
+      and the card moves up 8.1 px (650.9 → 642.8), because the centred panel is 16.2 px
+      taller.
+    - 1440x900's heading row and Close, in A and C: y 98.6 → 90.5, for the same reason.
+  - In the matrices only the gallery's scrollHeight moved (+16/+17).
+
+- **Ruling 4: tooltips** (296bd68).
+  - One value feeds each button's name and its `title`: "Play"/"Pause" as the toggle
+    changes, and "Restart lap". No media query decides them.
+  - Present at every size measured, 375x626 to 1440x900. The speed buttons have none.
+  - **Chrome exposes the tooltip as a description equal to the name** ("Pause" /
+    "Pause"). The header buttons, named by their sr-only text, show no description.
+    VoiceOver is unmeasured.
+    - *Corrected by the fourth batch's measurement:* the cause was wrong. The header's
+      buttons show none because their icons are SVG, so where they carry a title
+      (compact screens) their rendered text equals it. Naming by sr-only text alone
+      leaves the description (40/40, 5075d6a).
+
+- **Ruling 5: "header clear of the track"** (58b1abf), the ninth and last row of
+  state B.
+  - The header's and the canvas's boxes may not intersect beyond 1 px (`overlaps`, like
+    the other rows). The row prints both boxes' x and y spans.
+  - Ten new rows, 196 in all. No existing row changed.
+  - Mutations through the gate; each time this was the only failing row:
+    - the header in the track's cell (`fulltrack:col-start-1`) fails it at 724x257
+      only: overlap 468.0x44.0, 195/196;
+    - the track pulled 32 px under the header (`-mb-8`) fails it at the other nine:
+      187/196.
+
+- **Ruling 2: `UPRIGHT_PHONE` = `(max-width: 39.9375rem) and (orientation: portrait)`**
+  (3ac31be), for `compact:` and `onerow:`. `COMPACT_QUERY` follows it.
+  - **Why `orientation`:** "portrait" is the media query's own word for "at least as
+    tall as wide" (a square counts). It replaces the height bound as what keeps a
+    landscape shape out. The app has no text field, so no on-screen keyboard can flip
+    it; and iOS Safari and Chrome on Android do not resize the layout viewport for one
+    by default.
+  - **Measured, canvas height tip → HEAD** (headless Chrome, both matrices):
+
+| size | 1 car | 3 cars | 22 cars | header | transport |
+|---|---|---|---|---|---|
+| 375x812 | 370 → 416 | 358 → 381 | 339 → 381 | 114/106/138 → 44 | 109 → 133 |
+| 390x844 | 434 → 448 | 377 → 400 | 358 → 400 | 82/106/138 → 44 | 109 → 133 |
+| 430x932 (Pro Max, whole screen) | **556 → 536** | 425 → 468 | 421 → 453 | 82/114/122 → 44 | 75/109/109 → 133 |
+| 428x926 | **550 → 530** | 422 → 462 | 417 → 449 | 82/114/122 → 44 | 75/109/109 → 133 |
+| 420x900 | **524 → 504** | 406 → 436 | 401 → 434 | 82/114/122 → 44 | 75/109/109 → 133 |
+| 600x900 (narrow desktop window) | 557 → 585 | 456 → 484 | 422 → 460 | 86/86/122 → 44 | 75 → 89 |
+| 600x500 (narrow landscape window) | 200 | 200 | 200 | 44 → 86 | 89 → 75 |
+
+  - **Upright, the circuit is width-limited.** It is drawn at the same size at the tip
+    and at HEAD in every upright screenshot (375x812 and 430x932, one car and 22), so
+    the canvas height gained is margin. What a reader notices is the tower and the
+    controls: with 22 cars 375x812's list goes 201 → 229 and 390x844's 214 → 242, two
+    whole rows instead of one, and every control is a 44 px target.
+  - **The one loss, wider than the second batch reported:** the one-car boot view at
+    ~420–430 px wide, at any height (430x752, 420x900, 428x926, 430x932), loses 20 px of
+    canvas. Its text-button transport fitted in two rows; the 44 px one needs three,
+    because the controls no longer share a row with the clocks. At 412x915 and 414x896
+    the tip's bar was already three rows (109), and at 436–440 px the compact one fits
+    two (89), so those widths gain. The circuit is the same size, so the 20 px is
+    margin. The implementer's matrices did not include those sizes; the review's
+    extended Safari matrix did.
+  - **A narrow desktop window taller than wide is compact now** (600x900: icons with
+    tooltips, 44 px rows). Before, it was compact only up to 800 px tall.
+  - **So is a tablet's split-view or Slide Over pane under 640 px wide** (estimated
+    375x1024 and 590x834: 22-car canvas 466 → 508 and 382 → 421, header 138/122 →
+    44). 640x900 is unchanged.
+  - **A narrow window wider than tall and 481–639 px tall loses compact** (600x500):
+    text buttons, the tower list 142 → 114, and the track held at its 200 px floor. No
+    phone has that shape.
+  - md+ and every landscape phone size: no layout value moved.
+  - **Side effects the rows do not see:**
+    - the picker's "loaded <file>" confirmation is `compact:sr-only`, so it is now
+      visually hidden at 375x812, 390x844, 430x932 and 600x900. The meta line still
+      names what is loaded, truncated: at 430x932 it ends "…Q · …", cutting VER off;
+    - on the no-replay and error screens, with no meta line to fill the row, the gallery
+      icon sits right after the title and the folder icon at the far right. Short phones
+      already looked like that; now 375x812, 390x844, 430x932 and 600x900 do too.
+  - **The gate:** only 375x812's rows that depend on the header moved, all strict PASS:
+
+| 375x812 row | before | after |
+|---|---|---|
+| A transport bar in viewport | y=[703.0,812.0] | y=[679.0,812.0] |
+| B canvas height | 339.0 px (min 243.6) | 381.0 px (min 243.6) |
+| B aside clear of transport bar | aside y=[477.0,703.0] · bar y=[703.0,812.0] | aside y=[425.0,679.0] · bar y=[679.0,812.0] |
+| B aside clear of canvas | aside y=[477.0,703.0] · canvas y=[138.0,477.0] | aside y=[425.0,679.0] · canvas y=[44.0,425.0] |
+| B transport bar in viewport | y=[703.0,812.0] | y=[679.0,812.0] |
+| B legend clear of header | legend y=[448.0,463.0] · header y=[0.0,138.0] | legend y=[396.0,411.0] · header y=[0.0,44.0] |
+| B header clear of the track (new) | header y=[0.0,138.0] · canvas y=[138.0,477.0] | header y=[0.0,44.0] · canvas y=[44.0,425.0] |
+
+- **From the reviews, in the two docs commits** (a2bc3e7 and its follow-up). Comments,
+  test names and docs only:
+  - "short phone" now says "compact screen" wherever it means `compact:`: App.tsx,
+    focus.ts, Scrubber.tsx, TransportBar.tsx, ReplayFilePicker.tsx and test names in
+    three test files.
+  - `UPRIGHT_PHONE`'s comment gains the 420–430 px loss, the width-limited circuit and
+    the tablet panes, and now gives the no-text-field reason first.
+  - Numbers the third batch made stale: Hud.tsx's strip-cap comment (375x812's 22-car
+    track 339 → 381 px; a three-car list scrolls its last 33 px, not 48; 375x667 and
+    360x640 get 243–270 px, not 229–257), TransportBar.tsx's upright bar (three rows on
+    a ~375 px phone, not everywhere upright), and layout-check.ts's 814x312 row count
+    (19 was Slice 26's).
+
+**Evidence (after the third batch, HEAD 3ac31be; the review re-ran all of it).**
+- **`npm run check`:** 1096 tests, 0 warn/error in the full log, engine coverage 100%,
+  check:layout 196/196. Every commit was green at its own state (tests / layout rows):
+  - 5f6bf34: 1095 / 186;
+  - 296bd68: 1096 / 186;
+  - 58b1abf: 1096 / 196;
+  - 3ac31be: 1096 / 196.
+- **Draw-call md5s:** unchanged (cb43a0f8… / e30b5b6e…).
+- **Standard matrix:** digest a647b150 (tip 5a321ac1).
+  - md+ layout is unchanged. The only md+ values that differ are 1280x720's gallery
+    scrollHeight, 780 → 796 (the copy).
+  - 33/55 PNGs are byte-identical, including every 1280x720 and 1440x900 replay shot.
+- **Safari matrix** (the review's 18 sizes, plus 600x900 and 600x500): digest 4fb0c3e4
+  (tip 5ae83e36).
+  - Layout values moved only at 375x812, 390x844, 600x900 and 600x500. Every other
+    difference is the gallery's +17 px.
+  - All 7 transport controls hit-test in every cell. 0 off-origin requests, 0
+    exceptions.
+- **The review's extended Safari matrix** (those 20 plus 430x932, 440x956, 412x915,
+  393x852, 360x780, 639x640 and 640x900; then 414x896, 420x900, 428x926, 428x746,
+  436x900, 439x900, 375x1024 and 590x834):
+  - layout moved only at the upright sizes over 800 px tall and under 640 px wide
+    (600x900 among them), and at 600x500;
+  - every upright size up to 800 px tall, and 640x900, is unchanged;
+  - 7/7 controls hit-test everywhere, no horizontal overflow, 0 off-origin requests, 0
+    exceptions;
+  - its digests (ef4e9a7e → bb40f281) come from a 27-size instrument and do not
+    compare with the 20-size ones; every shared cell agrees.
+- **Mutations:** 18/18 caught by vitest (copy 9, tooltips 5, the upright clause 4), plus
+  the two gate mutations.
+- **The two docs commits:** each ran `npm run check` green, 1096 tests, 0 warn/error in
+  the full log, engine coverage 100%, check:layout 196/196. The bundle is
+  byte-identical to 3ac31be's (index-CU9vuco6.css, index-DtmbJPHn.js).
+
+**Rulings, fourth batch (human, 2026-10-13).** Numbered as the human answered them.
+- **1. "A 430 px-wide phone loses 20 px on the single-lap view": "Accept it
+  (recommended)".** The one-car boot view at ~420–430 px wide, upright, keeps its
+  three-row transport and gives up 20 px of canvas, which is margin.
+- **2. "The gallery-failure message mentions the folder icon on desktop too": "Add "on
+  small screens" (recommended)".**
+- **3. "Play and Restart may be read out twice by screen readers": "Name them like the
+  header buttons (recommended)".** The question said the header's buttons "give their
+  names as hidden text, and Chrome reports no description for them", and that switching
+  "changes nothing on screen and keeps the tooltips".
+- **4. "Side effects of treating any portrait screen under 640 px wide as a phone":
+  "Accept all three (recommended)".** 600x500-style windows lose compact; 600x900-style
+  windows and narrow tablet split-view panes gain it.
+- **5. "Confirm the quotation marks are gone from the gallery-failure message": "Yes,
+  intended (recommended)".**
+
+**Applied** (27d7421, 5075d6a, 9d6644c, a9ba6a1, 58e2acb, and the docs commit).
+Rulings 1, 4 and 5 accept what was built and change no file.
+
+- **Ruling 2: the copy** (27d7421).
+  - The failure message's last sentence is now "Check your connection and try again, or
+    load a file with Load replay JSON (the folder icon on small screens).", as the
+    footer and the no-replay line have it.
+  - Pinned whole in loadGalleryReplay.test.ts, and again as App renders it.
+  - Read back verbatim in headless Chrome (innerText, with the gallery request failed
+    inside the DevTools protocol) at 1440x900, 375x626 and 724x257.
+
+- **Ruling 3, as asked, did not do what the question promised; extended by
+  measurement** (5075d6a, then 9d6644c). Kept here as it happened.
+  - **Before (cb75031):** `aria-label` plus an equal `title`, with the glyph as the
+    button's text. Chrome 155 exposed the title as a description equal to the name in
+    40 of 40 readings (ten gated viewports, playing and paused, both buttons), with the
+    fixture and the 22-car scenario alike.
+  - **As asked (5075d6a):** named by sr-only text, as the header's buttons are, with the
+    glyph as `aria-hidden` text. Still 40 of 40, at every size and in both states.
+    - 5075d6a's comment and its test's name claimed a Chrome result that did not hold,
+      and its commit message pointed to a Chrome measurement for it.
+    - Its test pinned the structure, and jsdom reports every title as a description, so
+      nothing could fail.
+    - Two independent reviewers measured the miss, and the implementer re-measured it.
+  - **Why.** The question's premise came from the third batch's record and gave the
+    wrong cause.
+    - The rule, inferred from every variant measured: Chrome drops a title description
+      only when the title equals the button's rendered text, `aria-hidden` text
+      included.
+    - 5075d6a's innerText was "▶\nPlay".
+    - The header's buttons pass because their icons are SVG, so their rendered text is
+      their sr-only label.
+  - **Extended (9d6644c),** under the standing rule that a measured half-fix is
+    extended, not shipped. Each glyph is CSS generated content on its `aria-hidden`
+    span (`data-glyph` + `before:content-[attr(data-glyph)]`), so each button's text
+    is exactly its sr-only name. This went beyond the ruling's words; the human kept
+    it (2026-10-14, below).
+    - Description: **0 of 40**, fixture and 22-car alike.
+    - Names unchanged, 40 of 40.
+    - The header's controls carry no description on any of the three builds (0 of 60
+      each).
+  - **Nothing on screen moved,** as the question promised:
+    - transport-button pixels: 26 of 26 shots byte-identical to cb75031 and to 5075d6a
+      (1x at every gated viewport, plus 375x812 and 724x257 at 3x and 1440x900 at 2x);
+    - whole-page shots, ten viewports × fixture and 22-car, page and transport bar: 40
+      of 40 byte-identical to cb75031 in a clean run.
+      - The other runs differ only at 724x257: 18–202 px, max channel delta 1, and 11
+        on one 22-car page.
+      - None of it is the build: run 2 of the same pair is byte-identical; fix A against
+        itself reproduces the 18 px transport difference; and the delta-11 pattern at
+        the header's right end recurs between two runs of cb75031 itself (the
+        reviewers' Safari matrices, 724x257 and 724x300).
+      - One run also had a 375x626 gallery-failure shot differ in its scrollbar column.
+    - standard matrix digest a647b150 and shots digest f40fd426 (55 of 55 PNGs), as
+      cb75031's;
+    - Safari matrix digest 1bd6b84f, as cb75031's. Its shots digest is not stable within
+      a build: the review's re-run gave HEAD eae313f5 against cb75031's 3c1149c5, the
+      one differing PNG being redflag-724x300 (52 px, delta 11, at the header's right
+      end), the same difference two cb75031 runs show. Compare its 20 PNGs by pixels,
+      not by digest;
+    - 7 of 7 controls hit-test in every cell;
+    - draw-call md5s unchanged;
+    - the stylesheet gains one rule (24,263 → 24,366 bytes).
+  - **Tests.**
+    - The structure test is renamed so it no longer claims more than it pins.
+    - It now asserts `data-glyph`, an empty glyph span, and `textContent` equal to the
+      name (jsdom's stand-in for Chrome's rendered text).
+    - It also asserts the toggle's `id` and both `aria-keyshortcuts`, two mutations
+      nothing caught before.
+    - A second test pins the compiled `::before` rule.
+    - 8 of 8 mutations caught, 5075d6a's glyph-as-text among them.
+    - The file's header said it pinned only the leader-lap readout; it now lists what it
+      pins.
+
+- **fps-probe repaired** (a9ba6a1), a consequence of 5075d6a.
+  - **The defect.** Its lookup (`aria-label`, else `textContent`) read 5075d6a's toggle
+    as "▶Play". So `press("Play")`, `press("Pause")` and `press("Restart lap")` threw,
+    and `sweep()` skipped its play click: a sweep from a paused start finished "done"
+    with the app still paused (measured at 1440x900 and 375x812).
+  - **The fix.**
+    - `nameOf(b)` is the `aria-label`, else the text without `aria-hidden` descendants;
+      `press` and `sweep` both use it.
+    - `sweep` now stops with a "failed" stage when it finds no Play/Pause button.
+    - The header's "cannot rot from code drift" now says the probe reads the app's
+      markup.
+  - **Verified.** Pasted into the built app on this branch's, 5075d6a's and cb75031's
+    builds, every press works and a paused sweep ends playing.
+  - Fix A alone would also have repaired the old lookup, since the toggle's
+    `textContent` is its name again.
+
+- **The tripwire: a layout-check row, "transport names carry no description"**
+  (58e2acb). Not asked for: the standing rule's tripwire for a miss tests can only
+  simulate. The human kept it (2026-10-14, below).
+  - Last in state B, at every viewport.
+  - It reads Chrome's accessibility tree over CDP (`DOM.querySelector` +
+    `Accessibility.getPartialAXTree`, `scripts/layout/accessibility.ts`) for the play
+    toggle and restart.
+  - It FAILs on any description, or on a name other than Play/Pause and Restart lap,
+    and prints both. It reads the toggle paused (state B under reduced motion boots
+    paused), so it gates "Play". A change confined to the playing state passes it
+    (measured: glyph as text only while playing, 206/206) and is caught by
+    TransportBar.test.tsx alone; the docs commit says so in the row's comments.
+  - 196 → 206 rows; the other 196 are textually unchanged.
+  - Mutations through the gate:
+    - the 5075d6a markup and the cb75031 markup each fail this row at all ten
+      viewports and nothing else (196/206);
+    - so do a drifted sr-only name, a drifted label constant, a removed toggle id and a
+      removed Home shortcut (the review);
+    - aria-label added on top, data-glyph renamed, sr-only dropped and title removed
+      pass it and are caught by vitest.
+  - Its pure helpers' tests catch 5 of 5 mutations (6 of 6 in the review's set).
+  - Its first run on CI's Linux Chrome (41ec56d's `verify`): 206/206, this row PASS at
+    all ten viewports with the same readings as locally (name "Play" / "Restart lap",
+    description "").
+
+**Evidence (after the fourth batch, HEAD 58e2acb).**
+- **`npm run check`:** 1105 tests, 0 warn/error in the full log, engine coverage 100%,
+  check:layout 206/206. Every commit was green at its own state (tests / layout rows):
+  - 27d7421: 1096 / 196;
+  - 5075d6a: 1097 / 196;
+  - 9d6644c: 1098 / 196;
+  - a9ba6a1: 1098 / 196;
+  - 58e2acb: 1105 / 206.
+- **Chrome's accessibility tree, Play/Pause and Restart lap** (ten viewports × playing
+  and paused × two buttons, per replay): a description equal to the name in 40/40
+  (cb75031) → 40/40 (5075d6a) → 0/40 (9d6644c), fixture and 22-car alike.
+- **The review re-measured independently:** 104/104 → 104/104 → 0/104 over 13
+  viewports (the ten gated plus 430x932, 600x900 and 568x320) × four states; button and
+  transport clips 171/171 byte-identical to cb75031 at 1x and 3x; 16/16 TransportBar
+  mutations caught by vitest, 6/6 helper mutations caught, and every gate mutation that
+  FAILs the row FAILs that row alone. pytest 401 passed.
+- **Pixels, matrices, draw calls:** as listed under ruling 3. The bundle is
+  byte-identical at 9d6644c, a9ba6a1 and 58e2acb (index-DacdHsDB.css,
+  index-BgD7Aj_U.js).
+- Chrome 155, headless and offline: 0 off-origin requests and 0 page exceptions in every
+  instrument.
+- **The docs commit** (comments and docs only): `npm run check` green, 1105 tests, 0
+  warn/error in the full log, engine coverage 100%, check:layout 206/206; the bundle is
+  byte-identical to 58e2acb's.
+
+**Rulings on the fourth batch's additions (human, 2026-10-14).**
+- **"Keep the CSS-drawn Play/Restart symbols?": "Keep the CSS-drawn symbols
+  (recommended)".** Ruling 3's extension (9d6644c) stands.
+- **"Keep the new "transport names carry no description" layout check?": "Keep it
+  (recommended)".** The row stays gated: 206 rows.
+- No code changed; the docs commit records both and closes them in the open list.
+
+**C1: thin rows, every control 44x44 CSS px** (39ff136, 6eee1f7).
+- **Trigger.** `compact:` is a plugin variant: at most 30rem tall, OR under 40rem wide
+  and portrait (`UPRIGHT_PHONE`). That clause was at most 43.75rem tall in the first
+  cut, 50rem after the second batch, and has had no height bound since the third.
+  - It catches every landscape phone: Safari's 724x257 and 724x300, 667x375, 740x360,
+    and a Plus/Pro Max held sideways (~814x312).
+  - It catches every upright phone: 375x626, 390x664, 375x667, 360x640, 375x812,
+    390x844, 430x932 and the installed sizes.
+  - It does not catch 1366x657, or a narrow window wider than tall and over 480 px tall
+    (600x500).
+  - A desktop window ≤480 px tall (1280x480), and a window or tablet split-view pane
+    under 640 px wide and taller than wide (600x900; 375x1024 and 590x834, estimated),
+    get it too, with the header's labels as tooltips. A wider pane does not (640x900
+    is unchanged).
+- **Header.** One row. The two buttons become 44 px icon boxes (PLACEHOLDER art,
+  `components/icons.tsx`). Their labels stay in the DOM as sr-only, so names, tab order
+  and test queries are unchanged.
+- **Targets.** `TOUCH_TARGET` (`components/touchTarget.ts`) is a 44 px floor on every
+  button. The box is the target, with no pseudo-element.
+  - The scrubber is 44 px tall: 20 px of padding around a 4 px track, its background
+    clipped to it with `compact:!bg-clip-content`.
+  - The clip is important because the tint's inline shorthand resets it. It is
+    compact-only because a content-box clip moved 3–4 md+ pixels by one level (measured;
+    fixed in 6eee1f7).
+  - Focus rings are inset on these rows (`COMPACT_FOCUS_RING`): an outside ring was cut
+    off at the screen edge.
+- **Measured, header / transport / 22-car track, Slice 26 → 27:**
+
+| viewport | header | transport | track |
+|---|---|---|---|
+| 724x257 | 54 → 44 | 43 → 45 | 160 → 168 |
+| 724x300 | 54 → 44 | 43 → 45 | 203 → 211 |
+| 375x626 | 82 → 44 | 109 → 133 | 215 → 229 |
+| 390x664 | 82 → 44 | 109 → 133 | 253 → 267 |
+| 375x667 | 82 → 44 | 109 → 133 | 256 → 270 |
+| 360x640 | 82 → 44 | 109 → 133 | 229 → 243 |
+| 667x375 | 54 → 44 | 43 → 45 | 278 → 286 |
+| 740x360 | 54 → 44 | 43 → 45 | 263 → 271 |
+| 814x312 | 54 → 44 | 43 → 45 | 215 → 223 |
+
+- **Upright, the transport is three 44 px rows.** The scrubber's own row is 20 px of
+  that: 249 px of track without it at 375x626.
+- **Against the 24 px draft:** 724x257 gets 168 instead of 200, and 375x626 gets 229
+  instead of 293.
+- **Scrubber width** stays within ±10 px of Slice 26 (667x375, 22 cars: 120 → 122). The
+  gaps went from 8 to 6 px and the side margins from 16 to 8 px to keep it.
+- **Touch targets, measured in Chrome** at 10 compact sizes, two scenarios each, Pause
+  included:
+  - every control is ≥44x44;
+  - a 44 px square at each centre is fully hit-testable;
+  - no two controls overlap.
+  - Before: buttons were 26–30 px tall and the scrubber 4 px.
+- **Undone from the draft.** The no-wrap header with a shrink-0 picker pushed a failed
+  load's error box off a 375 px screen (page 637 px wide). The header wraps again.
+
+**F: Add to Home Screen** (e64a73c, built from draft 6bcc8dc/6130ea3/0f640ce).
+- **Manifest.** A static `public/manifest.webmanifest`: display standalone, same-origin
+  paths, colours = `--c-bg`. Its name is the `<title>`; its short_name is the ruled
+  label.
+- **index.html.** The iOS tags and an apple-touch-icon. `viewport-fit=auto` is written
+  out; cover was rejected by measurement in Slice 26.
+- **Icons.** All three proposals are in `docs/icons/proposals/`, and A is copied to
+  `docs/icons/app-icon.svg`. `docs/icons/rasterize-icons.mjs` renders the four PNGs
+  reproducibly.
+- **No service worker.**
+- **What it does not change.** The bundle is byte-identical, check:layout's rows are
+  byte-identical, and Chrome reports no manifest or installability errors.
+- **Estimated standalone sizes:** landscape 724x375 / 724x354 get 286 / 265 px of track.
+- **Upright installed (~375x734 to ~390x797) is `compact:`** since the second batch's
+  ruling 3. Header 44, transport 133, 22-car track 267–330 → 334–372.
+
+**The gate.** Ten viewports, 196 rows, all PASS: 724x257 by the second batch's ruling 2,
+and "header clear of the track" at every viewport by the third batch's ruling 5.
+- 724x257 is appended after the nine. Its 20 rows (19 before the third batch's header
+  row) pass strictly: canvas 212.0 (min 200.0); aside y=[44,212] beside canvas
+  y=[0,212]; header y=[0,44]; bar y=[212,257]; header clear of the track, overlap
+  0.0x44.0.
+- At the second batch, the first 167 rows were byte-identical to the tip (adda83b).
+- Narrowing `fulltrack:` to 15rem failed the canvas-height row at the second batch
+  (168.0, 185/186): it is the one viewport where `fulltrack:` decides.
+- 724x300 is not gated. It passes with the header in either place (255 or 211 px), so
+  none of its rows can fail on this layout's account.
+- Of the four ways to close 724x257's 32 px gap, (a) was ruled.
+
+**Evidence** (after the review's fix pass and the restack).
+- **`npm run check`:** 1081 tests, 0 warn/error, engine coverage 100%, check:layout
+  167/167.
+- **Draw-call md5s** are unchanged (cb43a0f8… / e30b5b6e…).
+- **Safari matrix:** aa0befbb.
+- **Standard matrix:** md+ UNCHANGED, and 375x812 / 390x844 / 1280x720 / 1440x900 are
+  pixel-identical (20 PNGs).
+- **Mutations caught:** C1 18/18, F 12/12.
+
+**Amendments from the review's fix pass.**
+- **The compact-row guard test could not fail** (the review's blocking finding):
+  Tailwind
+  scanned test files, so a class named only in a test comment still shipped a rule. Test
+  files are now excluded from Tailwind's `content`; 9 dead rules left the bundle and no
+  pixel moved (layout rows and every matrix value unchanged). The meta line's
+  `compact:min-w-0` is pinned on the rendered element instead.
+- The thin header and transport rows, both compact focus rings' inset rule, iOS's
+  `black` status bar and a no-service-worker scan of index.html are now pinned by tests.
+- index.html's install rationale moved into `webAppManifest.test.ts`'s header
+  (dist/index.html 3039 → 1508 bytes).
+- Not pinned: the Tailwind exclusion itself (reverting it passes every test; only the
+  bundle grows by the 9 dead rules).
+
+**Copy.** "Load replay JSON" is named in FeaturedPanel.tsx, App.tsx, ReplayError.tsx
+and the gallery fetch-failure message in loadGalleryReplay.ts, but it is an icon on
+compact screens. Since the third batch (ruling 1) the four mentions carry the human's
+wording, pinned verbatim.
+
+**Device-only, not measured:**
+- the install itself;
+- the real standalone insets;
+- icon masking and the 12-character label;
+- WebKit's range thumb (iOS drags by the thumb, so the scrubber's 44 px height may not
+  help there).
+
+**Follow-ups:**
+- a failed-load state in the layout check;
+- the error box inside the compact landscape header (pre-existing).
+
+**Open for the human (2026-10-14, after the rulings on the fourth batch's additions).**
+- The compact controls' look (the second batch's ruling 4), after the phone check.
+- Whether to gate 724x300.
+- The 6.6 px margin of the one-row header above the tower (a device font check).
+- VoiceOver with the titles. VoiceOver and Safari with the glyphs as generated content
+  are unmeasured too: Chrome is the only engine measured. WebKit exposes `title`
+  through its own help-text path, so listen to Play and Restart lap specifically.
+- Device-only: WebKit's range thumb, the real standalone viewports, the white inset
+  ring, and the install.
+
 ### [ ] Slice 20 — colour distinction under the luminance floor
 
 **Filed 2026-09-08 by Slice 17's browser pass.** The floor fixes visibility, not
@@ -5579,7 +6153,7 @@ proportions at the sizes it measured; a usable phone needs a phone-first layout.
 Merged as a strict improvement on main (human ruling, 2026-10-11) and **Slice 26**
 filed for the phone work.
 
-### [x] Slice 26 — phone-first layout, measured against Safari's real viewports (done 2026-10-12)
+### [x] Slice 26 — phone-first layout, measured against Safari's real viewports (done 2026-10-12, MERGED 2026-10-14 as #81)
 
 **Filed 2026-10-11 by the human's phone check of Slice 25.** On an iPhone, Safari's
 toolbars leave the page about 724x257 in landscape and 375x626 upright, but the gate

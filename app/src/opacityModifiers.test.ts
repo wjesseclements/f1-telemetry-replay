@@ -16,14 +16,20 @@
  * `vite build` ships (it needs `test.css`, which `vite.config.ts` turns on). Every
  * opacity-modified colour class in the shipped sources must have a rule in it.
  *
- * Tailwind's content glob scans THIS file too, and every class it can compile here
- * ships in the app's CSS. So no class below is spelled out unless a component
- * already uses it; the scanner's sample is assembled from fragments instead.
+ * Tailwind's content globs leave test files out (Slice 27's review), so nothing
+ * written in this file reaches the stylesheet: a class a component dropped has no
+ * rule, however often a test names it. Until then they scanned this file too, so
+ * the scanner's sample below was assembled from fragments to keep the classes it
+ * names out of the app's CSS. The fragments are harmless now and are left as
+ * they were.
  */
 import { describe, expect, it } from "vitest";
 import css from "./index.css?inline";
 
-/** The shipped sources — what Tailwind's `./src/**` content glob scans, less tests. */
+/**
+ * The shipped sources — what Tailwind's content globs scan under `src/`, which no
+ * longer includes tests, less the helpers in `test/` (they compile no rule).
+ */
 const SOURCES = import.meta.glob<string>(
   ["./**/*.{ts,tsx}", "!./**/*.test.{ts,tsx}", "!./test/**"],
   { query: "?raw", import: "default", eager: true },
@@ -61,7 +67,7 @@ describe("opacity-modified colour classes", () => {
   it("are found by the scanner, under a variant too, and nothing else is", () => {
     // Pins the scanner, so the real assertion below cannot pass by finding nothing.
     // Fragments, not literals, wherever a literal would be a class no component
-    // uses — see the header.
+    // uses — written while Tailwind still scanned this file; see the header.
     const arbitrary = "text-dim" + "/[0.7]";
     const sample = [
       "bg-bg/75",

@@ -7,8 +7,12 @@
  *   C  the gallery reopened over that replay.
  *
  * Every threshold is named and justified where it is declared. Every selector is
- * an existing role, label or id in the app — no test ids were added.
+ * an existing role, label, id or ARIA attribute in the app — no test ids were
+ * added. One row in B reads Chrome's accessibility tree rather than the page: the
+ * transport's two icon buttons' names (`accessibility.ts`). The others read
+ * boxes and counts.
  */
+import { judgeNames, readAxText } from "./accessibility";
 import type { CdpPage } from "./cdp";
 import {
   contains,
@@ -41,6 +45,11 @@ import type { Report, StateKey } from "./report";
 export const SELECTORS: Selectors = {
   header: "main > header",
   transport: 'section[aria-label="Playback controls"]',
+  // The toggle has an id (the event card's focus fallback). Restart has none,
+  // and is found by the key it answers to.
+  playToggle: "#transport-play-toggle",
+  restart:
+    'section[aria-label="Playback controls"] button[aria-keyshortcuts="Home"]',
   aside: 'aside[aria-label="Telemetry"]',
   tower: 'ul[aria-label="Running order"]',
   canvas: "main canvas",
@@ -288,6 +297,54 @@ function recordPanelCovers(
   );
 }
 
+/**
+ * The names the transport's two icon buttons carry (`TransportBar.tsx`): the
+ * toggle says what a press will do. Copied rather than imported, because the
+ * component module brings React with it; a rename is a copy change, and this row
+ * failing on one is how the check hears of it.
+ */
+const TRANSPORT_NAMES = {
+  playToggle: ["Play", "Pause"],
+  restart: ["Restart lap"],
+} as const;
+
+/**
+ * Play/pause and restart repeat their names as tooltips (ruled 2026-10-13), and
+ * Chrome exposes a `title` as a description unless it equals the button's
+ * rendered text. A glyph drawn as text, `aria-hidden` or not, left each button
+ * described by its own name, which a screen reader may read a second time, and
+ * every geometric row passed (`accessibility.ts` has the numbers). Read in B,
+ * the loaded scenario with no overlay open, so neither button is inert. A
+ * failed read is this row's FAIL, never a lost state C.
+ */
+async function recordTransportNames(ctx: StateContext): Promise<void> {
+  const what = "transport names carry no description";
+  ctx.step("reading the transport's accessible names");
+  try {
+    const verdict = judgeNames([
+      {
+        what: "toggle",
+        expected: TRANSPORT_NAMES.playToggle,
+        reading: await readAxText(ctx.page, SELECTORS.playToggle),
+      },
+      {
+        what: "restart",
+        expected: TRANSPORT_NAMES.restart,
+        reading: await readAxText(ctx.page, SELECTORS.restart),
+      },
+    ]);
+    record(ctx, "B", what, verdict.pass, verdict.measured);
+  } catch (err) {
+    record(
+      ctx,
+      "B",
+      what,
+      false,
+      `could not read the accessibility tree: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
 /** A — the gallery panel over the committed fixture, as a visitor first sees it. */
 export async function stateA(ctx: StateContext): Promise<void> {
   const { page } = ctx;
@@ -444,6 +501,26 @@ export async function stateB(
       `legend ${ySpan(probe.legend)} · header ${ySpan(probe.header)}`,
     );
   }
+
+  // Ruled 2026-10-13. Since Slice 27 the header is a grid item on the
+  // shortest landscape phones (`fulltrack:`, App.tsx), placed beside the track
+  // rather than above it, and a header placed in the track's cell sat over the
+  // canvas with every other row passing (Slice 27's review, by mutation).
+  // Before, the flex column made that impossible. Both spans, because there
+  // the two are side by side.
+  if (probe.header === null || probe.canvas === null) {
+    record(ctx, "B", "header clear of the track", false, "not found");
+  } else {
+    record(
+      ctx,
+      "B",
+      "header clear of the track",
+      !overlaps(probe.header, probe.canvas),
+      `header ${xySpan(probe.header)} · canvas ${xySpan(probe.canvas)} · overlap ${size(intersect(probe.header, probe.canvas))}`,
+    );
+  }
+
+  await recordTransportNames(ctx);
 }
 
 /** C — the gallery reopened from the header, over the loaded replay. */

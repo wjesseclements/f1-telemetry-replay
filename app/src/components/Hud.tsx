@@ -300,7 +300,8 @@ export function Hud({ replay }: HudProps) {
     //
     //  - 40%, the cap. Uncapped, a full field took the whole region: the canvas
     //    measured 0 px at 375x812 and the strip ran on under the transport bar.
-    //    40% leaves the track at least 60% (339 px there with 22 cars).
+    //    40% leaves the track at least 60% (381 px there with 22 cars since
+    //    Slice 27's thin rows; 339 under the wrapped header before them).
     //  - 13.75rem (220 px), the floor: a strip that fits keeps its height. The
     //    one-car fixture's strip measures 219 px (a 194 px readout at every point
     //    of its lap, + `p-3` + the border); 40% alone cut it to 178 px at 375x667
@@ -324,10 +325,11 @@ export function Hud({ replay }: HudProps) {
     //    667x375 and 740x360 when those stacked.
     //
     // Measured: 375x812 and taller are as the bare 40% left them (a three-car
-    // window scrolls its last ~48 px). At 375x667 and 360x640 the header's meta
-    // line keeps to one line (`onerow:`, App.tsx), so neither bound binds: every
-    // strip keeps its 220 px floor (the one-car list whole) and the track gets
-    // 229–257 px. With the wrapping header, 360x640 was where the two floors met
+    // window scrolls its last 33 px since Slice 27's thin rows; 48 before). At
+    // 375x667 and 360x640 the header's meta line keeps to one line (`onerow:`,
+    // App.tsx), so neither bound binds: every strip keeps its 220 px floor (the
+    // one-car list whole) and the 22-car track gets 243–270 px (229–256 before
+    // Slice 27). With the wrapping header, 360x640 was where the two floors met
     // and the track won (the one-car list 192 of 194 px, the track 200). A screen
     // 5:4 or wider never stacks (`side:`, `tailwind.config.js`), and the sidebar
     // needs no cap (`side:max-h-none`): its row bounds it.
@@ -348,9 +350,13 @@ export function Hud({ replay }: HudProps) {
     // the list 222 px for that 227 px block. Tailwind prints `md:` after `side:`,
     // so `md:w-56` and `md:p-4` win from 768 px up (pinned in
     // `layoutVariants.test.ts`).
+    //
+    // On the shortest landscape phones (`fulltrack:`, Slice 27) the page is a
+    // grid and the header sits above this column (App.tsx, `FULL_TRACK_GRID`):
+    // the sidebar is the second column's lower row, the 256 px width unchanged.
     <aside
       aria-label="Telemetry"
-      className="flex max-h-[max(40%,min(13.75rem,100%-max(12.5rem,30dvh+1px)))] shrink-0 flex-col border-t border-line bg-panel p-3 side:max-h-none side:w-64 side:border-l side:border-t-0 side:py-2 md:w-56 md:p-4"
+      className="flex max-h-[max(40%,min(13.75rem,100%-max(12.5rem,30dvh+1px)))] shrink-0 flex-col border-t border-line bg-panel p-3 side:max-h-none side:w-64 side:border-l side:border-t-0 side:py-2 md:w-56 md:p-4 fulltrack:col-start-2 fulltrack:row-start-2"
     >
       {/* `overflow-y-auto` + `min-h-0` because twenty cars are taller than any
           sidebar or strip: the list shrinks to what the aside allows and scrolls,

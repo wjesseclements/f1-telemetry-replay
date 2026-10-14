@@ -2,12 +2,23 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=auto"
+    />
     <!-- Without an explicit icon the browser asks for /favicon.ico and gets a 404,
          which is a console error on every load. SVG only: it is 700 bytes, scales,
          and the app has no need to ship a raster fallback for browsers it does not
          otherwise support. -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- Add to Home Screen, and the viewport above: why, in src/webAppManifest.test.ts. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#0a0d12" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-title" content="F1 Telemetry" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <meta
       name="description"
       content="Replay a Formula 1 lap from real telemetry: a speed-painted trail around the circuit with live speed, gear, throttle, brake and DRS."

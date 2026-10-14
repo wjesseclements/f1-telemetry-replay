@@ -28,7 +28,7 @@ import { lastInstant } from "../engine/clock";
 import { formatLapTime } from "../engine/format";
 import type { StatusSegment } from "../engine/trackStatus";
 import { segmentGradient } from "./flagTint";
-import { FOCUS_RING } from "./focus";
+import { COMPACT_FOCUS_RING, FOCUS_RING } from "./focus";
 
 export interface ScrubberProps {
   /** Current playback position in seconds, from the telemetry channel. */
@@ -106,7 +106,22 @@ export function Scrubber({
       // The tint paints the element's own background over the `bg-line` base;
       // with no abnormal stretches `gradient` is null and the class alone wins.
       style={gradient === null ? undefined : { background: gradient }}
-      className={`h-1 w-full min-w-0 cursor-pointer appearance-none rounded-full bg-line accent-accent ${FOCUS_RING}`}
+      // On a compact screen (Slice 27, `compact:`) the input is 44 px tall, the
+      // ruled touch-target floor (`touchTarget.ts`): 20 px of padding above and
+      // below a 4 px content box, and the background (tint included) clipped to
+      // that box, so the painted track stays 4 px and the rest is hit area.
+      // The clip is `!important` because the tint's inline `background`
+      // shorthand resets `background-clip`, and only an important rule beats an
+      // inline one; it is `compact:` only because even with no padding a
+      // content-box clip antialiases the rounded ends differently (1 colour
+      // level on 3-4 px at 1280x720, measured), and every other screen keeps
+      // its pixels. `block`, or the inline input sits on a baseline and its
+      // line box adds 6 px under it. The radius is 2px/22px so the clipped 4 px
+      // track keeps round 2 px ends: `rounded-full` on a 44 px box clipped it
+      // to a taper. iOS Safari drags a range input by its thumb, whose size this
+      // does not set (unmeasured: no WebKit here); Chrome seeks on a tap
+      // anywhere in the box.
+      className={`h-1 w-full min-w-0 cursor-pointer appearance-none rounded-full bg-line accent-accent compact:block compact:h-11 compact:rounded-[2px/22px] compact:py-5 compact:!bg-clip-content ${FOCUS_RING} ${COMPACT_FOCUS_RING}`}
     />
   );
 }

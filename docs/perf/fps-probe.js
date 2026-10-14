@@ -9,7 +9,14 @@
  * It is deliberately NOT under `app/`. It can never run in CI — it needs a visible
  * browser tab and a gitignored multi-megabyte replay file — so it must not sit anywhere
  * `npm run check`, `eslint .` or `format:check` would adopt it and then have to skip it.
- * It touches no app symbol, so it cannot rot from code drift either.
+ * It imports no app symbol, but it does read the app's MARKUP: buttons by their
+ * accessible names (`nameOf`), the speed group and the running order by their
+ * `aria-label`s, the picker's "loaded …" line. So a markup change can break it with
+ * no gate noticing. One did: when play/pause and restart moved from `aria-label` to
+ * `sr-only` text (Slice 27), `press("Play")` threw and `sweep()` silently skipped its
+ * play click, so a paused app would have been measured as a static canvas; `sweep()`
+ * now stops instead. After a change to any of those, re-run `press("Pause")` and
+ * `press("Play")` on the preview before trusting a sweep.
  *
  * ---------------------------------------------------------------------------------
  * PROCEDURE
@@ -391,16 +398,28 @@
   };
 
   /**
-   * Click a transport control by its accessible name — `setSpeed("4×")`, `setSpeed("Play")`.
+   * A button's accessible name, as far as this app's buttons need: its `aria-label`
+   * when it has one (the speed buttons), else its text with every `aria-hidden`
+   * descendant removed (play/pause and restart, named by `sr-only` text beside an
+   * `aria-hidden` glyph). Not the full name computation; enough to find a control.
+   */
+  const nameOf = (b) => {
+    const label = b.getAttribute("aria-label");
+    if (label !== null) return label.trim();
+    const copy = b.cloneNode(true);
+    for (const hidden of copy.querySelectorAll('[aria-hidden="true"]')) hidden.remove();
+    return copy.textContent.trim();
+  };
+
+  /**
+   * Click a transport control by its accessible name — `press("4× speed")`, `press("Play")`.
    *
    * A real `.click()`, which React's delegated listener receives like any other. Kept
    * here so a measurement sweep is scripted rather than hand-clicked between runs, which
    * is what makes the speed a recorded parameter instead of a remembered one.
    */
   const press = (name) => {
-    const button = [...document.querySelectorAll("button")].find(
-      (b) => (b.getAttribute("aria-label") ?? b.textContent).trim() === name,
-    );
+    const button = [...document.querySelectorAll("button")].find((b) => nameOf(b) === name);
     if (button === undefined) throw new Error(`fps-probe: no button named ${name}`);
     button.click();
     return button.textContent.trim();
@@ -555,10 +574,16 @@
         // A rate change and a fresh replay both need a moment before they are what is
         // being measured rather than part of it.
         await new Promise((resolve) => setTimeout(resolve, 1000));
-        const play = [...document.querySelectorAll("button")].find(
-          (b) => (b.getAttribute("aria-label") ?? b.textContent).trim() === "Play",
+        // Found by either name, so that a toggle this cannot find stops the sweep
+        // instead of being skipped: skipped, a paused app is measured as a frame rate.
+        const toggle = [...document.querySelectorAll("button")].find((b) =>
+          ["Play", "Pause"].includes(nameOf(b)),
         );
-        if (play !== undefined) play.click();
+        if (toggle === undefined) {
+          out.stage = "failed: no Play/Pause button (see nameOf)";
+          throw new Error("fps-probe: no button named Play or Pause");
+        }
+        if (nameOf(toggle) === "Play") toggle.click();
 
         out.stage = `${url} @ ${speed}`;
         const name = url.split("/").pop();

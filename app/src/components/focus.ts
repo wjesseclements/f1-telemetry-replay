@@ -23,3 +23,22 @@ export const FOCUS_RING =
  */
 export const PEER_FOCUS_RING =
   "peer-focus-visible:ring-2 peer-focus-visible:ring-accent peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-bg";
+
+/**
+ * The rings above, drawn INSIDE the control on a compact screen's thin rows (Slice 27).
+ *
+ * There a control's 44 px box fills its row (`touchTarget.ts`): the header's buttons
+ * touch the top of the screen and a landscape transport bar's touch the bottom, so a
+ * ring 2 px outside the box was cut off by the screen edge, and in the transport bar
+ * it drew over the tower above. Inset, it stays whole inside the box. Added beside
+ * `FOCUS_RING` / `PEER_FOCUS_RING`, never instead of them: every other screen keeps
+ * the ring outside, in the accent.
+ *
+ * White (`--c-txt`) rather than the accent (ruled 2026-10-12). Inset, an accent
+ * ring drew a yellow box just inside the border, which is what the selected speed
+ * button's accent border looks like, so a focused button read as a selected one.
+ */
+export const COMPACT_FOCUS_RING =
+  "compact:focus-visible:ring-inset compact:focus-visible:ring-offset-0 compact:focus-visible:ring-txt";
+export const COMPACT_PEER_FOCUS_RING =
+  "compact:peer-focus-visible:ring-inset compact:peer-focus-visible:ring-offset-0 compact:peer-focus-visible:ring-txt";

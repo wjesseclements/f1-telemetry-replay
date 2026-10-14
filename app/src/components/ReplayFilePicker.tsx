@@ -15,10 +15,17 @@
 import { useId, useState } from "react";
 import { loadReplayFile } from "../data/loadReplayFile";
 import { useTransport } from "../store/transport";
-import { PEER_FOCUS_RING } from "./focus";
+import { useCompactLayout } from "./compactLayout";
+import { COMPACT_PEER_FOCUS_RING, PEER_FOCUS_RING } from "./focus";
+import { OpenFileIcon } from "./icons";
+import { TOUCH_TARGET } from "./touchTarget";
+
+/** The picker's label: its text, or its `sr-only` name and tooltip. */
+const PICKER_LABEL = "Load replay JSON";
 
 export function ReplayFilePicker() {
   const inputId = useId();
+  const compact = useCompactLayout();
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState<string | null>(null);
 
@@ -48,7 +55,10 @@ export function ReplayFilePicker() {
 
   return (
     <div className="ml-auto flex min-w-0 flex-col items-end gap-2">
-      <div>
+      {/* `flex` on a compact screen (Slice 27, `compact:`): the label is a 44 px icon
+          box (`touchTarget.ts`), and an inline-level wrapper would add a line
+          box's descender under it. */}
+      <div className="compact:flex">
         <input
           id={inputId}
           type="file"
@@ -58,16 +68,29 @@ export function ReplayFilePicker() {
           // its native Space/Enter activation. The label carries the focus ring.
           className="peer sr-only"
         />
+        {/* The label as a tooltip where the icon replaces it (ruled 2026-10-12;
+            `compactLayout.ts`), as the gallery toggle beside it has. On the
+            label, which is what the pointer is over: the input is `sr-only`. */}
         <label
           htmlFor={inputId}
-          className={`cursor-pointer rounded border border-line px-3 py-1.5 font-mono text-xs text-dim transition-colors hover:text-txt ${PEER_FOCUS_RING}`}
+          title={compact ? PICKER_LABEL : undefined}
+          className={`cursor-pointer rounded border border-line px-3 py-1.5 font-mono text-xs text-dim transition-colors hover:text-txt compact:flex compact:items-center compact:justify-center compact:p-0 ${TOUCH_TARGET} ${PEER_FOCUS_RING} ${COMPACT_PEER_FOCUS_RING}`}
         >
-          Load replay JSON
+          {/* The text stays the input's accessible name (sr-only) when the
+              PLACEHOLDER icon replaces it on a compact screen. */}
+          <OpenFileIcon className="hidden compact:block" />
+          <span className="compact:sr-only">{PICKER_LABEL}</span>
         </label>
       </div>
 
+      {/* On a compact screen the confirmation would add a second line to the thin
+          header; the meta line beside it already names what is loaded. Kept in
+          the DOM for a screen reader. The error below stays visible: it is the
+          one message a failed load has. */}
       {loaded !== null && (
-        <p className="font-mono text-[11px] text-dim">loaded {loaded}</p>
+        <p className="font-mono text-[11px] text-dim compact:sr-only">
+          loaded {loaded}
+        </p>
       )}
 
       {error !== null && (
