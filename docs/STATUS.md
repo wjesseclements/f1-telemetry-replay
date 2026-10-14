@@ -78,8 +78,9 @@ of one, with 44 px controls; tooltips on play/pause and restart; and a "header c
 the track" layout-check row at every viewport. The fourth (2026-10-13) added "on small
 screens" to the gallery-failure message and named play/pause and restart by hidden text
 as ruled; because Chrome measured that alone as no change, their glyphs are now drawn
-by CSS too (beyond the ruling, flagged), so Chrome no longer exposes the tooltip as a
-description repeating the name, which a new layout-check row gates. The compact
+by CSS too (beyond the ruling; the human kept it, and the row, on 2026-10-14), so
+Chrome no longer exposes the tooltip as a description repeating the name, which a new
+layout-check row gates. The compact
 controls' look waits for the human's phone check; a real-iPhone check is the missing
 evidence for it. Then **the board: 18 → 20**, with the fixture asymmetry overhaul
 behind them.

@@ -5148,8 +5148,8 @@ Rulings 1, 4 and 5 accept what was built and change no file.
   - **Extended (9d6644c),** under the standing rule that a measured half-fix is
     extended, not shipped. Each glyph is CSS generated content on its `aria-hidden`
     span (`data-glyph` + `before:content-[attr(data-glyph)]`), so each button's text
-    is exactly its sr-only name. This goes beyond the ruling's words; it is the
-    human's to accept.
+    is exactly its sr-only name. This went beyond the ruling's words; the human kept
+    it (2026-10-14, below).
     - Description: **0 of 40**, fixture and 22-car alike.
     - Names unchanged, 40 of 40.
     - The header's controls carry no description on any of the three builds (0 of 60
@@ -5205,7 +5205,7 @@ Rulings 1, 4 and 5 accept what was built and change no file.
 
 - **The tripwire: a layout-check row, "transport names carry no description"**
   (58e2acb). Not asked for: the standing rule's tripwire for a miss tests can only
-  simulate, and the human's to keep or drop.
+  simulate. The human kept it (2026-10-14, below).
   - Last in state B, at every viewport.
   - It reads Chrome's accessibility tree over CDP (`DOM.querySelector` +
     `Accessibility.getPartialAXTree`, `scripts/layout/accessibility.ts`) for the play
@@ -5224,8 +5224,9 @@ Rulings 1, 4 and 5 accept what was built and change no file.
     - aria-label added on top, data-glyph renamed, sr-only dropped and title removed
       pass it and are caught by vitest.
   - Its pure helpers' tests catch 5 of 5 mutations (6 of 6 in the review's set).
-  - It has not yet run on CI's Linux Chrome; the push's `verify` is its first run
-    there.
+  - Its first run on CI's Linux Chrome (41ec56d's `verify`): 206/206, this row PASS at
+    all ten viewports with the same readings as locally (name "Play" / "Restart lap",
+    description "").
 
 **Evidence (after the fourth batch, HEAD 58e2acb).**
 - **`npm run check`:** 1105 tests, 0 warn/error in the full log, engine coverage 100%,
@@ -5251,6 +5252,13 @@ Rulings 1, 4 and 5 accept what was built and change no file.
 - **The docs commit** (comments and docs only): `npm run check` green, 1105 tests, 0
   warn/error in the full log, engine coverage 100%, check:layout 206/206; the bundle is
   byte-identical to 58e2acb's.
+
+**Rulings on the fourth batch's additions (human, 2026-10-14).**
+- **"Keep the CSS-drawn Play/Restart symbols?": "Keep the CSS-drawn symbols
+  (recommended)".** Ruling 3's extension (9d6644c) stands.
+- **"Keep the new "transport names carry no description" layout check?": "Keep it
+  (recommended)".** The row stays gated: 206 rows.
+- No code changed; the docs commit records both and closes them in the open list.
 
 **C1: thin rows, every control 44x44 CSS px** (39ff136, 6eee1f7).
 - **Trigger.** `compact:` is a plugin variant: at most 30rem tall, OR under 40rem wide
@@ -5375,16 +5383,8 @@ wording, pinned verbatim.
 - a failed-load state in the layout check;
 - the error box inside the compact landscape header (pre-existing).
 
-**Open for the human (2026-10-13, after the fourth batch).**
+**Open for the human (2026-10-14, after the rulings on the fourth batch's additions).**
 - The compact controls' look (the second batch's ruling 4), after the phone check.
-- Ruling 3's extension: the glyphs drawn as CSS generated content (9d6644c), beyond the
-  ruling's words, because naming by sr-only text alone left the description (40/40).
-- Whether to keep the new "transport names carry no description" gate row.
-  - It was not asked for: it is the standing rule's tripwire for a miss that tests can
-    only simulate.
-  - It extends the layout check from the page into Chrome's accessibility tree, with
-    one row per viewport and the run time unchanged (5.1–5.4 s). It reads the toggle
-    paused only.
 - Whether to gate 724x300.
 - The 6.6 px margin of the one-row header above the tower (a device font check).
 - VoiceOver with the titles. VoiceOver and Safari with the glyphs as generated content

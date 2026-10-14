@@ -94,8 +94,7 @@ from FastF1 data. PRD.md holds the detail; this file holds the law.
     - Why: Chrome exposes a `title` as a description unless the title equals the
       button's rendered text, `aria-hidden` text included. jsdom cannot see that, so a
       glyph drawn as text passed every test.
-    - That makes 206 rows. Whether to keep this row is open for the human (PLAN,
-      Slice 27).
+    - That makes 206 rows. The human kept this row (2026-10-14).
   - **Offline inside the browser too.** Every host but loopback is unresolvable
     (`--host-resolver-rules` + `--no-proxy-server`). Any request off the preview origin
     (page, workers, frames) is a FAIL, as is an uncaught page exception.
