@@ -4819,7 +4819,7 @@ the 2024 pit cycle's swaps reading as moves. The pre-registered 300 ms stands
 untouched — no tune requested. **"NO SIG" ratified** as the compact spelling.
 Push + PR + auto-merge authorised.
 
-### [ ] Slice 27 — compact bars with 44 px touch targets (C1), and Add to Home Screen (F) (built 2026-10-12; four batches of rulings applied; awaiting the compact controls' look and a phone check)
+### [ ] Slice 27 — compact bars with 44 px touch targets (C1), and Add to Home Screen (F) (built 2026-10-12; four batches of rulings applied; MERGED 2026-10-14 as #82 on the human's direction; awaiting the compact controls' look and a phone check)
 
 **Filed 2026-10-12 by the human's rulings on Slice 26's drafts.** Built on
 `feat/slice-27-compact-bars-home-screen`, stacked on Slice 26's final tip; the PR
@@ -6153,7 +6153,7 @@ proportions at the sizes it measured; a usable phone needs a phone-first layout.
 Merged as a strict improvement on main (human ruling, 2026-10-11) and **Slice 26**
 filed for the phone work.
 
-### [x] Slice 26 — phone-first layout, measured against Safari's real viewports (done 2026-10-12)
+### [x] Slice 26 — phone-first layout, measured against Safari's real viewports (done 2026-10-12, MERGED 2026-10-14 as #81)
 
 **Filed 2026-10-11 by the human's phone check of Slice 25.** On an iPhone, Safari's
 toolbars leave the page about 724x257 in landscape and 375x626 upright, but the gate
