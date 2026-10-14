@@ -5403,7 +5403,7 @@ pairwise colour-difference check over the loaded field with per-team overrides,
 or a secondary mark (pattern/initial) when two swatches collide. Interacts with
 the filed canvas-flooring rider and Slice 16's re-baseline.
 
-### [ ] Slice 18 — corner lore (after Slice 17)
+### [ ] Slice 18 — corner lore (after Slice 17) (scope ruled 2026-10-14; the copy round is next, then the build)
 
 **Filed 2026-09-08 by the human's direction, not built.** A curated per-circuit
 data file — corner name and origin story (Maggotts and Becketts, the Hamilton
@@ -5416,6 +5416,180 @@ hit-testing against rule 1 (the labels are painted by the canvas; a DOM overlay
 positioned from the same static scene geometry avoids touching the frame path),
 one file per circuit vs one file keyed by event, and how a circuit with no lore
 degrades (to today's plain labels, obviously — but argued, not assumed).
+
+**Scope proposed and ruled 2026-10-14, not built.**
+- **Method.** Three read-only maps (canvas, contract, UI) and a lore research pass
+  fed three independent designs (smallest slice, risk-first, content-first). They
+  are synthesised here into one proposal.
+- **Repo.** Proposed against main at e5076f4. Scratch is under `/tmp/f1-slices/s18/`.
+- **Rulings (human, 2026-10-14).** Numbered as the human answered them; each took
+  the recommendation:
+  1. "How do the painted corner numbers become clickable?": "Invisible buttons over
+     the numbers (recommended)".
+  2. "How does a replay find its stories?": "One file per circuit, matched by corner
+     positions (recommended)".
+  3. "What does a replay without stories look like?": "Exactly today's page
+     (recommended)".
+  4. "Which stories ship first?": "Monza and Silverstone, Hamilton Straight on the
+     start/finish label (recommended)".
+  5. "Where does the card appear, and does the replay keep playing?": "Event-card
+     shape; pauses and stays paused (recommended)".
+  6. "How big are the tap areas on crowded corners?": "Up to 44 px without
+     overlapping, plus Previous/Next (recommended)".
+- **Next.** The copy round (every story, the disputed names, the folds, and the
+  UI strings), after a fact-check of the drafts against sources and of each
+  number-to-name binding against the data. No code before the copy is ruled.
+
+**The proposal.**
+- **Data.** One bundled JSON per circuit: `src/lore/monza.json` and
+  `src/lore/silverstone.json`.
+  - Explicitly imported and parsed once by `src/lore/index.ts`. No glob, and the
+    prose stays out of `.ts`.
+  - Schema in `src/engine/lore.ts`: strict Zod, `LORE_SCHEMA_VERSION = 1`.
+  - `features` is the copy: name, optional subtitle, story of at most 300
+    characters, and sources (committed, not rendered). Turn numbers are banned in
+    copy.
+  - `layouts` is the binding: the exact `track.corners` the lore was written
+    against, plus anchors from a feature to corner labels or to the S/F line.
+  - A renumbering adds a layout; the copy is untouched.
+- **Finding it.** By the replay's corner record, never by `meta.event` or
+  `meta.track`: same labels, every corner within 10 m. That gives identity and
+  numbering era together, needs no pipeline or asset change, and covers picker
+  files. A mismatch gives no lore, never wrong lore.
+- **Badges.**
+  - Rendering: transparent `<button>`s, one per story, inside TrackCanvas's wrap.
+  - Placement: after each `measure()`, from the same `paths.corners[i].badge` and
+    `startFinish.label` points `drawCorners` paints. Direct style writes, no React
+    state, the same frame as the paint.
+  - Tap areas: a pure `engine/loreTargets.ts` sizes them up to 44 px, never
+    overlapping another story's and never leaving the canvas.
+  - Grouped numbers share one button: one tab stop and one sr-only name per story.
+  - Hidden under any dialog by `group-has-[[role=dialog]]/track:invisible`.
+  - `drawFrame`, `scene.ts` and `paths.ts` are not edited.
+- **Card.**
+  - `CornerCard`, in EventCard's mould: full screen on phones, page inert, pinned
+    44 px Close.
+  - Shows a derived eyebrow, the name, the subtitle and the story, with
+    Previous/Next round the lap.
+  - State is App-local, reset on a replay change, so there is no store field.
+  - Focus returns to the shown story's button by id.
+  - Pause on open, stay paused (ruling 5). The gallery or an event card closes it.
+- **No lore.** No buttons and no message: the DOM tab order is today's, and the
+  canvas is byte-identical. Partial lore gives buttons only on the numbers that
+  have a story.
+
+**Measured while scoping.** Indicative only: canvas sizes approximated, not
+measured in Chrome.
+- **Corner records.**
+  - The three Monza files are byte-identical: MultiViewer serves its 2021 record
+    for both 2024 and 2026.
+  - The two Silverstone files are identical too (2022 record).
+  - No letters anywhere. Every marker sits within 4 m of the driven line.
+  - Turn directions match the official numbering: Monza 7 right, 4 left.
+- **Painted badges.**
+  - 18 px discs, 9 recorded calls each per frame.
+  - On phone canvases: Monza T1/T2 are 3.4–4.6 px apart and Silverstone T16/T17
+    about 5 px.
+  - Per-corner 44 px boxes overlap in 12–22 Silverstone pairs.
+- **Grouping by story.** Monza's cross-story 44 px collisions go to 0 at every
+  size; Silverstone's go 16 → 10 at 375x200.
+- **Adaptive targets.**
+  - Desktop: 44 px everywhere except Vale (30–33 px).
+  - Monza on phones: at least 26 px.
+  - Silverstone on phones: Vale 4–6 px; Aintree, Brooklands and Woodcote 15–18 px
+    on the shortest canvases.
+- **Fingerprint prototype.**
+  - All five gallery assets match at 0.00 m; the fixture matches nothing.
+  - An 11 m shift, a renumber by one, an extra corner, a lettered split and a
+    duplicate label are each rejected.
+- **Cost.**
+  - 0 per frame; at most 18 style writes per resize.
+  - Data about 2.9 KB gzipped.
+- **Digests on unmodified main.**
+  - closed: cb43a0f8f3a91e99718acf9cf7a05e71, 80,615 calls;
+  - open: e30b5b6e59fa23d56cf65244ae76431c, 113,388 calls.
+
+**The six questions as put (each recommendation was ruled; see Rulings).**
+1. **Clickable numbers.** Invisible buttons over the unchanged painted discs.
+   - Not a painted cue: it would mark nothing here, since every number has a
+     story, and the fixture digests are blind to it.
+   - Not canvas hit-testing: no keyboard, no names, and the layout check cannot
+     see it.
+2. **Keying.** One file per circuit, matched by the corner record. Not by race
+   name, a `meta.circuit` pipeline field, or a manifest field.
+3. **No lore.** Today's page exactly. No "no stories" message, and no partial
+   matching by name.
+4. **First content.** Monza (7 cards over 11 numbers) and Silverstone (13 cards
+   over 18 numbers, plus the Hamilton Straight on the S/F label).
+   - Serraglio and the Wellington and Hangar straights are folded into a
+     neighbour's story or left out.
+   - Maggotts, Becketts and Chapel is one card, because the sources disagree on
+     its numbers.
+5. **The card.** The gated overlay mould on desktop and phones. Pause on open,
+   stay paused (the event card's precedent); the gallery and event cards close it.
+6. **Crowded corners.** Tap areas up to 44 px that never overlap, plus 44 px
+   Previous/Next as the equivalent route. Your 44 px floor is not extended to
+   painted badges. One tab stop per story.
+
+**Copy (human-owned; drafted in chat and applied verbatim).**
+- The 21 names and stories: the draft sits with this proposal, sources and
+  confidence per row.
+- Which name heads each card (Parabolica / Curva Alboreto).
+- The eyebrow format ("Turn 11", "Turns 10–14", "Start/finish").
+- The badge name format ("Turn 11, Parabolica").
+- Previous / Next.
+
+**Gates when built.**
+- **Digests.** Capture closed, open, and
+  `auto public/gallery/monza-2026-red-flag.json 22` BEFORE the first edit; all
+  three must be identical after.
+- **Lore-present no-op.** A TrackCanvas test asserts the full recorded call list
+  is identical with lore present and absent.
+- **Engine and data tests.**
+  - `lore.test.ts` and `loreTargets.test.ts`: per-file coverage at least 90%.
+  - `loreAssets.test.ts`:
+    - every gallery asset matches a layout or sits in `LORE_EXEMPT`;
+    - every layout is matched by a committed asset;
+    - the fixture matches nothing.
+- **Component tests.**
+  - CornerCard joins overlay.test's DIALOGS.
+  - TrackCanvas pins:
+    - each button centre equals the painted `arc` or `fillText` point exactly,
+      after a resize too;
+    - commits===1 with lore present.
+- **Layout check: state D, appended after C.**
+  - Rows:
+    - targets hidden under the gallery;
+    - targets inside the canvas;
+    - targets disjoint;
+    - every target's centre hits its own button;
+    - names carry no description;
+    - a trusted click on the last story (Parabolica), then the card's heading
+      row and Close;
+    - covers the viewport (phones);
+    - focus returns to the badge.
+  - About +88 rows (206 → ~294).
+- **Done.** `npm run check` green.
+- **Docs.** CLAUDE.md's layout-check paragraph and STATUS, updated in the same PR.
+
+**Out of scope, to file.**
+- A visible at-rest cue.
+- "Between corners" anchors.
+- More circuits.
+- `meta.circuit`.
+- Rendered sources.
+- Per-year stories.
+- `lang` on Italian names.
+- A bottom sheet or popover.
+- A list of all stories.
+- The speed-legend-over-badges item (moving the legend re-baselines the
+  digests).
+- The gallery/event-card two-dialog defect (not extended, not fixed).
+- The flag pill passing taps through to badges under it.
+
+**Size.** About 2,000 lines, half of them tests. One session if the copy is ruled
+first; otherwise 18a (contract, data, matching, asset test) then 18b (badges,
+card, state D).
 
 ### [x] Slice 9k — adjudicate NOR's declined relocation structurally (done 2026-09-11, ACCEPTED 2026-09-12)
 

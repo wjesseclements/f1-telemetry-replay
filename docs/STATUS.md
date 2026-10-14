@@ -84,3 +84,8 @@ human's phone check. A real-iPhone check is the missing evidence for both slices
 `inert`, sticky bars under Safari's toolbars, scroll anchoring, WebKit's range thumb,
 the installed app's real viewport, and VoiceOver with the titles and the CSS glyphs.
 Then **the board: 18 → 20**, with the fixture asymmetry overhaul behind them.
+**Slice 18** (corner lore) is in progress on `feat/slice-18-corner-lore`: its scope
+was ruled on 2026-10-14 (invisible buttons over the painted corner numbers, one
+bundled file per circuit matched by corner positions, today's page where there is no
+lore, Monza and Silverstone first, the event card's shape with pause on open, tap
+areas up to 44 px plus Previous/Next). The copy round comes next, then the build.
