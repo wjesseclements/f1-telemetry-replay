@@ -82,7 +82,20 @@ from FastF1 data. PRD.md holds the detail; this file holds the law.
   - **Header row.** At every viewport, the loaded scenario adds "header clear of the
     track": the header's box and the canvas's must not intersect beyond 1 px (Slice 27,
     ruled 2026-10-13). At 724x257 the header is a grid item beside the track, where a
-    misplaced one passed every other row. That makes 196 rows.
+    misplaced one passed every other row.
+  - **Names row.** At every viewport, the loaded scenario then adds "transport names
+    carry no description" (Slice 27, fourth batch). It is the one row that reads
+    Chrome's accessibility tree; the others read boxes, counts, and the run's requests
+    and exceptions.
+    - It reads it over CDP (`scripts/layout/accessibility.ts`) and fails if play/pause
+      or restart carries a description, or a name other than Play/Pause and Restart
+      lap. It reads the toggle paused, as "Play"; the playing state is pinned only by
+      `TransportBar.test.tsx`.
+    - Why: Chrome exposes a `title` as a description unless the title equals the
+      button's rendered text, `aria-hidden` text included. jsdom cannot see that, so a
+      glyph drawn as text passed every test.
+    - That makes 206 rows. Whether to keep this row is open for the human (PLAN,
+      Slice 27).
   - **Offline inside the browser too.** Every host but loopback is unresolvable
     (`--host-resolver-rules` + `--no-proxy-server`). Any request off the preview origin
     (page, workers, frames) is a FAIL, as is an uncaught page exception.

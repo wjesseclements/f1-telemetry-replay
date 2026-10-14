@@ -119,7 +119,8 @@ export function TransportBar({ replay }: TransportBarProps) {
           header's buttons expose none because their icons are SVG, not
           because of how they are named. jsdom cannot see any of this; the
           layout check's "transport names carry no description" row reads
-          Chrome's answer at every gated viewport. */}
+          Chrome's answer at every gated viewport, with the toggle paused
+          ("Play"). The playing state is pinned by TransportBar.test.tsx. */}
       <button
         type="button"
         id={PLAY_TOGGLE_ID}

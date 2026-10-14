@@ -2,7 +2,8 @@
  * accessibility.ts — what Chrome's accessibility tree calls a control, read over
  * the DevTools Protocol, and the verdict on it.
  *
- * The one row of the layout check that is not geometry (Slice 27, fourth batch).
+ * The one row of the layout check that reads Chrome's accessibility tree rather
+ * than the page (Slice 27, fourth batch).
  * Play/pause and restart repeat their names as tooltips, and Chrome 155 exposes a
  * `title` as a DESCRIPTION unless it equals the button's rendered text,
  * `aria-hidden` text included — so whether a screen reader is handed the name a
@@ -11,8 +12,10 @@
  * viewports, playing and paused: a description equal to the name in 40 of 40
  * readings with the glyph as text, labelled by `aria-label` or by `sr-only` text
  * alike, and in 0 of 40 with the glyph as generated content (`TransportBar.tsx`).
- * This reads Chrome's answer at every gated viewport, so in Chrome the fix
- * cannot regress unseen.
+ * This reads Chrome's answer at every gated viewport, in the toggle's paused
+ * state: state B boots paused under reduced motion, so the toggle reads "Play".
+ * A change confined to the playing state passes it (measured: the glyph as text
+ * only while playing, 206/206); `TransportBar.test.tsx` pins that state.
  *
  * The reading is Node-side CDP, not an in-page probe: nothing here is shipped to
  * the page as source text, so `preflight.ts` has nothing of it to run. The verdict

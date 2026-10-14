@@ -4819,7 +4819,7 @@ the 2024 pit cycle's swaps reading as moves. The pre-registered 300 ms stands
 untouched — no tune requested. **"NO SIG" ratified** as the compact spelling.
 Push + PR + auto-merge authorised.
 
-### [ ] Slice 27 — compact bars with 44 px touch targets (C1), and Add to Home Screen (F) (built 2026-10-12; three batches of rulings applied; awaiting the compact controls' look and a phone check)
+### [ ] Slice 27 — compact bars with 44 px touch targets (C1), and Add to Home Screen (F) (built 2026-10-12; four batches of rulings applied; awaiting the compact controls' look and a phone check)
 
 **Filed 2026-10-12 by the human's rulings on Slice 26's drafts.** Built on
 `feat/slice-27-compact-bars-home-screen`, stacked on Slice 26's final tip; the PR
@@ -4974,6 +4974,10 @@ squash drops them.
   - **Chrome exposes the tooltip as a description equal to the name** ("Pause" /
     "Pause"). The header buttons, named by their sr-only text, show no description.
     VoiceOver is unmeasured.
+    - *Corrected by the fourth batch's measurement:* the cause was wrong. The header's
+      buttons show none because their icons are SVG, so where they carry a title
+      (compact screens) their rendered text equals it. Naming by sr-only text alone
+      leaves the description (40/40, 5075d6a).
 
 - **Ruling 5: "header clear of the track"** (58b1abf), the ninth and last row of
   state B.
@@ -5092,6 +5096,161 @@ squash drops them.
 - **The two docs commits:** each ran `npm run check` green, 1096 tests, 0 warn/error in
   the full log, engine coverage 100%, check:layout 196/196. The bundle is
   byte-identical to 3ac31be's (index-CU9vuco6.css, index-DtmbJPHn.js).
+
+**Rulings, fourth batch (human, 2026-10-13).** Numbered as the human answered them.
+- **1. "A 430 px-wide phone loses 20 px on the single-lap view": "Accept it
+  (recommended)".** The one-car boot view at ~420–430 px wide, upright, keeps its
+  three-row transport and gives up 20 px of canvas, which is margin.
+- **2. "The gallery-failure message mentions the folder icon on desktop too": "Add "on
+  small screens" (recommended)".**
+- **3. "Play and Restart may be read out twice by screen readers": "Name them like the
+  header buttons (recommended)".** The question said the header's buttons "give their
+  names as hidden text, and Chrome reports no description for them", and that switching
+  "changes nothing on screen and keeps the tooltips".
+- **4. "Side effects of treating any portrait screen under 640 px wide as a phone":
+  "Accept all three (recommended)".** 600x500-style windows lose compact; 600x900-style
+  windows and narrow tablet split-view panes gain it.
+- **5. "Confirm the quotation marks are gone from the gallery-failure message": "Yes,
+  intended (recommended)".**
+
+**Applied** (27d7421, 5075d6a, 9d6644c, a9ba6a1, 58e2acb, and the docs commit).
+Rulings 1, 4 and 5 accept what was built and change no file.
+
+- **Ruling 2: the copy** (27d7421).
+  - The failure message's last sentence is now "Check your connection and try again, or
+    load a file with Load replay JSON (the folder icon on small screens).", as the
+    footer and the no-replay line have it.
+  - Pinned whole in loadGalleryReplay.test.ts, and again as App renders it.
+  - Read back verbatim in headless Chrome (innerText, with the gallery request failed
+    inside the DevTools protocol) at 1440x900, 375x626 and 724x257.
+
+- **Ruling 3, as asked, did not do what the question promised; extended by
+  measurement** (5075d6a, then 9d6644c). Kept here as it happened.
+  - **Before (cb75031):** `aria-label` plus an equal `title`, with the glyph as the
+    button's text. Chrome 155 exposed the title as a description equal to the name in
+    40 of 40 readings (ten gated viewports, playing and paused, both buttons), with the
+    fixture and the 22-car scenario alike.
+  - **As asked (5075d6a):** named by sr-only text, as the header's buttons are, with the
+    glyph as `aria-hidden` text. Still 40 of 40, at every size and in both states.
+    - 5075d6a's comment and its test's name claimed a Chrome result that did not hold,
+      and its commit message pointed to a Chrome measurement for it.
+    - Its test pinned the structure, and jsdom reports every title as a description, so
+      nothing could fail.
+    - Two independent reviewers measured the miss, and the implementer re-measured it.
+  - **Why.** The question's premise came from the third batch's record and gave the
+    wrong cause.
+    - The rule, inferred from every variant measured: Chrome drops a title description
+      only when the title equals the button's rendered text, `aria-hidden` text
+      included.
+    - 5075d6a's innerText was "▶\nPlay".
+    - The header's buttons pass because their icons are SVG, so their rendered text is
+      their sr-only label.
+  - **Extended (9d6644c),** under the standing rule that a measured half-fix is
+    extended, not shipped. Each glyph is CSS generated content on its `aria-hidden`
+    span (`data-glyph` + `before:content-[attr(data-glyph)]`), so each button's text
+    is exactly its sr-only name. This goes beyond the ruling's words; it is the
+    human's to accept.
+    - Description: **0 of 40**, fixture and 22-car alike.
+    - Names unchanged, 40 of 40.
+    - The header's controls carry no description on any of the three builds (0 of 60
+      each).
+  - **Nothing on screen moved,** as the question promised:
+    - transport-button pixels: 26 of 26 shots byte-identical to cb75031 and to 5075d6a
+      (1x at every gated viewport, plus 375x812 and 724x257 at 3x and 1440x900 at 2x);
+    - whole-page shots, ten viewports × fixture and 22-car, page and transport bar: 40
+      of 40 byte-identical to cb75031 in a clean run.
+      - The other runs differ only at 724x257: 18–202 px, max channel delta 1, and 11
+        on one 22-car page.
+      - None of it is the build: run 2 of the same pair is byte-identical; fix A against
+        itself reproduces the 18 px transport difference; and the delta-11 pattern at
+        the header's right end recurs between two runs of cb75031 itself (the
+        reviewers' Safari matrices, 724x257 and 724x300).
+      - One run also had a 375x626 gallery-failure shot differ in its scrollbar column.
+    - standard matrix digest a647b150 and shots digest f40fd426 (55 of 55 PNGs), as
+      cb75031's;
+    - Safari matrix digest 1bd6b84f, as cb75031's. Its shots digest is not stable within
+      a build: the review's re-run gave HEAD eae313f5 against cb75031's 3c1149c5, the
+      one differing PNG being redflag-724x300 (52 px, delta 11, at the header's right
+      end), the same difference two cb75031 runs show. Compare its 20 PNGs by pixels,
+      not by digest;
+    - 7 of 7 controls hit-test in every cell;
+    - draw-call md5s unchanged;
+    - the stylesheet gains one rule (24,263 → 24,366 bytes).
+  - **Tests.**
+    - The structure test is renamed so it no longer claims more than it pins.
+    - It now asserts `data-glyph`, an empty glyph span, and `textContent` equal to the
+      name (jsdom's stand-in for Chrome's rendered text).
+    - It also asserts the toggle's `id` and both `aria-keyshortcuts`, two mutations
+      nothing caught before.
+    - A second test pins the compiled `::before` rule.
+    - 8 of 8 mutations caught, 5075d6a's glyph-as-text among them.
+    - The file's header said it pinned only the leader-lap readout; it now lists what it
+      pins.
+
+- **fps-probe repaired** (a9ba6a1), a consequence of 5075d6a.
+  - **The defect.** Its lookup (`aria-label`, else `textContent`) read 5075d6a's toggle
+    as "▶Play". So `press("Play")`, `press("Pause")` and `press("Restart lap")` threw,
+    and `sweep()` skipped its play click: a sweep from a paused start finished "done"
+    with the app still paused (measured at 1440x900 and 375x812).
+  - **The fix.**
+    - `nameOf(b)` is the `aria-label`, else the text without `aria-hidden` descendants;
+      `press` and `sweep` both use it.
+    - `sweep` now stops with a "failed" stage when it finds no Play/Pause button.
+    - The header's "cannot rot from code drift" now says the probe reads the app's
+      markup.
+  - **Verified.** Pasted into the built app on this branch's, 5075d6a's and cb75031's
+    builds, every press works and a paused sweep ends playing.
+  - Fix A alone would also have repaired the old lookup, since the toggle's
+    `textContent` is its name again.
+
+- **The tripwire: a layout-check row, "transport names carry no description"**
+  (58e2acb). Not asked for: the standing rule's tripwire for a miss tests can only
+  simulate, and the human's to keep or drop.
+  - Last in state B, at every viewport.
+  - It reads Chrome's accessibility tree over CDP (`DOM.querySelector` +
+    `Accessibility.getPartialAXTree`, `scripts/layout/accessibility.ts`) for the play
+    toggle and restart.
+  - It FAILs on any description, or on a name other than Play/Pause and Restart lap,
+    and prints both. It reads the toggle paused (state B under reduced motion boots
+    paused), so it gates "Play". A change confined to the playing state passes it
+    (measured: glyph as text only while playing, 206/206) and is caught by
+    TransportBar.test.tsx alone; the docs commit says so in the row's comments.
+  - 196 → 206 rows; the other 196 are textually unchanged.
+  - Mutations through the gate:
+    - the 5075d6a markup and the cb75031 markup each fail this row at all ten
+      viewports and nothing else (196/206);
+    - so do a drifted sr-only name, a drifted label constant, a removed toggle id and a
+      removed Home shortcut (the review);
+    - aria-label added on top, data-glyph renamed, sr-only dropped and title removed
+      pass it and are caught by vitest.
+  - Its pure helpers' tests catch 5 of 5 mutations (6 of 6 in the review's set).
+  - It has not yet run on CI's Linux Chrome; the push's `verify` is its first run
+    there.
+
+**Evidence (after the fourth batch, HEAD 58e2acb).**
+- **`npm run check`:** 1105 tests, 0 warn/error in the full log, engine coverage 100%,
+  check:layout 206/206. Every commit was green at its own state (tests / layout rows):
+  - 27d7421: 1096 / 196;
+  - 5075d6a: 1097 / 196;
+  - 9d6644c: 1098 / 196;
+  - a9ba6a1: 1098 / 196;
+  - 58e2acb: 1105 / 206.
+- **Chrome's accessibility tree, Play/Pause and Restart lap** (ten viewports × playing
+  and paused × two buttons, per replay): a description equal to the name in 40/40
+  (cb75031) → 40/40 (5075d6a) → 0/40 (9d6644c), fixture and 22-car alike.
+- **The review re-measured independently:** 104/104 → 104/104 → 0/104 over 13
+  viewports (the ten gated plus 430x932, 600x900 and 568x320) × four states; button and
+  transport clips 171/171 byte-identical to cb75031 at 1x and 3x; 16/16 TransportBar
+  mutations caught by vitest, 6/6 helper mutations caught, and every gate mutation that
+  FAILs the row FAILs that row alone. pytest 401 passed.
+- **Pixels, matrices, draw calls:** as listed under ruling 3. The bundle is
+  byte-identical at 9d6644c, a9ba6a1 and 58e2acb (index-DacdHsDB.css,
+  index-BgD7Aj_U.js).
+- Chrome 155, headless and offline: 0 off-origin requests and 0 page exceptions in every
+  instrument.
+- **The docs commit** (comments and docs only): `npm run check` green, 1105 tests, 0
+  warn/error in the full log, engine coverage 100%, check:layout 206/206; the bundle is
+  byte-identical to 58e2acb's.
 
 **C1: thin rows, every control 44x44 CSS px** (39ff136, 6eee1f7).
 - **Trigger.** `compact:` is a plugin variant: at most 30rem tall, OR under 40rem wide
@@ -5216,23 +5375,21 @@ wording, pinned verbatim.
 - a failed-load state in the layout check;
 - the error box inside the compact landscape header (pre-existing).
 
-**Open for the human (2026-10-13, after the third batch).**
+**Open for the human (2026-10-13, after the fourth batch).**
 - The compact controls' look (the second batch's ruling 4), after the phone check.
-- The one-car boot view at ~420–430 px wide, upright, any height (430x752, 420x900,
-  428x926, 430x932): −20 px of canvas (margin) and a three-row transport. Accept, or
-  fit the compact transport in two rows at those widths?
-- The gallery-failure message says "(the folder icon)" on desktop too (1280x720,
-  1440x900), where the picker is a text button. Keep the ruled sentence, or add "on
-  small screens" as the footer and the no-replay line have?
-- Play/Restart tooltips: Chrome exposes each as a description equal to the name. Keep
-  `aria-label` plus `title`, or name the two buttons by sr-only text as the header
-  buttons are?
-- The `(orientation: portrait)` reading: 600x500-style windows lose compact;
-  600x900-style windows and narrow tablet split-view panes gain it.
-- The gallery-failure message's dropped quotation marks.
+- Ruling 3's extension: the glyphs drawn as CSS generated content (9d6644c), beyond the
+  ruling's words, because naming by sr-only text alone left the description (40/40).
+- Whether to keep the new "transport names carry no description" gate row.
+  - It was not asked for: it is the standing rule's tripwire for a miss that tests can
+    only simulate.
+  - It extends the layout check from the page into Chrome's accessibility tree, with
+    one row per viewport and the run time unchanged (5.1–5.4 s). It reads the toggle
+    paused only.
 - Whether to gate 724x300.
 - The 6.6 px margin of the one-row header above the tower (a device font check).
-- VoiceOver with the titles.
+- VoiceOver with the titles. VoiceOver and Safari with the glyphs as generated content
+  are unmeasured too: Chrome is the only engine measured. WebKit exposes `title`
+  through its own help-text path, so listen to Play and Restart lap specifically.
 - Device-only: WebKit's range thumb, the real standalone viewports, the white inset
   ring, and the install.
 

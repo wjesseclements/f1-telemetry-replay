@@ -8,8 +8,9 @@
  *
  * Every threshold is named and justified where it is declared. Every selector is
  * an existing role, label, id or ARIA attribute in the app — no test ids were
- * added. Every row is geometry but one: in B, the transport's two icon buttons'
- * names are read from Chrome's accessibility tree (`accessibility.ts`).
+ * added. One row in B reads Chrome's accessibility tree rather than the page: the
+ * transport's two icon buttons' names (`accessibility.ts`). The others read
+ * boxes and counts.
  */
 import { judgeNames, readAxText } from "./accessibility";
 import type { CdpPage } from "./cdp";
