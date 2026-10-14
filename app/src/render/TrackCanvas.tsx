@@ -22,7 +22,7 @@
  */
 import { useEffect, useMemo, useRef, memo } from "react";
 import { advanceClock, frameDelta } from "../engine/clock";
-import { fitTransform } from "../engine/geometry";
+import { canvasInsets, fitTransform } from "../engine/geometry";
 import { sampleAt, wrapClock } from "../engine/interpolate";
 import type { Replay } from "../engine/schema";
 import { useTransport } from "../store/transport";
@@ -30,9 +30,6 @@ import { telemetry } from "../telemetry/channel";
 import { readChromeColors } from "./palette";
 import { buildScenePaths, type ScenePaths } from "./paths";
 import { buildScene, drawFrame, type Viewport } from "./scene";
-
-/** Margin, in CSS pixels, between the fitted track and the canvas edge. */
-export const PAD_PX = 46;
 
 export interface TrackCanvasProps {
   /** A validated replay. Loading and validation happen before mount. */
@@ -120,7 +117,15 @@ function TrackCanvasImpl({ replay }: TrackCanvasProps) {
       canvas.height = Math.max(1, Math.round(height * dpr));
       canvas.style.width = `${width}px`;
       canvas.style.height = `${height}px`;
-      const fit = fitTransform(scene.bounds, width, height, PAD_PX);
+      // The margins scale with the canvas (Slice 26): a phone's short canvas
+      // cannot spare a fixed 46 px a side. The bottom keeps 46 for the speed
+      // legend's row. See `canvasInsets`.
+      const fit = fitTransform(
+        scene.bounds,
+        width,
+        height,
+        canvasInsets(width, height),
+      );
       return {
         view: { width, height, dpr, fit },
         // Fresh trail painters: they refill to the covered portion on the next

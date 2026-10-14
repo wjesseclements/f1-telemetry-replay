@@ -21,6 +21,7 @@ import {
 import { useTransport } from "../store/transport";
 import { displaySignature, telemetry } from "../telemetry/channel";
 import { Hud } from "./Hud";
+import css from "../index.css?inline";
 
 const replay = parseReplay(sampleLap, "sample-lap.json");
 
@@ -298,6 +299,23 @@ describe("Hud layout containment (Slice 23)", () => {
     expect(screen.getByRole("list", { name: "Running order" })).toHaveClass(
       "relative",
       "overflow-y-auto",
+    );
+  });
+
+  it("never lets the browser scroll the list for a reorder (Slice 26)", () => {
+    // Chrome's scroll anchoring holds the row at the top of the view where it
+    // was, so a reorder scrolled the list after that car: parked at mid-field,
+    // the list moved 232 px in 4 s of the red flag's first lap at 2x (375x626,
+    // headless Chrome — PLAN, Slice 26), and every row the reorder did not touch
+    // jumped with it. The tower scrolls for the viewer and the viewer's focus
+    // change only. jsdom anchors nothing, so this pins the opt-out and that it
+    // compiles.
+    renderHud(replay);
+    expect(screen.getByRole("list", { name: "Running order" })).toHaveClass(
+      "[overflow-anchor:none]",
+    );
+    expect(css).toMatch(
+      /\.\\\[overflow-anchor\\:none\\\]\s*\{\s*overflow-anchor:\s*none;?\s*\}/,
     );
   });
 

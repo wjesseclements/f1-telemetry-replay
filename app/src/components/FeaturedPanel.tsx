@@ -11,9 +11,11 @@
  *  - **It overlays the canvas; it does not replace it.** The fixture keeps
  *    animating behind the scrim, because motion says "this is alive" in a way a
  *    frozen frame cannot. So the scrim is a plain translucent wash with no backdrop
- *    blur — the moving car has to read through it.
+ *    blur — the moving car has to read through it. On a desktop it covers the
+ *    track cell; on a phone, the whole screen (`overlay.ts`, Slice 26).
  *  - **A failed load keeps the replay that is on screen** and leaves the file
- *    picker working, exactly as `ReplayFilePicker` does for a bad file. The message
+ *    picker working, exactly as `ReplayFilePicker` does for a bad file. On a phone
+ *    the picker sits under the wash until the panel is closed. The message
  *    is rendered verbatim, because `ReplayValidationError.message` carries its
  *    `→ at cars[0].samples[3].speed` paths and those are the whole value of it.
  *  - **Focus is managed, not left to chance.** Opening moves focus to the first
@@ -26,6 +28,13 @@ import { applyScenario } from "../data/applyScenario";
 import { parseGalleryManifest, type GalleryScenario } from "../engine/gallery";
 import manifestJson from "../gallery/manifest.json";
 import { FOCUS_RING } from "./focus";
+import {
+  OVERLAY_CLOSE_TARGET,
+  OVERLAY_FOCUS_CLEARANCE,
+  OVERLAY_PHONE,
+  OVERLAY_PINNED_BAR,
+  usePhoneModal,
+} from "./overlay";
 
 /**
  * Validated once at module load, not per render.
@@ -46,6 +55,10 @@ export interface FeaturedPanelProps {
 export function FeaturedPanel({ onClose, id }: FeaturedPanelProps) {
   const headingId = `${id}-heading`;
   const firstCardRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  // Modal on a phone, where it covers the whole screen: the page behind is inert
+  // (`overlay.ts`). On a desktop the tower and transport beside it stay usable.
+  const modal = usePhoneModal(dialogRef);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -84,8 +97,9 @@ export function FeaturedPanel({ onClose, id }: FeaturedPanelProps) {
           onClose();
         }
       }}
+      ref={dialogRef}
       role="dialog"
-      aria-modal="false"
+      aria-modal={modal ? "true" : "false"}
       aria-labelledby={headingId}
       id={id}
       // A wash, not a blur: the fixture animating behind this is the point.
@@ -96,23 +110,28 @@ export function FeaturedPanel({ onClose, id }: FeaturedPanelProps) {
       // scroll range: the heading and Close sat out of reach at 1280x720 and on
       // every phone. Auto margins centre the card when it fits and collapse to 0
       // when it does not, so it scrolls from its top. EventCard shares the idiom.
-      className="absolute inset-0 z-10 flex items-start justify-center overflow-y-auto bg-bg/75 p-4"
+      className={`absolute inset-0 z-10 flex items-start justify-center overflow-y-auto bg-bg/75 p-4 ${OVERLAY_PHONE} ${OVERLAY_FOCUS_CLEARANCE}`}
     >
       <div className="my-auto w-full max-w-md rounded-lg border border-line bg-panel p-4 shadow-xl">
-        <div className="mb-3 flex items-baseline justify-between gap-3">
-          <h2
-            id={headingId}
-            className="font-mono text-xs font-bold tracking-[0.2em] text-txt"
-          >
-            START HERE
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className={`rounded px-2 py-1 font-mono text-[11px] text-dim transition-colors hover:text-txt ${FOCUS_RING}`}
-          >
-            Close
-          </button>
+        {/* On a phone the heading row stays pinned at the top of the panel
+            while the cards scroll under it, so Close is always on screen
+            (`OVERLAY_PINNED_BAR`, Slice 26). */}
+        <div className={`mb-3 phone:mb-1 phone:pb-2 ${OVERLAY_PINNED_BAR}`}>
+          <div className="flex items-baseline justify-between gap-3">
+            <h2
+              id={headingId}
+              className="font-mono text-xs font-bold tracking-[0.2em] text-txt"
+            >
+              START HERE
+            </h2>
+            <button
+              type="button"
+              onClick={onClose}
+              className={`rounded px-2 py-1 font-mono text-[11px] text-dim transition-colors hover:text-txt ${OVERLAY_CLOSE_TARGET} ${FOCUS_RING}`}
+            >
+              Close
+            </button>
+          </div>
         </div>
 
         <ul className="flex flex-col gap-2">

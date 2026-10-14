@@ -1,4 +1,11 @@
-import { contains, intersect, overlaps, viewportBox } from "./geometry";
+import {
+  contains,
+  intersect,
+  overlaps,
+  sameBox,
+  viewportBox,
+  xySpan,
+} from "./geometry";
 import type { Box } from "./probe";
 
 const box = (
@@ -45,6 +52,23 @@ describe("layout geometry", () => {
   it("sees a zero-height box as overlapping nothing", () => {
     // The collapsed phone canvas: the canvas-height assertion owns that failure.
     expect(overlaps(box(138, 0, 1071, 375), box(138, 0, 138, 375))).toBe(false);
+  });
+
+  it("calls two boxes the same within 1 px on every edge, and not beyond", () => {
+    const view = viewportBox(375, 626);
+    expect(sameBox(box(0, 0, 626, 375), view)).toBe(true);
+    expect(sameBox(box(0.6, -0.4, 625.2, 375.9), view)).toBe(true);
+    // Each edge on its own can break it.
+    expect(sameBox(box(1.5, 0, 626, 375), view)).toBe(false);
+    expect(sameBox(box(0, 1.5, 626, 375), view)).toBe(false);
+    expect(sameBox(box(0, 0, 624.4, 375), view)).toBe(false);
+    expect(sameBox(box(0, 0, 626, 376.6), view)).toBe(false);
+    // The phone gallery in the track cell, as on main at 375x626.
+    expect(sameBox(box(82, 0, 298, 375), view)).toBe(false);
+  });
+
+  it("prints a box's two spans", () => {
+    expect(xySpan(box(0, 0, 626, 375))).toBe("x=[0.0,375.0] y=[0.0,626.0]");
   });
 
   it("builds the viewport box at the origin", () => {

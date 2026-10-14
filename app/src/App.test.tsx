@@ -21,6 +21,7 @@ import {
   type RecordingContext,
 } from "./test/canvas";
 import App from "./App";
+import { PHONE_QUERY } from "./components/phoneLayout";
 import { TrackCanvas } from "./render/TrackCanvas";
 import { parseGalleryManifest } from "./engine/gallery";
 import galleryManifest from "./gallery/manifest.json";
@@ -781,6 +782,142 @@ describe("the featured-replay gallery", () => {
     expect((TrackCanvas as unknown as { $$typeof: symbol }).$$typeof).toBe(
       Symbol.for("react.memo"),
     );
+  });
+
+  /**
+   * On a phone the panel covers the whole screen, and it is MODAL there (Slice
+   * 26, ruled 2026-10-12): the rest of the page is inert, so Tab and a screen
+   * reader stay inside it. jsdom applies no inert behaviour and evaluates no
+   * media query, so `matchMedia` is stubbed to answer the phone query and these
+   * pin the attributes and their timing; what they do in a browser was measured
+   * in headless Chrome (Slice 26's PLAN entry).
+   */
+  describe("on a phone, modal", () => {
+    /** A `matchMedia` that answers the phone query, and can be rotated. */
+    const stubPhone = (initial: boolean) => {
+      let phone = initial;
+      const listeners = new Set<() => void>();
+      vi.stubGlobal("matchMedia", (query: string) => ({
+        get matches() {
+          return phone && query === PHONE_QUERY;
+        },
+        media: query,
+        addEventListener: (_: string, l: () => void) => listeners.add(l),
+        removeEventListener: (_: string, l: () => void) => listeners.delete(l),
+      }));
+      return (next: boolean) => {
+        phone = next;
+        act(() => listeners.forEach((l) => l()));
+      };
+    };
+    const background = () => [
+      document.querySelector("main > header") as HTMLElement,
+      screen.getByRole("complementary", { name: "Telemetry" }),
+      screen.getByRole("region", { name: "Playback controls" }),
+      document.querySelector("canvas") as HTMLElement,
+    ];
+
+    it("makes the page behind the panel inert, and says the panel is modal", () => {
+      stubPhone(true);
+      render(<App />);
+      for (const el of background())
+        expect(el.closest("[inert]")).not.toBeNull();
+      expect(panel()!.closest("[inert]")).toBeNull();
+      expect(panel()).toHaveAttribute("aria-modal", "true");
+      // Focus still lands in the dialog on open.
+      expect(document.activeElement).toBe(firstCard());
+    });
+
+    // Each close route, with the moment focus moves checked: the toggle must be
+    // awake BEFORE it is focused, or a browser drops the focus on the body.
+    const focusedAwake = () => {
+      let awake: boolean | null = null;
+      toggle().addEventListener(
+        "focus",
+        () => (awake = toggle().closest("[inert]") === null),
+        { once: true },
+      );
+      return () => awake;
+    };
+
+    it("wakes the page, then returns focus to the toggle: Close", () => {
+      stubPhone(true);
+      render(<App />);
+      const awake = focusedAwake();
+      fireEvent.click(screen.getByRole("button", { name: /^close$/i }));
+      expect(awake()).toBe(true);
+      expect(document.activeElement).toBe(toggle());
+      expect(document.querySelectorAll("[inert]")).toHaveLength(0);
+    });
+
+    it("wakes the page, then returns focus to the toggle: Escape", () => {
+      stubPhone(true);
+      render(<App />);
+      const awake = focusedAwake();
+      fireEvent.keyDown(panel()!, { key: "Escape" });
+      expect(awake()).toBe(true);
+      expect(document.activeElement).toBe(toggle());
+      expect(document.querySelectorAll("[inert]")).toHaveLength(0);
+    });
+
+    it("wakes the page, then returns focus to the toggle: a card", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => new Response(JSON.stringify(sampleLap), JSON_OK)),
+      );
+      stubPhone(true);
+      render(<App />);
+      const awake = focusedAwake();
+      await act(async () => {
+        fireEvent.click(firstCard());
+      });
+      expect(panel()).not.toBeInTheDocument();
+      expect(awake()).toBe(true);
+      expect(document.activeElement).toBe(toggle());
+      expect(document.querySelectorAll("[inert]")).toHaveLength(0);
+    });
+
+    it("keeps the replay animating behind the modal panel, uninterrupted", () => {
+      // The memoisation pin, on a phone: making the page inert is attributes on
+      // DOM nodes, not a render of the canvas.
+      stubPhone(true);
+      render(<App />);
+      const canvasBefore = document.querySelector("canvas");
+      act(() => raf.tick());
+      act(() => {
+        for (let i = 0; i < 20; i++) raf.tick(16);
+      });
+      const before = markerOf(lastFrame());
+
+      fireEvent.click(screen.getByRole("button", { name: /^close$/i }));
+      act(() => {
+        for (let i = 0; i < 20; i++) raf.tick(16);
+      });
+
+      expect(document.querySelector("canvas")).toBe(canvasBefore);
+      expect(markerOf(lastFrame())).not.toEqual(before);
+    });
+
+    it("is not modal on a desktop: nothing inert, the page beside it usable", () => {
+      stubPhone(false);
+      render(<App />);
+      expect(document.querySelectorAll("[inert]")).toHaveLength(0);
+      expect(panel()).toHaveAttribute("aria-modal", "false");
+    });
+
+    it("follows a rotation across the line while the panel is open", () => {
+      const rotate = stubPhone(true);
+      render(<App />);
+      expect(panel()).toHaveAttribute("aria-modal", "true");
+
+      rotate(false);
+      expect(document.querySelectorAll("[inert]")).toHaveLength(0);
+      expect(panel()).toHaveAttribute("aria-modal", "false");
+
+      rotate(true);
+      for (const el of background())
+        expect(el.closest("[inert]")).not.toBeNull();
+    });
   });
 });
 

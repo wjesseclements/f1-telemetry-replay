@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { FeaturedPanel } from "./components/FeaturedPanel";
 import { FOCUS_RING } from "./components/focus";
 import { Hud } from "./components/Hud";
@@ -47,9 +48,15 @@ export default function App({ bootstrapError = null }: AppProps) {
    * choosing a scenario — so a keyboard visitor lands back on the toggle rather
    * than at the top of the document. That is the behaviour that silently rots, so
    * `App.test.tsx` asserts it on all three routes.
+   *
+   * The close is committed synchronously (`flushSync`) BEFORE the focus call. On
+   * a phone the open panel holds the header inert (`usePhoneModal`, Slice 26),
+   * and an inert button cannot take focus; the commit that unmounts the panel is
+   * the one that wakes the header. Batched, the focus call ran first and focus
+   * fell to the document body.
    */
   const closeGallery = () => {
-    setGalleryOpen(false);
+    flushSync(() => setGalleryOpen(false));
     galleryToggleRef.current?.focus();
   };
 
@@ -115,7 +122,9 @@ export default function App({ bootstrapError = null }: AppProps) {
             <div className="relative min-h-0 min-w-0 flex-1">
               {/* The canvas is memoised, so mounting and unmounting the panel
                   beside it does not re-render it — the replay animates behind the
-                  scrim without interruption. Pinned in `App.test.tsx`. */}
+                  scrim without interruption. Pinned in `App.test.tsx`. On a
+                  phone the panel and the event card cover the whole screen from
+                  here: `fixed`, not moved (`components/overlay.ts`). */}
               <TrackCanvas replay={replay} />
               <SpeedLegend />
               {/* The abnormal-flag strip and the narrated-moment overlay

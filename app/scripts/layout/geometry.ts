@@ -55,9 +55,27 @@ export function overlaps(a: Box, b: Box): boolean {
   return i.width > EPS_PX && i.height > EPS_PX;
 }
 
+/**
+ * `a` and `b` are the same box, give or take `EPS_PX` on every edge. How the
+ * check asks whether a phone's gallery covers the whole viewport (Slice 26).
+ */
+export function sameBox(a: Box, b: Box): boolean {
+  return (
+    Math.abs(a.top - b.top) <= EPS_PX &&
+    Math.abs(a.left - b.left) <= EPS_PX &&
+    Math.abs(a.bottom - b.bottom) <= EPS_PX &&
+    Math.abs(a.right - b.right) <= EPS_PX
+  );
+}
+
 /** `y=[top,bottom]`, one decimal, for the measured column. */
 export function ySpan(b: Box): string {
   return `y=[${b.top.toFixed(1)},${b.bottom.toFixed(1)}]`;
+}
+
+/** `x=[left,right] y=[top,bottom]`, one decimal. */
+export function xySpan(b: Box): string {
+  return `x=[${b.left.toFixed(1)},${b.right.toFixed(1)}] ${ySpan(b)}`;
 }
 
 /** `WxH`, one decimal. */

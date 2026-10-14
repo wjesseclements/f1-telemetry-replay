@@ -61,24 +61,37 @@ from FastF1 data. PRD.md holds the detail; this file holds the law.
 - Measure the **layout in a real browser**, which jsdom cannot (every jsdom box is
   0x0): `cd app && npm run build && npm run check:layout`. It drives the system Chrome
   headless over the DevTools Protocol (zero dependencies; `CHROME_PATH` overrides)
-  against the built `dist/`, at seven viewports: 375x812, 1280x720 and 1440x900, then
+  against the built `dist/`, at nine viewports: 375x812, 1280x720 and 1440x900, then
   Slice 25's short portrait phones 375x667 and 360x640 and landscape phones 667x375
-  and 740x360, appended so the first three's rows print first and stay comparable
-  run to run. It visits first load, the largest gallery scenario loaded by its card,
+  and 740x360, then Slice 26's 375x626 (what an upright iPhone's Safari leaves the
+  page) and 814x312 (a Plus/Pro Max iPhone held sideways), each group appended so the earlier rows print first and stay comparable run
+  to run. It visits first load, the largest gallery scenario loaded by its card,
   and the gallery reopened; every assertion prints PASS/FAIL with what it measured.
-  Offline inside the browser too: every host but loopback is unresolvable
-  (`--host-resolver-rules` + `--no-proxy-server`), and any request off the preview
-  origin — page, workers, frames — is a FAIL, as is an uncaught page exception.
-  Exit 1 = the run finished with a FAIL row (read the table); 2 = it did not finish
-  (no build, no Chrome, the 90 s cap — read the ABORTED line). About 4 s. **Gated**
-  (Slice 23): it runs last in `npm run check` and as a step of CI's `verify`. Slice
-  22's PLAN entry carries the failing baseline it was built against; Slice 25's
-  carries the short/landscape matrix and the sizes it still does not gate (568x320,
-  near-square split-screen halves, 5:4 windows under 512 px wide). The layout's
-  side-by-side switch is `side:` (`md`, or any screen 5:4 or wider) and the header's
-  one-line rule is `onerow:` (5:4 or wider, or at most 43.75rem tall), both plugin
-  variants in `tailwind.config.js`, never `theme.screens`, because a raw screen
-  silently disables `min-*`/`max-*` variants.
+  At the seven phone-layout viewports (every one but 1280x720 and 1440x900), first
+  load and the reopened gallery each add "panel covers the viewport": the phone's
+  full-screen gallery box must equal the viewport's within 1 px (Slice 26; 167 rows).
+  Which viewports are phones is written out in the check (`isPhoneLayout`), not read
+  from the page, so a variant that stops matching fails those rows instead of
+  removing them. Offline inside the browser too: every host but loopback is
+  unresolvable (`--host-resolver-rules` + `--no-proxy-server`), and any request off
+  the preview origin — page, workers, frames — is a FAIL, as is an uncaught page
+  exception. Exit 1 = the run finished with a FAIL row (read the table); 2 = it did
+  not finish (no build, no Chrome, the 90 s cap — read the ABORTED line). About 5 s.
+  **Gated** (Slice 23): it runs last in `npm run check` and as a step of CI's
+  `verify`. Slice 22's PLAN entry carries the failing baseline it was built against;
+  Slice 25's carries the short/landscape matrix and the sizes it still does not gate
+  (568x320, near-square split-screen halves, 5:4 windows under 512 px wide); Slice
+  26's carries the Safari matrix and why Safari's landscape 724x257 is not gated yet
+  (a 160 px track, under the 200 px floor, which is not loosened to admit it). The
+  layout's side-by-side switch is `side:` (`md`, or any screen 5:4 or wider), the
+  header's one-line rule is `onerow:` (5:4 or wider, or at most 43.75rem tall), and
+  the overlay dialogs' full-screen rule is `phone:` (below `md`, written as the exact
+  complement of `md:`, or at most 30rem tall): all three are plugin variants in
+  `tailwind.config.js`, never `theme.screens`, because a raw screen silently disables
+  `min-*`/`max-*` variants. React reads `phone:` as `PHONE_QUERY`
+  (`src/components/phoneLayout.ts`), pinned to the compiled CSS by
+  `layoutVariants.test.ts`; while a phone overlay is open the rest of the page is
+  inert (`usePhoneModal`).
 
 ## Architecture rules (non-negotiable — see PRD §Load-bearing decisions)
 

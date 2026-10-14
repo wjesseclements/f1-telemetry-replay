@@ -13,7 +13,9 @@
  *  - a replay/scenario switch does NOT (fresh tower, no false continuity), even when
  *    the same drivers land in a different order;
  *  - `prefers-reduced-motion` suppresses the animation, not the reorder;
- *  - a focus change alone animates nothing (the readout's height change snaps).
+ *  - a focus change alone animates nothing (the readout's height change snaps);
+ *  - a SCROLL of the list between two commits is not a move (Slice 26): the fake
+ *    layout subtracts the list's `scrollTop` from its rows' tops, as a browser does.
  */
 import {
   act,
@@ -48,7 +50,8 @@ function fakeRect(this: Element): DOMRect {
   const parent = this.parentElement;
   const index =
     parent === null ? 0 : Array.prototype.indexOf.call(parent.children, this);
-  const top = index * ROW_H;
+  // A row of a scrolled list is drawn that much higher, exactly as on screen.
+  const top = index * ROW_H - (parent === null ? 0 : parent.scrollTop);
   return {
     top,
     bottom: top + ROW_H,
@@ -317,6 +320,38 @@ describe("tower reshuffle animation (Slice 21)", () => {
     expect(useTransport.getState().focusedCarIndex).toBe(1);
     expect(animateCalls).toHaveLength(0);
   });
+
+  it("slides only the rows that changed places when the list scrolled between commits (Slice 26)", () => {
+    // AHE leads, GON retires at t=10 and drops below FOC. Between the two commits
+    // the list scrolls 45 px — the viewer's thumb, or the focus reveal's smooth
+    // scroll, which runs across several commits. Measured on the screen, every row
+    // moved 45 px and all three would slide back against the scroll; measured in
+    // the list, AHE has not moved at all and only the swap animates.
+    const replay = ringReplay(
+      "scrolled.json",
+      { driver: "AHE", samples: ringSamples(40) },
+      { driver: "GON", samples: ringSamples(20), retiredAt: 10 },
+      { driver: "FOC", samples: ringSamples() },
+    );
+    const { container } = render(<Hud replay={replay} />);
+    act(() => telemetry.publish(1000, 5, ringSnapshots(replay)));
+    expect(rowDrivers(container)).toEqual(["AHE", "GON", "FOC"]);
+
+    screen.getByRole("list", { name: "Running order" }).scrollTop = 45;
+    act(() => telemetry.publish(1080, 30, ringSnapshots(replay)));
+    expect(rowDrivers(container)).toEqual(["AHE", "FOC", "GON"]);
+
+    const byDriver = Object.fromEntries(
+      animateCalls.map((c) => [animatedDriver(c), c]),
+    );
+    expect(Object.keys(byDriver).sort()).toEqual(["FOC", "GON"]);
+    expect(byDriver.FOC.keyframes[0]).toEqual({
+      transform: `translateY(${ROW_H}px)`,
+    });
+    expect(byDriver.GON.keyframes[0]).toEqual({
+      transform: `translateY(${-ROW_H}px)`,
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------------
@@ -333,7 +368,7 @@ describe("flipRows", () => {
 
   it("returns tops without animating when given no history", () => {
     const rows = [rowAt(0), rowAt(30)];
-    const tops = flipRows(rows, ["A", "B"], new Map(), true);
+    const tops = flipRows(rows, ["A", "B"], new Map(), true, 0);
     expect([...tops]).toEqual([
       ["A", 0],
       ["B", 30],
@@ -343,13 +378,13 @@ describe("flipRows", () => {
 
   it("slides a swap both ways, then cancels those slides when a resort lands mid-flight", () => {
     const rows = [rowAt(0), rowAt(30)];
-    const first = flipRows(rows, ["A", "B"], new Map(), false);
+    const first = flipRows(rows, ["A", "B"], new Map(), false, 0);
     // A swap: A now measures 30, B measures 0.
     rows[0].getBoundingClientRect = () =>
       ({ top: 30, toJSON: () => ({}) }) as DOMRect;
     rows[1].getBoundingClientRect = () =>
       ({ top: 0, toJSON: () => ({}) }) as DOMRect;
-    const second = flipRows(rows, ["A", "B"], first, true);
+    const second = flipRows(rows, ["A", "B"], first, true, 0);
     expect(animateCalls.map((c) => c.keyframes[0].transform)).toEqual([
       "translateY(-30px)",
       "translateY(30px)",
@@ -361,7 +396,7 @@ describe("flipRows", () => {
     const inFlight = [...animateCalls];
     rows[0].getBoundingClientRect = () =>
       ({ top: 90, toJSON: () => ({}) }) as DOMRect;
-    flipRows(rows, ["A", "B"], second, true);
+    flipRows(rows, ["A", "B"], second, true, 0);
     for (const call of inFlight) expect(call.cancel).toHaveBeenCalledOnce();
     // A moved again (cached 30 → measured 90): a fresh slide from the cached spot.
     expect(animateCalls).toHaveLength(3);
@@ -370,16 +405,39 @@ describe("flipRows", () => {
 
   it("snaps sub-pixel movement instead of animating it", () => {
     const rows = [rowAt(0)];
-    const first = flipRows(rows, ["A"], new Map(), false);
+    const first = flipRows(rows, ["A"], new Map(), false, 0);
     rows[0].getBoundingClientRect = () =>
       ({ top: 0.4, toJSON: () => ({}) }) as DOMRect;
-    flipRows(rows, ["A"], first, true);
+    flipRows(rows, ["A"], first, true, 0);
     expect(animateCalls).toHaveLength(0);
+  });
+
+  it("measures every top from the origin it is given, so a scroll is not a move", () => {
+    // Three rows 30 px apart; then the list scrolls 45 px (its content now starts
+    // at -45 on screen) and B and C swap.
+    const rows = [rowAt(0), rowAt(30), rowAt(60)];
+    const first = flipRows(rows, ["A", "B", "C"], new Map(), false, 0);
+    rows[0].getBoundingClientRect = () =>
+      ({ top: -45, toJSON: () => ({}) }) as DOMRect;
+    rows[1].getBoundingClientRect = () =>
+      ({ top: 15, toJSON: () => ({}) }) as DOMRect;
+    rows[2].getBoundingClientRect = () =>
+      ({ top: -15, toJSON: () => ({}) }) as DOMRect;
+    const tops = flipRows(rows, ["A", "B", "C"], first, true, -45);
+    expect([...tops]).toEqual([
+      ["A", 0],
+      ["B", 60],
+      ["C", 30],
+    ]);
+    expect(animateCalls.map((c) => c.keyframes[0].transform)).toEqual([
+      "translateY(-30px)",
+      "translateY(30px)",
+    ]);
   });
 
   it("measures without animating when animate is false, feeding the next pass", () => {
     const rows = [rowAt(0), rowAt(30)];
-    const tops = flipRows(rows, ["A", "B"], new Map([["A", 90]]), false);
+    const tops = flipRows(rows, ["A", "B"], new Map([["A", 90]]), false, 0);
     expect(tops.get("A")).toBe(0);
     expect(animateCalls).toHaveLength(0);
   });

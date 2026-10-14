@@ -10,6 +10,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadFixtureReplay } from "../data/fixture";
 import {
+  canvasInsets,
+  MARGIN_MIN_PX,
   fitTransform,
   applyTransform,
   toScreenPoint,
@@ -20,12 +22,11 @@ import {
   CORNER_OFFSET_PX,
   START_FINISH_HALF_PX,
 } from "./paths";
-import { buildScene } from "./scene";
-import { PAD_PX } from "./TrackCanvas";
+import { CORNER_BADGE_RADIUS, TRACK_EDGE_WIDTH, buildScene } from "./scene";
 
 const replay = loadFixtureReplay();
 const scene = buildScene(replay);
-const fit = fitTransform(scene.bounds, 800, 600, PAD_PX);
+const fit = fitTransform(scene.bounds, 800, 600, canvasInsets(800, 600));
 
 beforeEach(() => {
   // Only for `Path2D`, which jsdom does not provide.
@@ -73,7 +74,7 @@ describe("buildScenePaths corners", () => {
     // the track as the window shrinks and away from it as it grows.
     const big = buildScenePaths(
       scene,
-      fitTransform(scene.bounds, 1600, 1200, PAD_PX),
+      fitTransform(scene.bounds, 1600, 1200, canvasInsets(1600, 1200)),
     );
     for (const corner of big.corners) {
       expect(
@@ -216,5 +217,35 @@ describe("buildScenePaths pitLane (Slice 16)", () => {
       stretched.bounds.maxX > scene.bounds.maxX ||
         stretched.bounds.maxY > scene.bounds.maxY,
     ).toBe(true);
+  });
+});
+
+/**
+ * The canvas insets' floors (`engine/geometry.ts`, Slice 26) were measured against
+ * what this file and `scene.ts` draw at FIXED pixel offsets. The engine cannot
+ * import render constants, so the relations are pinned here: grow a badge's reach
+ * or the ribbon's stroke and this fails rather than the labels quietly clipping on
+ * a phone.
+ */
+describe("the canvas insets' floors", () => {
+  // The smallest canvas measured: 568x320's 312x159, where every floor binds.
+  const smallest = canvasInsets(312, 159);
+
+  it("cover a corner badge's reach past a corner on the fitted bounds' edge", () => {
+    // Offset + radius + half the 1 px hairline that rings the badge: 28.5 px.
+    const reach = CORNER_OFFSET_PX + CORNER_BADGE_RADIUS + 0.5;
+    expect(MARGIN_MIN_PX).toBeGreaterThanOrEqual(reach);
+    for (const side of ["top", "right", "bottom", "left"] as const) {
+      expect(smallest[side], side).toBeGreaterThanOrEqual(reach);
+    }
+  });
+
+  it("keep the ribbon's edge stroke clear of the speed legend's box", () => {
+    // `SpeedLegend`: `bottom-3.5` (14 px) plus its 15 px line box — measured in
+    // Chrome at 176.22x15, 14 px up from the canvas's bottom-left. 35.5 px.
+    const LEGEND_TOP_FROM_BOTTOM_PX = 14 + 15;
+    expect(smallest.bottom).toBeGreaterThanOrEqual(
+      LEGEND_TOP_FROM_BOTTOM_PX + TRACK_EDGE_WIDTH / 2,
+    );
   });
 });

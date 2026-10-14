@@ -4,7 +4,7 @@
  * jsdom has no layout engine: every box it reports is 0x0, so the app's tests can
  * prove WHAT renders but never WHERE. This drives the system's headless Chrome
  * over the DevTools Protocol against the BUILT app (`dist/`, served by Vite's own
- * `preview()`) and asserts the geometric facts a visitor depends on, at seven
+ * `preview()`) and asserts the geometric facts a visitor depends on, at nine
  * viewports (`VIEWPORTS`) and in three states (`layout/states.ts`):
  *
  *   A  first load — the gallery panel open over the committed fixture;
@@ -13,7 +13,9 @@
  *
  * Every assertion prints PASS/FAIL with the numbers it measured. Per viewport,
  * two more rows cover the whole run: no request off the preview origin (from the
- * page, its workers or its frames) and no uncaught page exception.
+ * page, its workers or its frames) and no uncaught page exception. At a
+ * phone-layout viewport (`isPhoneLayout`), A and C each add one: the gallery
+ * covers the whole viewport (Slice 26).
  *
  *     npm run build && npm run check:layout
  *
@@ -82,6 +84,26 @@ const TEARDOWN_STEP_MS = 2_000;
 // the shortest the one-line header, `onerow:`, serves), and the landscape phones
 // 667x375 and 740x360 (the shortest common one), which go side by side (`side:`
 // in `tailwind.config.js`: `md`, or a screen 5:4 or wider).
+//
+// Then Slice 26's 375x626, appended last: what an upright iPhone's Safari leaves
+// the page once both its bars are shown (measured from the human's screenshots,
+// 2026-10-11), and the shortest portrait screen gated. What gates the phone's
+// full-screen gallery (`phone:fixed`, `src/components/overlay.ts`) is the
+// "panel covers the viewport" rows, in A and C at every phone-layout viewport
+// (`isPhoneLayout`, below). 375x626's "last card reachable" also fails with the
+// gallery in the cell, but only by ~10 px of footer copy (Slice 26's review).
+// Safari's landscape size, 724x257, is NOT gated: the header and the transport
+// bar leave its track 160 px, under the 200 px floor in `layout/states.ts`, and
+// that floor is not loosened to admit it (Slice 27's compact bars are its way
+// in). Its other rows pass.
+//
+// Then 814x312, appended last (Slice 26's review): a Plus or Pro Max iPhone held
+// sideways, `md` wide but at most 30rem tall. It is the one gated viewport where
+// `phone:`'s HEIGHT clause decides the layout, so its "panel covers the
+// viewport" rows are what fail if that clause is dropped; before it, only
+// `layoutVariants.test.ts`'s compiled string did. Emulated as every viewport
+// 768 px or wider is (`mobile: false`); measured with `mobile: true` as well,
+// its 19 rows are byte-identical.
 const VIEWPORTS: readonly { width: number; height: number }[] = [
   { width: 375, height: 812 },
   { width: 1280, height: 720 },
@@ -90,6 +112,8 @@ const VIEWPORTS: readonly { width: number; height: number }[] = [
   { width: 667, height: 375 },
   { width: 740, height: 360 },
   { width: 360, height: 640 },
+  { width: 375, height: 626 },
+  { width: 814, height: 312 },
 ];
 /**
  * Below this width the emulated device is a phone (`mobile: true`: meta-viewport
@@ -98,6 +122,17 @@ const VIEWPORTS: readonly { width: number; height: number }[] = [
  * phones emulated side by side.
  */
 const MOBILE_BELOW_PX = 768;
+/**
+ * Whether the app lays a viewport out as a phone: `phone:` in
+ * `tailwind.config.js`, below `md` (768 px) or at most 30rem (480 px) tall,
+ * where the gallery covers the whole screen (Slice 26). Of the gated viewports,
+ * all but 1280x720 and 1440x900. Written out here rather than read from the page
+ * (`matchMedia`), so a variant that stopped matching FAILS the "panel covers the
+ * viewport" rows instead of quietly removing them.
+ */
+function isPhoneLayout(vp: { width: number; height: number }): boolean {
+  return vp.width < 768 || vp.height <= 480;
+}
 
 const report = new Report();
 let currentStep = "starting";
@@ -189,7 +224,13 @@ async function checkViewport(
       features: [{ name: "prefers-reduced-motion", value: "reduce" }],
     });
 
-    const ctx: StateContext = { page, viewport: name, report, step };
+    const ctx: StateContext = {
+      page,
+      viewport: name,
+      report,
+      step,
+      phone: isPhoneLayout(vp),
+    };
     let reached: "none" | "A" | "B" = "none";
     try {
       step(`loading the app at ${name}`);

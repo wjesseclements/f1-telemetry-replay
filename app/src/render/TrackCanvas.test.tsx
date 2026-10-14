@@ -31,8 +31,10 @@ const COMET_COLOR_SET = new Set(
 );
 import {
   applyTransform,
+  canvasInsets,
   fitTransform,
   toScreenPoints,
+  type Insets,
   type Point,
 } from "../engine/geometry";
 import { sampleAt } from "../engine/interpolate";
@@ -55,14 +57,19 @@ import {
   TRACK_EDGE_WIDTH,
   buildScene,
 } from "./scene";
-import { PAD_PX, TrackCanvas } from "./TrackCanvas";
+import { TrackCanvas } from "./TrackCanvas";
 
 const WIDTH = 800;
 const HEIGHT = 600;
 const replay = loadFixtureReplay();
 const car = replay.cars[0];
 const scene = buildScene(replay);
-const fit = fitTransform(scene.bounds, WIDTH, HEIGHT, PAD_PX);
+const fit = fitTransform(
+  scene.bounds,
+  WIDTH,
+  HEIGHT,
+  canvasInsets(WIDTH, HEIGHT),
+);
 
 /** Where the marker for `car` belongs on screen at a given clock. */
 function expectedMarker(clock: number): Point {
@@ -617,7 +624,12 @@ describe("TrackCanvas trail", () => {
 
     // ...but at the NEW scale: a rebuild that reused the old projection would leave
     // the trail sitting where the smaller viewport put it.
-    const newFit = fitTransform(scene.bounds, 1000, 700, PAD_PX);
+    const newFit = fitTransform(
+      scene.bounds,
+      1000,
+      700,
+      canvasInsets(1000, 700),
+    );
     const [rotated] = toScreenPoints(
       [{ x: car.samples[0].x, y: car.samples[0].y }],
       replay.meta.rotation,
@@ -742,7 +754,12 @@ describe("TrackCanvas trail", () => {
     });
     raf.tick(0); // repaint at the new size without advancing the clock
 
-    const refit = fitTransform(scene.bounds, 1000, 700, PAD_PX);
+    const refit = fitTransform(
+      scene.bounds,
+      1000,
+      700,
+      canvasInsets(1000, 700),
+    );
     const snapshots = sampleAt(replay, 0.2, scene.carHeadingHolds);
     const want = applyTransform(
       toScreenPoints(snapshots, replay.meta.rotation)[0],
@@ -751,6 +768,34 @@ describe("TrackCanvas trail", () => {
     const at = markers(lastFrame(recording))[0];
     expect(at.x).toBeCloseTo(want.x, 6);
     expect(at.y).toBeCloseTo(want.y, 6);
+  });
+
+  it("fits a phone's short canvas with the scaled insets, not a fixed 46 px", () => {
+    // Slice 26: iOS Safari leaves a landscape phone a 468x160 canvas, where 46 px a
+    // side drew the circuit 68 px tall. The loop must fit with `canvasInsets`.
+    render(<TrackCanvas replay={replay} />);
+    raf.tick(); // first frame: no elapsed time, the clock stays at 0
+    act(() => {
+      recording.resize(468, 160);
+    });
+    raf.tick(0);
+
+    const markerAt = (pad: number | Insets): Point =>
+      applyTransform(
+        toScreenPoints(
+          sampleAt(replay, 0, scene.carHeadingHolds),
+          replay.meta.rotation,
+        )[0],
+        fitTransform(scene.bounds, 468, 160, pad),
+      );
+    const at = markers(lastFrame(recording))[0];
+    const phone = { top: 32, right: 32, bottom: 46, left: 32 };
+    expect(canvasInsets(468, 160)).toEqual(phone);
+    expect(at.x).toBeCloseTo(markerAt(phone).x, 6);
+    expect(at.y).toBeCloseTo(markerAt(phone).y, 6);
+    // ...and measurably not where the old fixed margin put it.
+    const old = markerAt(46);
+    expect(Math.hypot(at.x - old.x, at.y - old.y)).toBeGreaterThan(1);
   });
 
   it("still never re-renders, across frames AND a resize", () => {
@@ -1151,7 +1196,7 @@ describe("TrackCanvas stopped car (Slice 23)", () => {
       buildScene(parkedPair).bounds,
       WIDTH,
       HEIGHT,
-      PAD_PX,
+      canvasInsets(WIDTH, HEIGHT),
     );
     const [before, at] = toScreenPoints(
       [car.samples[PARK_AT - 1], car.samples[PARK_AT]],

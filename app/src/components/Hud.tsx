@@ -57,6 +57,7 @@ import { useTelemetry } from "../telemetry/useTelemetry";
 import { CarEntry } from "./CarEntry";
 import { SpeedTrace } from "./SpeedTrace";
 import { flipRows } from "./towerFlip";
+import { holdRow, revealRow } from "./towerReveal";
 
 export interface HudProps {
   replay: Replay;
@@ -205,7 +206,9 @@ export function Hud({ replay }: HudProps) {
    *    height change snaps, per the PLAN argument — animating height is layout
    *    per frame, which rule 1 forbids;
    *  - `prefers-reduced-motion` does not, checked at the moment it matters (the
-   *    reorder), consistent with `motion.ts`'s read-at-need doctrine.
+   *    reorder), consistent with `motion.ts`'s read-at-need doctrine;
+   *  - a SCROLL does not — the viewer's, or the reveal's below — because the tops
+   *    are positions in the list, not on the screen (`towerFlip.ts`, Slice 26).
    */
   const rowsRef = useRef<HTMLUListElement>(null);
   const rowTops = useRef<ReadonlyMap<string, number>>(new Map());
@@ -213,6 +216,56 @@ export function Hud({ replay }: HudProps) {
     replay: null,
     order: [],
   });
+
+  /**
+   * Bring the focused car into view when the FOCUSED CAR changes (Slice 26) — and
+   * at no other time. The focused car is a (replay, index) pair, so the trigger is
+   * a change of either: a click on a row, the keyboard's focus cycle, a scenario
+   * landing on its suggested driver, any replay load (which resets focus, and is
+   * a different car even at the same index). All four are a human acting.
+   *
+   * What does NOT trigger it is the point: a reorder, a HUD tick, a resize, the
+   * comparison toggle. Following the focused car down the field as it loses places
+   * would scroll the list under the viewer's own thumb at up to 30 Hz — rule 1's
+   * line, held on the DOM side too. The viewer scrolls; the tower answers only the
+   * viewer's own focus change.
+   *
+   * Once per change, at the first commit that RENDERS the focused row. Usually the
+   * same commit; after a load whose car count differs from the last frame's, the
+   * rows arrive with the next published frame (the stale-frame guard above), and
+   * the reveal waits for them rather than being lost.
+   *
+   * Two scrolls, in order (`engine/reveal.ts`): HOLD the row where the viewer saw
+   * it — the readout closing above it moved it, and a row clicked a moment ago
+   * must not jump out from under the finger — then REVEAL the least distance from
+   * there. The hold reads the FLIP pass's cache from the previous commit, which
+   * is why this is declared BEFORE that pass, and only on the same replay (the
+   * cache is keyed by driver, and a new session's LEC is not the one on screen).
+   */
+  const revealed = useRef<{ replay: Replay; focus: number } | null>(null);
+  useLayoutEffect(() => {
+    const list = rowsRef.current;
+    const seen = revealed.current;
+    if (
+      list === null ||
+      (seen !== null &&
+        seen.replay === replay &&
+        seen.focus === focusedCarIndex)
+    )
+      return;
+    const row = list.children[next.indexOf(focusedCarIndex)];
+    if (!(row instanceof HTMLElement)) return; // not rendered yet: stay pending
+    revealed.current = { replay, focus: focusedCarIndex };
+    holdRow(
+      list,
+      row,
+      flipPrev.current.replay === replay
+        ? rowTops.current.get(replay.cars[focusedCarIndex].driver)
+        : undefined,
+    );
+    revealRow(list, row, !prefersReducedMotion());
+  });
+
   useLayoutEffect(() => {
     const list = rowsRef.current;
     if (list === null) return;
@@ -226,6 +279,10 @@ export function Hud({ replay }: HudProps) {
       next.map((i) => replay.cars[i].driver),
       sameReplay ? rowTops.current : new Map(),
       sameReplay && !sameOrder(prev.order, next) && !prefersReducedMotion(),
+      // Where the list's CONTENT starts on screen, so the cached tops are positions
+      // in the list and a scroll between two commits is not mistaken for a move
+      // (Slice 26 — the smooth reveal above scrolls across several commits).
+      list.getBoundingClientRect().top - list.scrollTop,
     );
   });
 
@@ -299,11 +356,27 @@ export function Hud({ replay }: HudProps) {
           sidebar or strip: the list shrinks to what the aside allows and scrolls,
           and three cars fit without it ever showing. `relative` contains the rows'
           `sr-only` text (absolutely positioned) in THIS scroller — without it, the
-          rows scrolled out of the list made the whole page scrollable. */}
+          rows scrolled out of the list made the whole page scrollable — and makes
+          the list its rows' `offsetParent`, which the focus reveal measures from.
+          `[overflow-anchor:none]` (Slice 26): the list scrolls for the viewer and
+          for the viewer's focus change, never for a reorder. Chrome's scroll
+          anchoring scrolled it on reorders, to hold whichever row sat at the top of
+          the view: a list parked at mid-field moved 232 px in 4 s of the red
+          flag's first lap at 2x (375x626, headless Chrome), following a car rather
+          than the positions the viewer chose, and every row the reorder did not
+          touch jumped with it. Off, the SCROLL POSITION holds still, and the cost
+          is that the rows in view move when something above them leaves: at
+          LEC's DNF (174.8 s, 375x626, list parked at 300 below LEC's 194 px
+          focused block) the block drops to the foot of the field, and every row
+          in view slides up 198 px (the block and its 4 px gap), animated, while
+          scrollTop stays 300 — PIA to HAM give way to HAM to SAI. Anchored, main
+          chased the focused block instead (300 to 102 to 68; Slice 26's review).
+          Whether iOS Safari anchors was not measured (no Safari here); a browser
+          that does not was already behaving this way. */}
       <ul
         ref={rowsRef}
         aria-label="Running order"
-        className="relative m-0 flex min-h-0 w-full min-w-0 list-none flex-col gap-1 overflow-y-auto p-0"
+        className="relative m-0 flex min-h-0 w-full min-w-0 list-none flex-col gap-1 overflow-y-auto p-0 [overflow-anchor:none]"
       >
         {next.map((i) => (
           <CarEntry

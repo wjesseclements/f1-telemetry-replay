@@ -3,7 +3,9 @@
  *
  * A DOM overlay in `FeaturedPanel`'s exact mould: a wash over the canvas, not a
  * replacement for it — the paused frame underneath IS the moment being narrated.
- * `ScenarioEvents` has already paused playback by the time this mounts.
+ * `ScenarioEvents` has already paused playback by the time this mounts. Like the
+ * panel, it covers the track cell on a desktop and the whole screen on a phone
+ * (`overlay.ts`, Slice 26), where the cell was too short to show it whole.
  *
  * The copy (`event.title`, `event.body`) is the manifest's, rendered verbatim —
  * owned by the human like every hook line.
@@ -18,11 +20,18 @@
  * control that undoes what the card did: the card paused the replay, and the
  * button under focus resumes it.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { applyScenario } from "../data/applyScenario";
 import type { GalleryScenario, ScenarioEvent } from "../engine/gallery";
 import { useTransport } from "../store/transport";
 import { FOCUS_RING } from "./focus";
+import {
+  OVERLAY_CLOSE_TARGET,
+  OVERLAY_FOCUS_CLEARANCE,
+  OVERLAY_PHONE,
+  OVERLAY_PINNED_BAR,
+  usePhoneModal,
+} from "./overlay";
 import { PLAY_TOGGLE_ID } from "./TransportBar";
 
 export interface EventCardProps {
@@ -37,21 +46,33 @@ export function EventCard({ event, next, onClose }: EventCardProps) {
   const headingId = "event-card-heading";
   const primaryRef = useRef<HTMLButtonElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // What held focus before the card appeared, read in a LAYOUT effect declared
+  // before `usePhoneModal`: on a phone the page behind goes inert in the same
+  // commit, and an element made inert can lose focus, so this must run first.
+  const before = useRef<Element | null>(null);
+  useLayoutEffect(() => {
+    before.current = document.activeElement;
+  }, []);
+  // Modal on a phone, where it covers the whole screen (`overlay.ts`).
+  const modal = usePhoneModal(dialogRef);
+
   // Mount/unmount focus contract — see the header. The captured element is read
   // once, before focus moves into the card. With no chain to offer, the close
-  // button is the primary action.
+  // button is the primary action. Its cleanup is a passive one, so on a phone it
+  // runs after `usePhoneModal` has woken the page it returns focus to.
   useEffect(() => {
-    const before = document.activeElement;
+    const prior = before.current;
     (primaryRef.current ?? closeRef.current)?.focus();
     return () => {
       const target =
-        before instanceof HTMLElement &&
-        document.contains(before) &&
-        before !== document.body
-          ? before
+        prior instanceof HTMLElement &&
+        document.contains(prior) &&
+        prior !== document.body
+          ? prior
           : document.getElementById(PLAY_TOGGLE_ID);
       target?.focus();
     };
@@ -88,30 +109,35 @@ export function EventCard({ event, next, onClose }: EventCardProps) {
           onClose();
         }
       }}
+      ref={dialogRef}
       role="dialog"
-      aria-modal="false"
+      aria-modal={modal ? "true" : "false"}
       aria-labelledby={headingId}
       // A wash, not a blur: the paused frame behind this is what the card is about.
       // `items-start` + the card's `my-auto`, never `items-center`: centred when it
       // fits, scrolling from its top when it does not (FeaturedPanel says why).
-      className="absolute inset-0 z-10 flex items-start justify-center overflow-y-auto bg-bg/75 p-4"
+      className={`absolute inset-0 z-10 flex items-start justify-center overflow-y-auto bg-bg/75 p-4 ${OVERLAY_PHONE} ${OVERLAY_FOCUS_CLEARANCE}`}
     >
       <div className="my-auto w-full max-w-md rounded-lg border border-line bg-panel p-4 shadow-xl">
-        <div className="mb-2 flex items-baseline justify-between gap-3">
-          <h2
-            id={headingId}
-            className="font-mono text-xs font-bold tracking-[0.2em] text-accent"
-          >
-            {event.title}
-          </h2>
-          <button
-            type="button"
-            ref={closeRef}
-            onClick={onClose}
-            className={`rounded px-2 py-1 font-mono text-[11px] text-dim transition-colors hover:text-txt ${FOCUS_RING}`}
-          >
-            Close
-          </button>
+        {/* Pinned on a phone, as the gallery's is: a failed "Continue" can make
+            the card scroll there (`OVERLAY_PINNED_BAR`, Slice 26). */}
+        <div className={`mb-2 phone:mb-0 phone:pb-2 ${OVERLAY_PINNED_BAR}`}>
+          <div className="flex items-baseline justify-between gap-3">
+            <h2
+              id={headingId}
+              className="font-mono text-xs font-bold tracking-[0.2em] text-accent"
+            >
+              {event.title}
+            </h2>
+            <button
+              type="button"
+              ref={closeRef}
+              onClick={onClose}
+              className={`rounded px-2 py-1 font-mono text-[11px] text-dim transition-colors hover:text-txt ${OVERLAY_CLOSE_TARGET} ${FOCUS_RING}`}
+            >
+              Close
+            </button>
+          </div>
         </div>
 
         <p className="m-0 font-mono text-xs leading-relaxed text-txt">

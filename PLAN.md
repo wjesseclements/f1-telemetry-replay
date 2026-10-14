@@ -4819,17 +4819,6 @@ the 2024 pit cycle's swaps reading as moves. The pre-registered 300 ms stands
 untouched — no tune requested. **"NO SIG" ratified** as the compact spelling.
 Push + PR + auto-merge authorised.
 
-### [ ] Slice 26 — phone-first layout, measured against Safari's real viewports
-
-**Filed 2026-10-11 by the human's phone check of Slice 25** (see its entry). Scope, as
-ruled: build **A** a full-screen gallery on phones (not confined to the track cell);
-**B** the canvas margin scaling with the canvas instead of a fixed 46 px (desktop
-unchanged); **D** scroll the focused car into view on focus change (the filed
-follow-up); **G** gate Safari's real viewports (~724x257 landscape, ~375x626 upright).
-And draft options — to compare, not to build — for **C** compact top and bottom bars
-on very short screens, **E** a track-first landscape mode with a tap-to-open tower,
-and **F** Add to Home Screen support (a web app manifest; needs an icon).
-
 ### [ ] Slice 20 — colour distinction under the luminance floor
 
 **Filed 2026-09-08 by Slice 17's browser pass.** The floor fixes visibility, not
@@ -5590,9 +5579,270 @@ proportions at the sizes it measured; a usable phone needs a phone-first layout.
 Merged as a strict improvement on main (human ruling, 2026-10-11) and **Slice 26**
 filed for the phone work.
 
+### [x] Slice 26 — phone-first layout, measured against Safari's real viewports (done 2026-10-12)
+
+**Filed 2026-10-11 by the human's phone check of Slice 25.** On an iPhone, Safari's
+toolbars leave the page about 724x257 in landscape and 375x626 upright, but the gate
+assumed the device sizes, 812x375 and 375x812. Main, measured at Safari's sizes:
+- landscape drew the track at 468x160, under the 200 px floor;
+- no gallery card was whole: the panel was 160 px in landscape and 216 px upright;
+- the 22-car focused readout was never whole: 108–151 px hidden in landscape (108 at
+  724x300, 151 at 724x257) and 67 px upright (375x626).
+
+**Ruling (human, 2026-10-11, scope).**
+- Build **A**, a full-screen gallery on phones.
+- Build **B**, the canvas margin scaling with the canvas.
+- Build **D**, scrolling the focused car into view on a focus change.
+- Gate Safari's real viewports (**G**, ~724x257 and ~375x626).
+- Draft only, to compare and not to build: **C** compact bars, **E** a track-first
+  landscape mode, **F** Add to Home Screen.
+
+**Rulings (human, 2026-10-12, on the built branch).**
+1. **Pinned close.** On phones the gallery's "START HERE / Close" row stays pinned at
+   the top of the full-screen panel while its cards scroll. Do the same for the event
+   card if it can scroll at any measured size (measure and say).
+2. **Wider phone trigger.** `phone:` also matches screens at most 30rem (480 px) tall,
+   so Plus/Pro Max iPhones held sideways (~814x312) get the full-screen gallery. md+
+   windows ≤ 480 px tall change as a result; accepted.
+3. **Inert background.** While a full-screen overlay is open on a phone, the rest of the
+   page is inert and the dialog aria-modal. Desktop is unchanged.
+   - Focus lands in the dialog on open and returns to the toggle on every close route.
+   - The replay keeps animating behind the scrim, and App.test's memoisation pin must
+     hold.
+   - The media query is read only through a subscription that changes on resize or
+     rotation.
+4. **Keep D's two extensions:** no scroll anchoring on the tower list, and
+   hold-then-reveal.
+5. **Accept B's per-side insets** as built.
+6. **Direct gate rows.** On the phone-layout viewports the gallery panel must cover the
+   viewport in states A and C, within 1 px. These are new rows; every existing row stays
+   byte-identical. 724x257 stays ungated until compact bars land (Slice 27).
+
+Also: fix the review's non-blocking items.
+
+**What was built.** Fourteen commits on `feat/slice-26-phone-first`; the PR squashes
+them.
+- A, B and D were built on their own branches off main and cherry-picked in that order
+  without conflict.
+- G was added on top.
+- Seven commits then applied the rulings.
+
+**A: the gallery and the event card cover the whole screen on phones** (1738985,
+8368c1f).
+- **The variant.** `phone:fixed` on the existing dialogs: one string, `OVERLAY_PHONE`.
+  Nothing moves in the DOM, so the canvas does not re-render.
+- **Ruling 2 widened `phone:`** to `not all and (min-width: 768px), (max-height: 30rem)`
+  (6783762).
+  - React reads the same query as `PHONE_QUERY`, and `layoutVariants.test.ts` pins the
+    two to one compiled string.
+  - With both clauses, every iPhone's Safari viewport is a phone in both orientations.
+- **Cards whole on first load, main → after:**
+
+| viewport | main | after |
+| --- | --- | --- |
+| 375x626 | 0 (216 px) | 3 (626 px) |
+| 724x257 | 0 (160 px) | 1 (257 px) |
+| 724x300 | 0 | 1 |
+| 390x664 | 1 | 4 |
+| 375x812 | 1 | 5 |
+| 390x844 | 2 | 5 |
+| 375x667 | 1 | 4 |
+| 360x640 | 0 | 3 |
+| 667x375, 740x360, 760x360 | 1 | 2 |
+| 814x312 (ruling 2) | 0 (215 px) | 1 (312 px) |
+| 844x390, 915x412 (ruling 2) | 1 | 2 |
+| 1280x480 (ruling 2; a desktop window) | 2 (383 px) | 3 (480 px) |
+| 882x344 (ruling 2) | 1 (247 px) | 1 (344 px) |
+| 1280x720, 1440x900 | unchanged | unchanged |
+
+- **The event card** gets the same treatment (A's scope addition, 8368c1f). It is whole
+  at every size measured.
+
+**Ruling 1: a pinned Close row** (7614b31, a95ff38, aeb8a10).
+- **Why.** Full screen, the gallery scrolls itself, and once it did, nothing on screen
+  closed it. Close scrolled away (y=-233 at 375x626, y=-490 at 724x257), the header
+  toggle is under the wash, and a tap on the wash does nothing.
+- **How.** The heading row now sits in a bar (`OVERLAY_PINNED_BAR`) that sticks on
+  phones.
+  - The bar wraps the row, reaches over the card's padding with negative margins and
+    pays the same back, so at rest the row's box is unchanged to the pixel.
+  - It sticks at `-top-4`: a sticky `top` counts from inside the dialog's 16 px padding.
+    Measured with `top-0`, the row pinned at y=16 and the cards stayed visible, and
+    tappable, above it.
+  - Pinned, it covers that strip.
+- **Measured.** At 375x626, 724x257 and 814x312, scrolled to the end, Close sits at
+  y=[16.0,40.5], hit-tests as itself, and closes the panel with focus returned to the
+  toggle.
+- **At rest it must paint nothing** (aeb8a10). The bar is positioned, so it paints over
+  the card. As first built it hid the top of the focused first card's focus ring and
+  shaded the card's corner arcs in every phone panel screenshot, while every layout row
+  matched.
+  - The gallery now keeps 4 px of its 12 px gap as margin.
+  - The bar's top corners are 12 px.
+  - Every Safari-size screenshot (20) is pixel-identical to the bar-less build's.
+- **The event card.** As it opens, it scrolled at none of 28 sizes measured (Safari,
+  standard and robust sets, 814x312 included); the least room was 34.5 px at 724x257.
+  After a failed "Continue" its error message makes it scroll at 724x257 (306/257) and
+  724x300 (306/300), and Close ended at y=[-16.0,8.5]. It is pinned too: y=[16.0,40.5].
+
+**Ruling 3: a phone overlay is modal** (012ef97).
+- **`usePhoneLayout`** (`components/phoneLayout.ts`) is a `matchMedia` subscription
+  through `useSyncExternalStore`. It re-renders only when the answer flips.
+- **`inertOutside`** (`components/inertOutside.ts`) marks every sibling on the path from
+  the dialog to `<body>` inert.
+  - It never inerts another dialog, so an event card firing behind the gallery stays
+    live.
+  - It counts holds per element, so the first of two dialogs to close does not wake the
+    page under the second.
+- **`usePhoneModal`** (`overlay.ts`) applies it in a layout effect and drives
+  `aria-modal`.
+- **App's `closeGallery`** commits the close with `flushSync` before focusing the
+  toggle. Measured without it: every close route at 375x626 left focus on `<body>`,
+  because an inert button cannot take focus.
+- **EventCard** reads what held focus in a layout effect before the page goes inert.
+  Chrome drops focus from an element made inert within two frames (measured).
+- **Measured, keyboard and screen reader** (375x626, 724x257, 814x312):
+  - the 5–6 elements outside the dialog are inert, and `aria-modal="true"`;
+  - outside the dialog the accessibility tree keeps only its ancestor `main` landmark,
+    with 0 text nodes;
+  - Tab and Shift+Tab ×14 cycle the dialog's 6 controls, plus one stop on the document;
+  - hit tests at the header toggle and the play button land in the dialog;
+  - Close, Escape, a card, and the event card's Escape all return focus with nothing
+    left inert.
+- **1440x900 unchanged:** `aria-modal="false"`, nothing inert, Tab walks out to the
+  tower and the transport.
+- **Canvas.** Untouched. A phone copy of App.test's memoisation pin passes (same canvas
+  node, still animating across the close).
+
+**B: the canvas margins scale with the canvas** (04c41cc), per-side as built (ruling 5).
+- `canvasInsets(width, height)` in `engine/geometry.ts`: top and sides are a tenth of
+  the shorter side, clamped to 32..46 px, and the bottom keeps 46 px for the legend's
+  row.
+- **Drawn circuit, Monza red flag, main → after:** 724x257 136x68 → 164x82; 375x626
+  246x123 → 274x137; the other phones gain the same 28x14.
+- **"Desktop unchanged" holds for canvases whose shorter side is ≥ ~460 px.** A shorter
+  desktop canvas gets thinner side margins: 1280x480's 1056x383 canvas gets 38 px.
+- The symmetric shape was built first and measured. It put a Monza badge on the legend's
+  "340 km/h" at all four Safari sizes, which is why the bottom keeps 46 px.
+
+**D: the focused car scrolls into view on a focus change** (6447656, e91d1ef, 562a8e0),
+both extensions kept (ruling 4).
+- `revealOffset` (`engine/reveal.ts`): the least movement, the block's top when it is
+  taller than the list, nothing when it is already whole.
+- It fires once per change of the (replay, focus) pair: never on a reorder, a tick, a
+  resize or the compare toggle.
+- **Focused block, main → after:** 375x626 67 → 0 px hidden; 724x257 151 → 83 (the whole
+  144 px list); 724x300 108 → 40; 1440x900 unchanged.
+- **e91d1ef turns scroll anchoring off on the list.**
+  - With anchoring, a parked list moved 232 px in 4 s.
+  - Without it, the cost is that rows in view move when something above them leaves. At
+    LEC's DNF (174.8 s, 375x626, parked at 300 below LEC's 194 px block) every row in
+    view slides up 198 px with scrollTop unchanged.
+  - Main chased the block instead: 300 → 102 → 68.
+- **562a8e0 holds a clicked row** for the first frame before the glide.
+- **Review fixes** (5b756d2):
+  - The reduced-motion jump now asks for `"auto"`, not `"instant"`. `"auto"` is in every
+    `ScrollBehavior`, and support for `"instant"` in every target Safari could not be
+    shown. A test pins the stylesheet free of `scroll-behavior`.
+  - Hud.tsx states the DNF cost.
+
+**G and ruling 6: the gate** (fd5af10, a82ed07).
+- 375x626 is the eighth viewport.
+- **New rows.** At every phone-layout viewport (`isPhoneLayout`: under 768 px wide or at
+  most 480 px tall, written out in the check rather than read from the page), A and C
+  each add "panel covers the viewport": the dialog's box equals the viewport's within 1
+  px.
+  - That is 12 new rows, 148 in all.
+  - These replace 375x626's "last card reachable" as the gate's measurement of A. That
+    row failed with the gallery in the cell only by ~10 px of footer copy (the review:
+    trimmed to one line, 136/136 with A reverted).
+- **Mutation.** With `OVERLAY_PHONE` emptied: 135/148. All 12 new rows FAIL, plus the
+  old last-card row.
+- **Transport row.** The "transport bar in viewport" row now says next to it that it is
+  geometry only: on a phone the bar is under the wash, inert, while the first-load
+  gallery is open.
+- **724x257 is not gated.** Its track is 160 px against the 200 px floor; the floor is
+  not loosened. Slice 27's compact bars are its way in.
+
+**Evidence** (after the review's fix pass, HEAD 4c109c6).
+- **`npm run check` is green.**
+  - The full log has 0 warn/error lines.
+  - Vitest 4.1.10, rooted at app/: 59 files, 1058 tests.
+  - Engine coverage is 100% per file: 945/945 statements, 512/512 branches, 159/159
+    functions, 822/822 lines.
+  - check:layout is 167/167 over nine viewports: the 12 "panel covers the viewport" rows
+    and 814x312's 19 rows are new; of the older rows, those measuring the Close button's
+    own box changed with the 44 px Close (below), all PASS.
+  - Every commit was checked green at its own state.
+- **Draw-call fixture digests are unchanged:** closed cb43a0f8…, open e30b5b6e….
+- **Safari matrix, against fd5af10:** digest e72a5875 and shotsDigest 4d1bd260, both
+  identical. The rulings change nothing at Safari's four sizes at rest. Against main
+  (78887ee9) the delta is A's plus D's.
+- **Standard matrix, fd5af10 → HEAD** (f869740c → 012437d4):
+  - only 844x390 and 915x412 change (panel values, ruling 2);
+  - 51 of 55 screenshots are identical, all 10 md+ shots included;
+  - 1280x720 and 1440x900 measurements are unchanged against main.
+- **Robust sizes, plus 814x312** (59c277cb → 96495707): only 814x312, 1280x480 and
+  882x344 change (ruling 2); 59 of 65 screenshots are identical.
+- **pytest:** the pipeline is untouched.
+
+**Amendments, flagged.**
+- A's event-card scope addition (kept).
+- B's per-side insets replace the brief's symmetric margin (ratified).
+- D's FLIP in list coordinates (required) and its two extensions (ruled kept).
+- The event card is pinned on the strength of its failed-"Continue" state; at open it
+  never scrolls.
+- The pinned bar's at-rest paint fix (aeb8a10) was found by screenshot diff, not by any
+  gate row.
+
+**Amendments from the review's fix pass** (1b3cac4, e3ed68f, 4c109c6).
+- **The pinned Close is a 44 px touch target on phones** — applying Slice 27's 44 pt
+  ruling to the one on-screen exit of a scrolled phone panel (it was 49.1x24.5 px).
+  The bar grows 48.5 → 68 px; a 9x9 hit test over the 44x44 square gives 81/81;
+  desktop unchanged. **Cost, whole cards on first load:** 390x664 4→3, 375x667 4→3,
+  667x375 / 740x360 / 760x360 2→1, 600x480 and 1280x480 3→2; unchanged at 724x257,
+  724x300, 375x626, 375x812, 390x844, 360x640, 844x390, 915x412 and 814x312.
+- **Keyboard focus stops below the pinned bar** (the review's blocking finding):
+  Shift+Tab
+  scrolled the focused card under the sticky bar in 24 of 191 trusted-key stops. Both
+  dialogs now pad their scrollport's top on phones by 73 px (the 68 px bar, a 4 px ring,
+  and 1 px because a focus scroll lands on a whole pixel — at 72 px two stops left 0.5
+  px
+  of ring under the bar). After: 190 stops, 0 elements and 0 rings under the bar.
+- **814x312 is the ninth gated viewport** — a Plus/Pro Max iPhone held sideways, the
+  only
+  gated size where `phone:`'s height clause decides the layout. All 19 rows pass; with
+  the
+  height clause dropped its two "panel covers the viewport" rows fail.
+
+**Still open.**
+- **Desktop windows ≤ 480 px tall.** Rulings 2 + 3 together make them MODAL as well as
+  full screen: on a 1280x480 window the tower and transport are inert while an overlay
+  is open.
+- **Real iOS Safari is unmeasured:** `inert`, sticky inside a fixed overflow scroller,
+  `fixed` under the dynamic toolbars, scroll anchoring, smooth `scrollTo`. A human phone
+  check is the missing evidence.
+
+**Follow-ups filed in the backlog.**
+- The legend's placement (badge overlap, 17 of 96 cells).
+- The failed-load alert renders below all five cards.
+- An event card firing behind an open gallery paints under it (not new).
+- Focus falls to `<body>` after a failed "Continue" (not new).
+- The reveal measures the focused block once (it grew 4 px after the reveal at 390x664).
+- Same-count replay switches can read one stale tick (theoretical; not reproduced).
+
 ## Backlog (ideas — not committed)
-- **Scroll the focused car into view on focus change** (Slice 25's ruling 7; now in
-  Slice 26's scope as D). A full
+- **Focus after a failed load lands on `<body>`** (Slice 17, surfaced by Slice 26): the
+  busy button disables and blurs, so on a phone the now-modal dialog cannot be closed with
+  Escape until Tab brings focus back. Move focus to the error or Close on failure.
+- **An event card firing under an open gallery** (pre-existing; Slice 26's review): focus
+  moves to a Continue button painted under the gallery, both dialogs aria-modal. Defer
+  scenario events while the gallery is open.
+- **The speed legend overlaps corner badges on short canvases** (17 of 96 measured cells,
+  pre-existing; Slice 26's B): move it off the canvas, shrink it, or reserve its corner.
+- **Gallery footer copy names "Load replay JSON"** while that button is inert behind the
+  phone gallery (and an icon on compact screens after Slice 27) — the human's copy.
+- ~~**Scroll the focused car into view on focus change**~~ — **built in Slice 26 (D).** (Slice 25's ruling 7.) A full
   field's focused readout is still cut on every phone — 33–48 px on landscape phones,
   61–67 px on portrait — because it sorts wherever its car runs and the list does not
   follow it.

@@ -20,13 +20,19 @@ import sampleLap from "./__fixtures__/sample-lap.json";
 import { parseReplay } from "./load";
 import {
   applyTransform,
+  canvasInsets,
   centroid,
   computeBounds,
   fitTransform,
   labelDirection,
+  MARGIN_MAX_PX,
+  MARGIN_MIN_PX,
+  MARGIN_SHARE,
   toScreenHeading,
   toScreenPoint,
   toScreenPoints,
+  type Bounds,
+  type Insets,
   type Point,
 } from "./geometry";
 
@@ -243,6 +249,130 @@ describe("fitTransform", () => {
     const t = fitTransform(square, 100, 100, 80);
     expect(t.scale).toBe(0);
     expect(t.scale).not.toBeLessThan(0);
+  });
+});
+
+describe("fitTransform with per-side insets", () => {
+  const square: Bounds = { minX: 0, minY: 0, maxX: 100, maxY: 100 };
+
+  it("fits inside unequal margins and centres between them", () => {
+    const insets = { top: 10, right: 20, bottom: 50, left: 30 };
+    const t = fitTransform(square, 400, 400, insets);
+    // Height binds: 400 - 10 - 50 = 340 px for 100 units.
+    expect(t.scale).toBeCloseTo(3.4, 12);
+    const tl = applyTransform({ x: 0, y: 0 }, t);
+    const br = applyTransform({ x: 100, y: 100 }, t);
+    expect(tl.y).toBeCloseTo(10, 9); // flush with the top inset
+    expect(br.y).toBeCloseTo(350, 9); // flush with the bottom one
+    // The slack axis centres BETWEEN the margins (30..380), not on the canvas.
+    expect((tl.x + br.x) / 2).toBeCloseTo((30 + 380) / 2, 9);
+  });
+
+  it("treats a number as the same margin on every side, bit for bit", () => {
+    // `toEqual`, not `toBeCloseTo`: the draw-call capture's digests depend on it.
+    const b: Bounds = { minX: -812.25, minY: 33.5, maxX: 4410.75, maxY: 2999 };
+    const all46 = { top: 46, right: 46, bottom: 46, left: 46 };
+    expect(fitTransform(b, 1176, 657, all46)).toEqual(
+      fitTransform(b, 1176, 657, 46),
+    );
+    expect(fitTransform(b, 1056, 623, all46)).toEqual(
+      fitTransform(b, 1056, 623, 46),
+    );
+  });
+
+  it("clamps to scale 0 when the insets exceed the viewport on one axis", () => {
+    const t = fitTransform(square, 400, 60, {
+      top: 32,
+      right: 32,
+      bottom: 46,
+      left: 32,
+    });
+    expect(t.scale).toBe(0);
+  });
+});
+
+describe("canvasInsets", () => {
+  // Canvas sizes are the ones measured in headless Chrome for Slice 26: the
+  // draw-call capture's, the layout gate's two desktops, and iOS Safari's real
+  // landscape and upright phone canvases.
+  const all = (px: number) => ({ top: px, right: px, bottom: px, left: px });
+
+  it("keeps exactly 46 px a side on every desktop canvas, so desktop draws what it drew", () => {
+    expect(MARGIN_MAX_PX).toBe(46);
+    expect(canvasInsets(1176, 657)).toEqual(all(46)); // drawcall-capture.mjs
+    expect(canvasInsets(1056, 623)).toEqual(all(46)); // 1280x720
+    expect(canvasInsets(1216, 803)).toEqual(all(46)); // 1440x900
+  });
+
+  it("drops the top, left and right to the floor on a phone's short canvas", () => {
+    expect(MARGIN_MIN_PX).toBe(32);
+    const phone = { top: 32, right: 32, bottom: 46, left: 32 };
+    expect(canvasInsets(468, 160)).toEqual(phone); // Safari landscape, tab bar
+    expect(canvasInsets(375, 215)).toEqual(phone); // Safari upright, both bars
+    expect(canvasInsets(312, 159)).toEqual(phone); // 568x320, smallest sideways
+  });
+
+  it("never scales the bottom: it is the speed legend's row", () => {
+    for (const [w, h] of [
+      [0, 0],
+      [312, 159],
+      [375, 400],
+      [900, 420],
+      [1216, 803],
+    ]) {
+      expect(canvasInsets(w, h).bottom).toBe(MARGIN_MAX_PX);
+    }
+  });
+
+  it("gives the other sides a tenth of the shorter side between the bounds", () => {
+    expect(MARGIN_SHARE).toBe(0.1);
+    expect(canvasInsets(375, 400).left).toBe(37.5); // the width is the shorter side
+    expect(canvasInsets(900, 420).top).toBe(42); // the height is
+    const { top, right, left } = canvasInsets(900, 420);
+    expect(right).toBe(top);
+    expect(left).toBe(top);
+  });
+
+  it("meets both bounds continuously, with no step at either knee", () => {
+    const side = (n: number) => canvasInsets(n, n).top;
+    expect(side(319)).toBe(32);
+    expect(side(320)).toBe(32);
+    expect(side(321)).toBeCloseTo(32.1, 10);
+    expect(side(459)).toBeCloseTo(45.9, 10);
+    expect(side(460)).toBe(46);
+    expect(side(461)).toBe(46);
+  });
+
+  it("never shrinks a side as the canvas grows", () => {
+    let prev = canvasInsets(0, 0).top;
+    for (let n = 1; n <= 1200; n++) {
+      const m = canvasInsets(n, n * 2).top;
+      expect(m).toBeGreaterThanOrEqual(prev);
+      prev = m;
+    }
+  });
+
+  it("does not care which way round the canvas is", () => {
+    expect(canvasInsets(160, 468)).toEqual(canvasInsets(468, 160));
+    expect(canvasInsets(400, 900)).toEqual(canvasInsets(900, 400));
+  });
+
+  it("gives an unmeasured 0x0 canvas the floors — numbers, not NaN or 0", () => {
+    expect(canvasInsets(0, 0)).toEqual({
+      top: 32,
+      right: 32,
+      bottom: 46,
+      left: 32,
+    });
+  });
+
+  it("grows the circuit on Safari's landscape canvas from 68 px tall to 82", () => {
+    // A height-bound circuit gets the canvas height less its top and bottom.
+    const tall: Bounds = { minX: 0, minY: 0, maxX: 100, maxY: 1000 };
+    const drawnHeight = (pad: number | Insets) =>
+      (tall.maxY - tall.minY) * fitTransform(tall, 468, 160, pad).scale;
+    expect(drawnHeight(46)).toBeCloseTo(68, 10);
+    expect(drawnHeight(canvasInsets(468, 160))).toBeCloseTo(82, 10);
   });
 });
 

@@ -55,6 +55,8 @@ export interface Selectors {
 }
 
 export interface PanelProbe {
+  /** The dialog's own box (its border box). */
+  box: Box;
   /** The dialog's scrollport: the padding box scrolled content is revealed in. */
   scrollport: Box;
   /** The heading row: the element holding the dialog's labelling heading. */
@@ -140,6 +142,14 @@ export function probeLayout(sel: Selectors): LayoutProbe {
     const headingRow = heading?.parentElement ?? null;
     const close = headingRow?.querySelector(sel.close) ?? null;
     panel = {
+      box: {
+        top: r.top,
+        left: r.left,
+        bottom: r.bottom,
+        right: r.right,
+        width: r.width,
+        height: r.height,
+      },
       scrollport: {
         top: r.top + dialog.clientTop,
         left: r.left + dialog.clientLeft,
