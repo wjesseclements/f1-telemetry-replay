@@ -5403,7 +5403,7 @@ pairwise colour-difference check over the loaded field with per-team overrides,
 or a secondary mark (pattern/initial) when two swatches collide. Interacts with
 the filed canvas-flooring rider and Slice 16's re-baseline.
 
-### [ ] Slice 18 — corner lore (after Slice 17) (scope ruled 2026-10-14; the copy round is next, then the build)
+### [ ] Slice 18 — corner lore (after Slice 17) (scope ruled 2026-10-14, copy ruled 2026-10-15; building)
 
 **Filed 2026-09-08 by the human's direction, not built.** A curated per-circuit
 data file — corner name and origin story (Maggotts and Becketts, the Hamilton
@@ -5436,9 +5436,41 @@ degrades (to today's plain labels, obviously — but argued, not assumed).
      shape; pauses and stays paused (recommended)".
   6. "How big are the tap areas on crowded corners?": "Up to 44 px without
      overlapping, plus Previous/Next (recommended)".
-- **Next.** The copy round (every story, the disputed names, the folds, and the
-  UI strings), after a fact-check of the drafts against sources and of each
-  number-to-name binding against the data. No code before the copy is ruled.
+- **Fact-check (2026-10-14), before the copy round.** Every claim in the drafts was
+  tested against sources (the circuits' own sites, formula1.com, Mercedes, the RAC,
+  Motor Sport), and every number-to-name binding against the replays' own reference
+  laps (direction, minimum speed, lap order: Monza 7 right / 4 left, Silverstone 10
+  right / 8 left, both as official; the S/F mark lies on the Hamilton Straight at
+  its Club end). Corrected: Luffield "built in 1991" (Silverstone: the late 1980s);
+  the RAC running "Silverstone's first races" (it ran the 1948 Grand Prix; locals
+  raced in 1947); the Serraglio lodge "that stood nearby"; the stale "record seventh
+  British Grand Prix win". Dropped as unverifiable: the National Straight name, the
+  moor's spelling, "most people still call it", a stream that "rose". Caveat: most
+  pages were read through WebFetch summaries.
+- **Copy rulings (human, 2026-10-15).** Nine questions, numbered as answered, each
+  the recommendation:
+  1. "The stories": "Use them as written (recommended)".
+  2. "Which name heads each Monza card?": "Official name heads, everyday name as
+     subtitle (recommended)".
+  3. "The three spots with no painted number": "Add all three as shown
+     (recommended)" (Serraglio to Lesmo 2, the Wellington Straight to Brooklands,
+     the Hangar Straight to Stowe). As shown, Lesmo 2's card is three sentences, not
+     the two the question said; the approved text is kept exactly.
+  4. "Maggotts, Becketts and Chapel": "One card, heading 'Maggotts, Becketts and
+     Chapel', moor unnamed (recommended)".
+  5. "Vale's unsettled origin": "'…or come from Aylesbury Vale, the district this
+     part of the circuit lay in until 2020.' (recommended)".
+  6. "Hamilton Straight: mention his British Grand Prix wins?": "No: just 'after his
+     seventh world title' (recommended)".
+  7. "The small label above the name, and the button names": "'Turn 11' labels;
+     named 'Turn 11: Curva Alboreto (Parabolica)' (recommended)".
+  8. "Previous / Next": "'Previous' / 'Next', wrapping round the lap
+     (recommended)".
+  9. "Subtitle style and punctuation": "Bare name in a dimmer style; curly
+     apostrophes and en dashes (recommended)".
+  - The exact strings (21 stories, names, subtitles, the UI formats) are applied
+    verbatim from the ruled table; the lore files are their committed record.
+- **Next.** The build.
 
 **The proposal.**
 - **Data.** One bundled JSON per circuit: `src/lore/monza.json` and
