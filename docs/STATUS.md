@@ -100,7 +100,7 @@ check 304/304. The human ruled the review's ten questions on 2026-10-15:
 Previous/Next now sit above the story and the card keeps its top, so Next stays put
 between presses (moving the row alone did not, by measurement); the three map-service
 source links are gone; the rest are kept as built or filed as follow-ups. It is PR
-#83. **Slice 18 stays unticked:** the PR waits for the human's look at four
-undiscussed details of that fix (the card at the top, an empty line on two Monza cards,
-4 px taller cards, a schema rule on sources) and a look on a real phone. PLAN's Slice
-18 entry has the measurements.
+#83. The four undiscussed details of that fix (the card at the top, an empty line on
+two Monza cards, 4 px taller cards, a schema rule on sources) were each ruled kept the
+same day. **Slice 18 stays unticked:** it waits only for a look on a real phone.
+PLAN's Slice 18 entry has the measurements.

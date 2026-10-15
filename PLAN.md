@@ -5403,7 +5403,7 @@ pairwise colour-difference check over the loaded field with per-team overrides,
 or a secondary mark (pattern/initial) when two swatches collide. Interacts with
 the filed canvas-flooring rider and Slice 16's re-baseline.
 
-### [ ] Slice 18 — corner lore (after Slice 17) (scope ruled 2026-10-14, copy ruled 2026-10-15; built 2026-10-15 as 18a + 18b, reviewed and fixed 2026-10-15, review rulings applied 2026-10-15, PR #83 open; awaiting the human's look at four undiscussed details and a phone)
+### [ ] Slice 18 — corner lore (after Slice 17) (scope ruled 2026-10-14, copy ruled 2026-10-15; built 2026-10-15 as 18a + 18b, reviewed and fixed 2026-10-15, review rulings applied 2026-10-15, PR #83 open, its four undiscussed details ruled kept 2026-10-15; awaiting a look on a phone)
 
 **Filed 2026-09-08 by the human's direction, not built.** A curated per-circuit
 data file — corner name and origin story (Maggotts and Becketts, the Hamilton
@@ -6079,7 +6079,7 @@ the card still centred.
 - Process hygiene: three `chrome_crashpad_handler` processes outlived their browsers
   across seven headless launches (stopped by the verifier). Filed below.
 
-**Undiscussed, from ruling 1's measurement: for the human (the PR sits for review).**
+**Undiscussed, from ruling 1's measurement** (ruled below; each kept).
 - The corner card sits at the TOP of its scroller (16 px from a phone's top, 70 px
   from a desktop window's), where the gallery and the event card stay centred.
 - On Monza, Prima Variante and Variante Ascari (no second name) show an empty 16 px
@@ -6087,6 +6087,15 @@ the card still centred.
 - Every corner card is 4 px taller (the focus ring's margin under the pinned bar).
 - Ruling 7 went beyond dropping the links: the schema now rejects API-style source
   URLs, with a new developer-facing error message.
+
+**Rulings on the four undiscussed details (human, 2026-10-15).** Numbered as
+answered, each the recommendation:
+1. "The corner card now sits at the top, not centred": "Keep it at the top
+   (recommended)".
+2. "An empty line on two Monza cards": "Keep the empty line (recommended)".
+3. "Cards are 4 px taller": "Keep it (recommended)".
+4. "A schema check that rejects map-service links": "Keep the check (recommended)".
+- No code changed. Slice 18 now waits only for a look on a real phone.
 
 **Follow-ups filed.**
 - `chrome_crashpad_handler` outliving `npm run check:layout`'s Chrome on macOS: check
