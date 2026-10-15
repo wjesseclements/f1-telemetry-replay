@@ -1,5 +1,6 @@
 /**
- * The overlay dialogs' centring idiom (Slice 23) — FeaturedPanel and EventCard.
+ * The overlay dialogs' centring idiom (Slice 23) — FeaturedPanel, EventCard, and
+ * since Slice 18 the CornerCard, cast in the event card's mould.
  *
  * Each is a scroll container (`overflow-y-auto`) over the canvas cell, holding one
  * card. Centring that card with `align-items: center` splits any overflow between
@@ -16,6 +17,9 @@
  */
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
+import { resolveLore } from "../engine/lore";
+import { LORE } from "../lore";
+import { CornerCard } from "./CornerCard";
 import { EventCard } from "./EventCard";
 import { FeaturedPanel } from "./FeaturedPanel";
 import { FOCUS_RING } from "./focus";
@@ -27,6 +31,9 @@ import {
 } from "./overlay";
 
 afterEach(cleanup);
+
+/** Real stories for the corner card: Monza's, from its own corner record. */
+const STORIES = resolveLore(LORE[0].layouts[0].corners, LORE)?.stories ?? [];
 
 const DIALOGS = [
   [
@@ -40,6 +47,18 @@ const DIALOGS = [
         <EventCard
           event={{ clock: 1, title: "RED FLAG", body: "Narrated." }}
           next={null}
+          onClose={() => {}}
+        />,
+      ),
+  ],
+  [
+    "CornerCard",
+    () =>
+      render(
+        <CornerCard
+          stories={STORIES}
+          index={STORIES.length - 1}
+          onStep={() => {}}
           onClose={() => {}}
         />,
       ),

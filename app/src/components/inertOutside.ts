@@ -24,8 +24,10 @@
  * What it does not cover: a sibling MOUNTED while the hold is on. None can be
  * today. On the walked levels the only things that come and go are the flag
  * strip (`StatusBanner`: `aria-hidden` and `pointer-events-none`, so nothing to
- * reach) and the event card (a dialog, which this would skip anyway). Everything
- * else that changes — tower rows, readouts — changes INSIDE an inert subtree.
+ * reach) and the event card and the corner card (dialogs, which this would skip
+ * anyway). Everything else that changes — tower rows, readouts, and the corner
+ * badges a newly loaded replay brings (Slice 18), which mount inside the
+ * canvas's own wrapper — changes INSIDE an inert subtree.
  */
 
 /** How many holds each element is inert under. Only this module's holds. */

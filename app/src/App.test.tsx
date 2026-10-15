@@ -31,7 +31,10 @@ import { COMPACT_QUERY } from "./components/compactLayout";
 import { PHONE_QUERY } from "./components/phoneLayout";
 import { TrackCanvas } from "./render/TrackCanvas";
 import { parseGalleryManifest } from "./engine/gallery";
+import { parseReplay } from "./engine/load";
+import { resolveLore } from "./engine/lore";
 import galleryManifest from "./gallery/manifest.json";
+import { LORE } from "./lore";
 
 const SCENARIOS = parseGalleryManifest(galleryManifest).scenarios;
 
@@ -1186,5 +1189,244 @@ describe("the featured panel's data-artifact note (Slice 19: the restart disclos
     useTransport.setState({ replay });
     render(<App />);
     expect(screen.queryByText(/telemetry feed drops/)).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Corner stories (Slice 18): the badges over the canvas open a card, and App owns
+ * everything around it — which replay has stories, the pause, where focus goes,
+ * and which dialog wins.
+ *
+ * The replay is the fixture wearing Monza's corner record (the lore file's own),
+ * so it matches Monza's stories while every frame stays the fixture's: this
+ * pins App's wiring, not the matching (`engine/lore.test.ts`,
+ * `data/loreAssets.test.ts`). jsdom evaluates no `:has()`, so the badges stay
+ * clickable under a dialog here; the layout check is what proves they are
+ * hidden.
+ */
+describe("corner stories (Slice 18)", () => {
+  const monza = LORE.find((circuit) => circuit.id === "monza");
+  if (monza === undefined) throw new Error("no Monza lore");
+  const loreReplay = parseReplay(
+    {
+      ...sampleLap,
+      track: { ...sampleLap.track, corners: monza.layouts[0].corners },
+    },
+    "monza-cornered.json",
+  );
+  const STORIES = resolveLore(loreReplay.track.corners, LORE)?.stories ?? [];
+  let raf: ReturnType<typeof installRafDriver>;
+
+  beforeEach(() => {
+    telemetry.reset();
+    raf = installRafDriver();
+    useTransport.setState({
+      replay: loreReplay,
+      isPlaying: true,
+      speedMult: 1,
+      seekTarget: null,
+      focusedCarIndex: 0,
+      scenario: null,
+    });
+  });
+
+  const badge = (name: string) => screen.getByRole("button", { name });
+  const card = () => document.getElementById("corner-card");
+  const ALBORETO = "Turn 11: Curva Alboreto (Parabolica)";
+  /** First paint opens the gallery; close it to reach the track. */
+  const renderOnTrack = () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: /^close$/i }));
+  };
+  const open = (name: string) => {
+    act(() => {
+      fireEvent.click(badge(name));
+    });
+    expect(card()).not.toBeNull();
+  };
+
+  it("finds the stories by the replay's corners: one named badge each, in lap order", () => {
+    expect(STORIES).toHaveLength(7);
+    renderOnTrack();
+    const badges = Array.from(
+      document.querySelectorAll<HTMLButtonElement>('[id^="corner-story-"]'),
+    );
+    expect(badges.map((b) => b.id)).toEqual(
+      STORIES.map((s) => `corner-story-${s.id}`),
+    );
+    expect(badges[0]).toHaveAccessibleName("Turns 1–2: Prima Variante");
+    expect(badges[badges.length - 1]).toHaveAccessibleName(ALBORETO);
+  });
+
+  it("mounts the badges and every overlay dialog inside the one track cell they hide by", () => {
+    // The badges hide by `:has([role=dialog])` on the track cell (`group/track`),
+    // so a dialog mounted anywhere else would leave them tabbable under it.
+    render(<App />);
+    const cell = document.querySelector("canvas")?.closest(".group\\/track");
+    expect(cell).not.toBeNull();
+    expect(cell).toContainElement(screen.getByRole("dialog"));
+    expect(cell).toContainElement(badge(ALBORETO));
+    fireEvent.click(screen.getByRole("button", { name: /^close$/i }));
+    open(ALBORETO);
+    expect(cell).toContainElement(card());
+  });
+
+  it("gives a replay with no lore no badges at all: the page it always was", () => {
+    useTransport.setState({ replay });
+    render(<App />);
+    expect(document.querySelectorAll('[id^="corner-story-"]')).toHaveLength(0);
+    expect(screen.queryByRole("button", { name: /^Turn/ })).toBeNull();
+  });
+
+  it("opens the card from a badge: paused, named in the ruled format, Close focused", () => {
+    renderOnTrack();
+    expect(useTransport.getState().isPlaying).toBe(true);
+    open(ALBORETO);
+    expect(screen.getByRole("dialog", { name: ALBORETO })).toBe(card());
+    expect(useTransport.getState().isPlaying).toBe(false);
+    expect(screen.getByRole("button", { name: "Close" })).toHaveFocus();
+  });
+
+  it("closes from Close back to the badge it came from, still paused", () => {
+    renderOnTrack();
+    open(ALBORETO);
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(card()).toBeNull();
+    expect(badge(ALBORETO)).toHaveFocus();
+    expect(useTransport.getState().isPlaying).toBe(false);
+  });
+
+  it("closes from Escape back to the badge", () => {
+    renderOnTrack();
+    open(ALBORETO);
+    fireEvent.keyDown(screen.getByRole("button", { name: "Close" }), {
+      key: "Escape",
+    });
+    expect(card()).toBeNull();
+    expect(badge(ALBORETO)).toHaveFocus();
+  });
+
+  it("hands focus to the badge of the story SHOWN, after Previous or Next", () => {
+    renderOnTrack();
+    open(ALBORETO);
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(card()).toHaveAccessibleName("Turns 1–2: Prima Variante");
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(badge("Turns 1–2: Prima Variante")).toHaveFocus();
+  });
+
+  it("closes when the gallery opens: one dialog at a time", () => {
+    renderOnTrack();
+    open(ALBORETO);
+    fireEvent.click(screen.getByRole("button", { name: /featured replays/i }));
+    expect(card()).toBeNull();
+    expect(screen.getByRole("dialog")).toHaveAttribute(
+      "id",
+      "featured-replays",
+    );
+  });
+
+  it("closes when an event card fires: narration outranks lore", () => {
+    renderOnTrack();
+    act(() => {
+      useTransport.setState({
+        scenario: {
+          id: "with-event",
+          title: "With event",
+          hook: "h",
+          file: "with-event.json",
+          suggested: { driver: "VER", clock: 0, speedMult: 1 },
+          provenance: {
+            session: "S",
+            laps: "1-2",
+            drivers: ["VER"],
+            generated: "2026-09-08",
+          },
+          events: [{ clock: 30, title: "RED FLAG", body: "Narrated." }],
+        },
+      });
+    });
+    act(() => raf.tick(40)); // the first observed clock arms the detector
+    open(ALBORETO);
+    // The card paused playback; a seek past the mark (the transport bar works
+    // beside a desktop card) is a crossing all the same.
+    act(() => useTransport.getState().seek(35));
+    act(() => raf.tick(40));
+    expect(
+      screen.getByRole("dialog", { name: "RED FLAG" }),
+    ).toBeInTheDocument();
+    expect(card()).toBeNull();
+  });
+
+  it("drops the card when the replay changes under it", () => {
+    renderOnTrack();
+    open(ALBORETO);
+    act(() => useTransport.setState({ replay }));
+    expect(card()).toBeNull();
+    // And it stays dropped when the stories come back.
+    act(() => useTransport.setState({ replay: loreReplay }));
+    expect(card()).toBeNull();
+  });
+
+  it("keeps the canvas mounted and its clock running across the card", () => {
+    renderOnTrack();
+    const canvasBefore = document.querySelector("canvas");
+    act(() => {
+      for (let i = 0; i < 20; i++) raf.tick(16);
+    });
+    const before = telemetry.getSnapshot().clock;
+    open(ALBORETO);
+    act(() => {
+      for (let i = 0; i < 20; i++) raf.tick(16);
+    });
+    // Paused under the card: the clock holds where the badge was pressed.
+    const held = telemetry.getSnapshot().clock;
+    expect(held).toBeGreaterThan(0);
+    expect(held).toBeGreaterThanOrEqual(before);
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    act(() => useTransport.getState().play());
+    act(() => {
+      for (let i = 0; i < 40; i++) raf.tick(16);
+    });
+    // Resumed from there, not from the line: no remount reset the clock.
+    expect(document.querySelector("canvas")).toBe(canvasBefore);
+    expect(telemetry.getSnapshot().clock).toBeGreaterThan(held);
+  });
+
+  describe("on a phone, modal", () => {
+    beforeEach(() => {
+      vi.stubGlobal("matchMedia", (query: string) => ({
+        matches: query === PHONE_QUERY,
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      }));
+    });
+
+    it("holds the page inert under the card, then wakes it before focusing the badge", () => {
+      renderOnTrack();
+      open(ALBORETO);
+      expect(card()).toHaveAttribute("aria-modal", "true");
+      expect(
+        document.querySelector("canvas")?.closest("[inert]"),
+      ).not.toBeNull();
+      expect(
+        screen
+          .getByRole("region", { name: "Playback controls" })
+          .closest("[inert]"),
+      ).not.toBeNull();
+
+      const target = badge(ALBORETO);
+      let awake: boolean | null = null;
+      target.addEventListener(
+        "focus",
+        () => (awake = target.closest("[inert]") === null),
+        { once: true },
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Close" }));
+      expect(awake).toBe(true);
+      expect(target).toHaveFocus();
+      expect(document.querySelectorAll("[inert]")).toHaveLength(0);
+    });
   });
 });

@@ -7,7 +7,7 @@
  * pass with the clock in `useState`.
  */
 import { Profiler } from "react";
-import { render, cleanup, act } from "@testing-library/react";
+import { render, cleanup, act, fireEvent } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MAX_FRAME_DT_S } from "../engine/clock";
 import {
@@ -39,6 +39,7 @@ import {
 } from "../engine/geometry";
 import { sampleAt } from "../engine/interpolate";
 import { parseReplay } from "../engine/load";
+import { cornerLabel, type LoreStory } from "../engine/lore";
 import { loadFixtureReplay } from "../data/fixture";
 import { useTransport } from "../store/transport";
 import { telemetry } from "../telemetry/channel";
@@ -57,6 +58,7 @@ import {
   TRACK_EDGE_WIDTH,
   buildScene,
 } from "./scene";
+import { storyButtonId } from "./storyTargets";
 import { TrackCanvas } from "./TrackCanvas";
 
 const WIDTH = 800;
@@ -1220,5 +1222,263 @@ describe("TrackCanvas stopped car (Slice 23)", () => {
     );
     const off = Math.abs(lastMove - angleOf(o, east));
     expect(Math.min(off, 2 * Math.PI - off)).toBeGreaterThan(0.5);
+  });
+});
+
+/**
+ * Corner stories (Slice 18): invisible buttons over the painted badges, placed
+ * from the very points the canvas paints, by style writes in `measure()`.
+ *
+ * Three promises, each pinned here: the buttons sit EXACTLY on what was painted
+ * (centre = the `arc` centre, or the `S/F` label's `fillText` point), at mount and
+ * after a resize; the canvas still commits once; and the canvas itself cannot
+ * tell lore is there — the whole recorded call list is the same with and without
+ * stories, which is the lore-present half the fixture digests cannot give (the
+ * fixture has no lore, so `drawcall-capture.mjs` only ever runs the other half).
+ *
+ * The stories are hand-built over the fixture's nine corners, so these tests
+ * pin the canvas's wiring, not any circuit's lore (that is `engine/lore.test.ts`
+ * and `data/loreAssets.test.ts`).
+ */
+describe("TrackCanvas corner stories (Slice 18)", () => {
+  const story = (
+    id: string,
+    cornerIndices: number[],
+    startFinish = false,
+  ): LoreStory => ({
+    id,
+    name: `Name of ${id}`,
+    subtitle: undefined,
+    story: "A story.",
+    startFinish,
+    cornerIndices,
+    eyebrow: "Eyebrow",
+    accessibleName: `Eyebrow: Name of ${id}`,
+  });
+  /** S/F, a two-corner story, and a lone corner: every shape a story takes. */
+  const STORIES = [
+    story("line", [], true),
+    story("pair", [0, 1]),
+    story("lone", [4]),
+  ];
+
+  /** The badge discs of a frame, in corner order. */
+  const badgeArcs = (frame: DrawCall[]): Point[] =>
+    frame
+      .filter((c) => c.method === "arc" && c.args[2] === CORNER_BADGE_RADIUS)
+      .map((c) => ({ x: c.args[0], y: c.args[1] }));
+  const sfLabel = (frame: DrawCall[]): Point => {
+    const call = frame.find((c) => c.method === "fillText" && c.text === "S/F");
+    if (call === undefined) throw new Error("no S/F label painted");
+    return { x: call.args[0], y: call.args[1] };
+  };
+  /** The point a button or member square is translated to. */
+  const centreOf = (el: Element): Point => {
+    const m = /^translate\((.+)px, (.+)px\) translate\(-50%, -50%\)$/.exec(
+      (el as HTMLElement).style.transform,
+    );
+    if (m === null) throw new Error("not placed");
+    return { x: Number(m[1]), y: Number(m[2]) };
+  };
+  const button = (id: string) =>
+    document.getElementById(storyButtonId(id)) as HTMLButtonElement;
+  const members = (id: string) =>
+    Array.from(button(id).querySelectorAll(":scope > [aria-hidden]"));
+
+  /** Every button's (and member's) centre against the frame just painted. */
+  function expectOnThePaint(): void {
+    const frame = lastFrame(recording);
+    const arcs = badgeArcs(frame);
+    expect(arcs).toHaveLength(replay.track.corners.length);
+    // EXACT, not close: the buttons are placed from the same numbers the frame
+    // was painted from, so any difference is a second projection.
+    expect(centreOf(button("line"))).toEqual(sfLabel(frame));
+    expect(centreOf(button("pair"))).toEqual(arcs[0]);
+    expect(centreOf(button("lone"))).toEqual(arcs[4]);
+    // A member is placed by its offset from the button's centre, which puts it
+    // on its own disc to within float rounding.
+    const [member] = members("pair");
+    const head = centreOf(button("pair"));
+    const offset = centreOf(member);
+    expect(head.x + offset.x).toBeCloseTo(arcs[1].x, 9);
+    expect(head.y + offset.y).toBeCloseTo(arcs[1].y, 9);
+  }
+
+  it("adds nothing at all without stories: the wrap holds the canvas alone", () => {
+    const { container } = render(<TrackCanvas replay={replay} />);
+    raf.tick();
+    const wrap = container.querySelector("canvas")?.parentElement;
+    expect(wrap?.children).toHaveLength(1);
+    expect(container.querySelectorAll("button")).toHaveLength(0);
+  });
+
+  it("adds nothing for an empty story list either", () => {
+    const { container } = render(<TrackCanvas replay={replay} stories={[]} />);
+    expect(
+      container.querySelector("canvas")?.parentElement?.children,
+    ).toHaveLength(1);
+  });
+
+  it("renders one named button per story, in lap order, its other corners as hidden members", () => {
+    const { container } = render(
+      <TrackCanvas replay={replay} stories={STORIES} />,
+    );
+    const buttons = Array.from(container.querySelectorAll("button"));
+    expect(buttons.map((b) => b.id)).toEqual(
+      STORIES.map((s) => storyButtonId(s.id)),
+    );
+    for (const [i, b] of buttons.entries()) {
+      // The name is sr-only TEXT, never aria-label or title (ruled 2026-10-13).
+      expect(b).toHaveAccessibleName(STORIES[i].accessibleName);
+      expect(b).not.toHaveAttribute("aria-label");
+      expect(b).not.toHaveAttribute("title");
+      expect(b).toHaveAttribute("type", "button");
+      expect(b).toHaveAttribute("aria-haspopup", "dialog");
+    }
+    // One tab stop per story: a member is a span, so never focusable.
+    expect(members("pair")).toHaveLength(1);
+    expect(members("line")).toHaveLength(0);
+    expect(members("lone")).toHaveLength(0);
+  });
+
+  it("hides the layer under any open dialog in the track cell, and clips it to the canvas", () => {
+    // jsdom evaluates no `:has()`: the class is pinned here, and the layout
+    // check's "lore targets hidden under the gallery" row reads Chrome's answer.
+    render(<TrackCanvas replay={replay} stories={STORIES} />);
+    const layer = button("line").parentElement as HTMLElement;
+    expect(layer).toHaveClass(
+      "group-has-[[role=dialog]]/track:invisible",
+      "pointer-events-none",
+      "overflow-hidden",
+      "absolute",
+      "inset-0",
+    );
+    expect(button("line")).toHaveClass("pointer-events-auto");
+  });
+
+  it("centres each button exactly on the painted disc or S/F label, at mount and after a resize", () => {
+    render(<TrackCanvas replay={replay} stories={STORIES} />);
+    raf.tick();
+    expectOnThePaint();
+
+    // A resize re-measures, re-places, and the next frame paints at the new
+    // scale: the buttons must have moved with the discs, in the same frame.
+    const before = centreOf(button("lone"));
+    recording.resize(1000, 700);
+    raf.tick();
+    expectOnThePaint();
+    expect(centreOf(button("lone"))).not.toEqual(before);
+  });
+
+  it("sizes the squares up to 44 px and never off the canvas", () => {
+    render(<TrackCanvas replay={replay} stories={STORIES} />);
+    for (const el of [button("line"), button("pair"), button("lone")]) {
+      const side = parseFloat((el as HTMLElement).style.width);
+      expect((el as HTMLElement).style.height).toBe(`${side}px`);
+      expect(side).toBeGreaterThan(0);
+      expect(side).toBeLessThanOrEqual(44);
+      const { x, y } = centreOf(el);
+      expect(x - side / 2).toBeGreaterThanOrEqual(0);
+      expect(y - side / 2).toBeGreaterThanOrEqual(0);
+      expect(x + side / 2).toBeLessThanOrEqual(WIDTH);
+      expect(y + side / 2).toBeLessThanOrEqual(HEIGHT);
+    }
+  });
+
+  it("paints every corner's text as cornerLabel, so lore's labels are the painted ones", () => {
+    // `engine/lore.ts` matches stories to corners by `cornerLabel`, and
+    // `scene.ts` builds the painted text inline; this pins the two equal, a
+    // lettered corner included, so the render file need not import it.
+    const raw = JSON.parse(JSON.stringify(loadFixtureReplay()));
+    raw.track.corners[3].letter = "A";
+    const lettered = parseReplay(raw, "lettered.json");
+    useTransport.setState({ replay: lettered });
+    render(<TrackCanvas replay={lettered} />);
+    raf.tick();
+    const texts = lastFrame(recording)
+      .filter((c) => c.method === "fillText" && c.text !== "S/F")
+      .map((c) => c.text);
+    expect(texts).toEqual(lettered.track.corners.map(cornerLabel));
+    expect(texts).toContain("4A");
+  });
+
+  it("still never re-renders with stories present, across frames AND a resize", () => {
+    let commits = 0;
+    const onOpenStory = vi.fn();
+    render(
+      <Profiler id="track" onRender={() => commits++}>
+        <TrackCanvas
+          replay={replay}
+          stories={STORIES}
+          onOpenStory={onOpenStory}
+        />
+      </Profiler>,
+    );
+    expect(commits).toBe(1);
+    act(() => {
+      for (let i = 0; i < 60; i++) raf.tick(16);
+    });
+    act(() => {
+      recording.resize(1000, 700);
+      for (let i = 0; i < 60; i++) raf.tick(16);
+    });
+    act(() => {
+      useTransport.getState().pause();
+      useTransport.getState().seek(10);
+      raf.tick(16);
+    });
+    expect(commits).toBe(1);
+    // Placing is style writes; opening a story is the parent's business.
+    act(() => fireEvent.click(button("pair")));
+    expect(commits).toBe(1);
+  });
+
+  it("opens the story from its button, and from any of its member squares", () => {
+    const onOpenStory = vi.fn();
+    render(
+      <TrackCanvas
+        replay={replay}
+        stories={STORIES}
+        onOpenStory={onOpenStory}
+      />,
+    );
+    fireEvent.click(button("lone"));
+    expect(onOpenStory).toHaveBeenLastCalledWith(2);
+    // A tap on the second corner of a pair lands on a member span; it bubbles
+    // to the story's one button.
+    fireEvent.click(members("pair")[0]);
+    expect(onOpenStory).toHaveBeenLastCalledWith(1);
+    expect(onOpenStory).toHaveBeenCalledTimes(2);
+  });
+
+  it("paints the same frames, call for call, with stories present as without", () => {
+    /** Mount, play a minute of frames with a seek and a resize, unmount. */
+    const run = (stories: readonly LoreStory[] | null): DrawCall[] => {
+      cleanup();
+      vi.restoreAllMocks();
+      vi.unstubAllGlobals();
+      recording = installCanvasEnvironment(WIDTH, HEIGHT);
+      raf = installRafDriver();
+      useTransport.setState({
+        replay,
+        isPlaying: true,
+        speedMult: 1,
+        seekTarget: null,
+        focusedCarIndex: 0,
+      });
+      render(<TrackCanvas replay={replay} stories={stories} />);
+      act(() => {
+        for (let i = 0; i < 30; i++) raf.tick(16);
+        useTransport.getState().seek(40);
+        for (let i = 0; i < 30; i++) raf.tick(16);
+        recording.resize(500, 900);
+        for (let i = 0; i < 30; i++) raf.tick(16);
+      });
+      return recording.calls;
+    };
+    const without = run(null);
+    const withStories = run(STORIES);
+    expect(frames(without)).toHaveLength(90);
+    expect(withStories).toEqual(without);
   });
 });
