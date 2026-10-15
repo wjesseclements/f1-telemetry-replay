@@ -95,8 +95,12 @@ is done on the branch, not merged: the lore contract and the two circuits' files
 blocking; their fix pass made no replay able to match two lore layouts, made a badge
 press open nothing while another dialog is open even without `:has()`, and made the
 paint row count each story's squares. The draw-call digests are unchanged
-throughout; on the branch, `npm run check` is green with 1291 tests and the layout
-check 304/304. **Slice 18 stays unticked:** it waits for the human's rulings (Next's
-travel between stories, the 724x257 card overflow, arrow keys inside the card, the
-legend over the focus rings, Vale's 5 px target, the shipped sources) and a look on
-a real phone. PLAN's Slice 18 entry has the measurements.
+throughout; on the branch, `npm run check` is green with 1298 tests and the layout
+check 304/304. The human ruled the review's ten questions on 2026-10-15:
+Previous/Next now sit above the story and the card keeps its top, so Next stays put
+between presses (moving the row alone did not, by measurement); the three map-service
+source links are gone; the rest are kept as built or filed as follow-ups. It is PR
+#83. **Slice 18 stays unticked:** the PR waits for the human's look at four
+undiscussed details of that fix (the card at the top, an empty line on two Monza cards,
+4 px taller cards, a schema rule on sources) and a look on a real phone. PLAN's Slice
+18 entry has the measurements.
