@@ -58,7 +58,7 @@ export function cornerLabel(corner: Pick<Corner, "number" | "letter">): string {
   return `${corner.number}${corner.letter}`;
 }
 
-const TURN_NUMBER = /\b(?:t|turns?)\s?\d/i;
+const TURN_NUMBER = /\b(?:t|turns?|corners?)\s?\d/i;
 
 const Slug = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, {
   error: "an id is a lowercase slug, e.g. curva-alboreto",
@@ -86,7 +86,7 @@ const Copy = z
     error:
       "copy takes typographic quotes and apostrophes (’), not straight ones",
   })
-  .refine((s) => !/\d-\d/.test(s), {
+  .refine((s) => !/\d\s*-\s*\d/.test(s), {
     error: "a numeric range takes an en dash (–), not a hyphen",
   });
 
@@ -313,7 +313,12 @@ export function parseCircuitLore(
 
 /**
  * Validate every circuit, then the catalogue as a whole: circuit ids are unique,
- * and no layout matches another layout's record, so a replay can never match two.
+ * and no replay can match two layouts. Two layouts with the same labels can both
+ * match one replay exactly when every corner of one lies within twice the
+ * tolerance of its namesake in the other (a replay halfway between is within the
+ * tolerance of both; past twice it, no point is within the tolerance of both).
+ * So that is the rule, the same spacing the schema holds a layout's own corners
+ * to, and `resolveLore` never has to choose.
  */
 export function parseLoreCatalogue(
   files: readonly unknown[],
@@ -333,11 +338,14 @@ export function parseLoreCatalogue(
   );
   for (let a = 0; a < layouts.length; a++) {
     for (let b = a + 1; b < layouts.length; b++) {
-      if (
-        layoutOffsetM(layouts[a].layout.corners, layouts[b].layout) !== null
-      ) {
+      const apart = pairedOffsetM(
+        layouts[a].layout.corners,
+        layouts[b].layout.corners,
+        2 * LORE_MATCH_TOLERANCE_M,
+      );
+      if (apart !== null) {
         throw new CornerLoreError(
-          `lore layouts "${layouts[a].circuit}/${layouts[a].layout.id}" and "${layouts[b].circuit}/${layouts[b].layout.id}" match the same corner record`,
+          `lore layouts "${layouts[a].circuit}/${layouts[a].layout.id}" and "${layouts[b].circuit}/${layouts[b].layout.id}" could match the same corner record: same labels, every corner within ${apart.toFixed(1)} m of its namesake, inside twice the ${LORE_MATCH_TOLERANCE_M} m match tolerance`,
         );
       }
     }
@@ -359,7 +367,20 @@ export function layoutOffsetM(
   corners: readonly CornerRecord[],
   layout: Pick<LoreLayout, "corners">,
 ): number | null {
-  if (corners.length !== layout.corners.length) return null;
+  return pairedOffsetM(corners, layout.corners, LORE_MATCH_TOLERANCE_M);
+}
+
+/**
+ * The largest distance between corners of the same label, in metres, when the
+ * two records have the same count and the same labels (each once) and every pair
+ * is within `limitM`; otherwise `null`.
+ */
+function pairedOffsetM(
+  corners: readonly CornerRecord[],
+  record: readonly CornerRecord[],
+  limitM: number,
+): number | null {
+  if (corners.length !== record.length) return null;
   const byLabel = new Map<string, CornerRecord>();
   for (const corner of corners) {
     const label = cornerLabel(corner);
@@ -367,12 +388,12 @@ export function layoutOffsetM(
     byLabel.set(label, corner);
   }
   let worst = 0;
-  for (const want of layout.corners) {
+  for (const want of record) {
     const got = byLabel.get(cornerLabel(want));
     if (got === undefined) return null;
     const m = distanceM(got, want);
     // Written as "not within" so a NaN coordinate fails rather than matches.
-    if (!(m <= LORE_MATCH_TOLERANCE_M)) return null;
+    if (!(m <= limitM)) return null;
     worst = Math.max(worst, m);
   }
   return worst;

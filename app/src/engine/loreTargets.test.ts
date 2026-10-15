@@ -117,6 +117,29 @@ describe("loreTargetSides", () => {
     ).toEqual([0, 0, 0, 0]);
   });
 
+  it("contains a point that is not finite: it gets 0 and shrinks no other story", () => {
+    // `Math.min` with a NaN is NaN, so one bad point once turned every other
+    // story's side into NaN with it.
+    expect(
+      loreTargetSides(
+        [
+          { story: 0, x: 400, y: 300 },
+          { story: 1, x: Number.NaN, y: 300 },
+          { story: 2, x: 100, y: Number.POSITIVE_INFINITY },
+          { story: 3, x: 500, y: 300 },
+        ],
+        W,
+        H,
+      ),
+    ).toEqual([44, 0, 0, 44]);
+  });
+
+  it("gives 0, never NaN, on a canvas that has no size yet", () => {
+    expect(
+      loreTargetSides([{ story: 0, x: 0, y: 0 }], Number.NaN, Number.NaN),
+    ).toEqual([0]);
+  });
+
   it("holds all three rules over a seeded sweep of random layouts", () => {
     // A small LCG, so the sweep is the same on every run and every machine.
     let seed = 0x5eed;

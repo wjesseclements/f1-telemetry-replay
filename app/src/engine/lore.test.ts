@@ -189,6 +189,7 @@ describe("parseCircuitLore — rejection, one per rule", () => {
     rejects((c) => (c.features[0].story = "Turns 10 to 14."), /turn number/);
     rejects((c) => (c.features[0].name = "T11"), /turn number/);
     rejects((c) => (c.features[2].subtitle = "turn 1"), /turn number/);
+    rejects((c) => (c.features[0].story = "Corner 11 is last."), /turn number/);
   });
 
   it("rejects straight quotes and apostrophes", () => {
@@ -198,6 +199,7 @@ describe("parseCircuitLore — rejection, one per rule", () => {
 
   it("rejects a hyphen in a numeric range", () => {
     rejects((c) => (c.features[0].story = "In 1994-95."), /en dash/);
+    rejects((c) => (c.features[0].story = "In 1994 - 95."), /en dash/);
   });
 
   it("rejects a story over the maximum length", () => {
@@ -378,15 +380,43 @@ describe("parseLoreCatalogue", () => {
     // 5 m off: a replay inside both tolerances would match either.
     twin.layouts[0].corners[0].x = 50;
     expect(() => parseLoreCatalogue([circuit(), twin])).toThrow(
-      /"test-ring\/survey-1" and "twin-ring\/survey-1" match the same corner record/,
+      /"test-ring\/survey-1" and "twin-ring\/survey-1" could match the same corner record: same labels, every corner within 5\.0 m/,
     );
+  });
+
+  it("rejects two layouts that one replay could match, though neither matches the other", () => {
+    // 15 m apart: past the tolerance, so neither layout's record matches the
+    // other's; but a replay 7.5 m from each is inside both.
+    const twin = circuit();
+    twin.id = "twin-ring";
+    twin.layouts[0].corners[0].x = 150;
+    expect(layoutOffsetM(RECORD, twin.layouts[0])).toBeNull();
+    const between = corners();
+    between[0].x = 75;
+    expect(layoutOffsetM(between, circuit().layouts[0])).toBe(7.5);
+    expect(layoutOffsetM(between, twin.layouts[0])).toBe(7.5);
+    expect(() => parseLoreCatalogue([circuit(), twin])).toThrow(
+      /could match the same corner record: same labels, every corner within 15\.0 m of its namesake, inside twice the 10 m match tolerance/,
+    );
+  });
+
+  it("accepts two layouts more than twice the tolerance apart: no replay is within reach of both", () => {
+    const twin = circuit();
+    twin.id = "twin-ring";
+    twin.layouts[0].corners[0].x = 2 * LORE_MATCH_TOLERANCE_M * 10 + 1;
+    const both = parseLoreCatalogue([circuit(), twin]);
+    expect(both.map((c) => c.id)).toEqual(["test-ring", "twin-ring"]);
+    // Halfway is the point nearest both, and it is past the tolerance of each.
+    const between = corners();
+    between[0].x = (2 * LORE_MATCH_TOLERANCE_M * 10 + 1) / 2;
+    expect(resolveLore(between, both)).toBeNull();
   });
 
   it("rejects two layouts in one circuit that match each other", () => {
     const c = circuit();
     c.layouts.push({ ...structuredClone(c.layouts[0]), id: "survey-2" });
     expect(() => parseLoreCatalogue([c])).toThrow(
-      /"test-ring\/survey-1" and "test-ring\/survey-2" match/,
+      /"test-ring\/survey-1" and "test-ring\/survey-2" could match the same corner record/,
     );
   });
 });

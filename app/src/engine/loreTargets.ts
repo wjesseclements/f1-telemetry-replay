@@ -33,8 +33,10 @@ export interface LoreTargetPoint {
 
 /**
  * The side of the square tap area centred on each point, in input order, for a
- * canvas `width` by `height` CSS px. Never negative: a point on or past the edge,
- * or on top of another story's, gets 0.
+ * canvas `width` by `height` CSS px. Never negative and never NaN: a point on or
+ * past the edge, or on top of another story's, gets 0. A point that is not finite
+ * gets 0 and is no one's neighbour, so it cannot shrink every other story with it
+ * (`Math.min` with a NaN is NaN).
  */
 export function loreTargetSides(
   points: readonly LoreTargetPoint[],
@@ -42,15 +44,19 @@ export function loreTargetSides(
   height: number,
   maxPx: number = LORE_TARGET_MAX_PX,
 ): number[] {
+  const placed = (p: LoreTargetPoint) =>
+    Number.isFinite(p.x) && Number.isFinite(p.y);
   return points.map((p) => {
     let side = Math.min(
       maxPx,
       2 * Math.min(p.x, width - p.x, p.y, height - p.y),
     );
     for (const q of points) {
-      if (q.story === p.story) continue;
+      if (q.story === p.story || !placed(q)) continue;
       side = Math.min(side, Math.max(Math.abs(p.x - q.x), Math.abs(p.y - q.y)));
     }
-    return Math.max(0, side);
+    // Written as "more than 0" so a point or a canvas size that is not finite
+    // gives 0, not NaN.
+    return side > 0 ? side : 0;
   });
 }
