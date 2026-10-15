@@ -1260,7 +1260,9 @@ describe("corner stories (Slice 18)", () => {
 
   it("mounts the badges and every overlay dialog inside the one track cell they hide by", () => {
     // The badges hide by `:has([role=dialog])` on the track cell (`group/track`),
-    // so a dialog mounted anywhere else would leave them tabbable under it.
+    // and `openStory` ignores a press while that cell holds a dialog, so a
+    // dialog mounted anywhere else would leave them tabbable and pressable
+    // under it.
     render(<App />);
     const cell = document.querySelector("canvas")?.closest(".group\\/track");
     expect(cell).not.toBeNull();
@@ -1356,6 +1358,67 @@ describe("corner stories (Slice 18)", () => {
       screen.getByRole("dialog", { name: "RED FLAG" }),
     ).toBeInTheDocument();
     expect(card()).toBeNull();
+  });
+
+  /**
+   * jsdom evaluates no `:has()`, so here the badges stay pressable under a
+   * dialog, which is exactly a browser without `:has()`: the JS guard alone
+   * must keep it to one dialog.
+   */
+  describe("one dialog at a time, without `:has()` too", () => {
+    const dialogIds = () =>
+      screen.getAllByRole("dialog").map((dialog) => dialog.id);
+
+    it("opens no card from a badge under the gallery, and leaves the replay playing", () => {
+      render(<App />); // the gallery is open on first paint
+      act(() => {
+        fireEvent.click(badge(ALBORETO));
+      });
+      expect(card()).toBeNull();
+      expect(dialogIds()).toEqual(["featured-replays"]);
+      expect(useTransport.getState().isPlaying).toBe(true);
+    });
+
+    it("opens no second story from a badge under the corner card", () => {
+      renderOnTrack();
+      open(ALBORETO);
+      act(() => {
+        fireEvent.click(badge("Turns 1–2: Prima Variante"));
+      });
+      expect(dialogIds()).toEqual(["corner-card"]);
+      expect(card()).toHaveAccessibleName(ALBORETO);
+    });
+
+    it("opens no card from a badge under an event card", () => {
+      renderOnTrack();
+      act(() => {
+        useTransport.setState({
+          scenario: {
+            id: "with-event",
+            title: "With event",
+            hook: "h",
+            file: "with-event.json",
+            suggested: { driver: "VER", clock: 0, speedMult: 1 },
+            provenance: {
+              session: "S",
+              laps: "1-2",
+              drivers: ["VER"],
+              generated: "2026-09-08",
+            },
+            events: [{ clock: 30, title: "RED FLAG", body: "Narrated." }],
+          },
+        });
+      });
+      act(() => raf.tick(40)); // the first observed clock arms the detector
+      act(() => useTransport.getState().seek(35));
+      act(() => raf.tick(40));
+      expect(screen.getByRole("dialog", { name: "RED FLAG" })).toBeVisible();
+      act(() => {
+        fireEvent.click(badge(ALBORETO));
+      });
+      expect(card()).toBeNull();
+      expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    });
   });
 
   it("drops the card when the replay changes under it", () => {

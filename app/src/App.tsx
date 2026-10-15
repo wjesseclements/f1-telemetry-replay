@@ -146,8 +146,17 @@ export default function App({ bootstrapError = null }: AppProps) {
    * leaves it paused (ruled 2026-10-14, the event card's precedent): the card
    * is read over a still frame. Stable, so the memoised canvas that takes it
    * as a prop is not re-rendered by App's own state.
+   *
+   * One dialog at a time: while the track cell holds any dialog (the gallery,
+   * an event card, this card) a press opens nothing. The badges are already
+   * hidden then, by the `:has([role=dialog])` rule on this same cell
+   * (`render/CornerStoryTargets.tsx`); this is that rule in JS, for a browser
+   * without `:has()`, where a keyboard user could otherwise open a card under
+   * the desktop gallery. Read from the DOM at the press, so it stays stable.
    */
+  const trackCellRef = useRef<HTMLDivElement>(null);
   const openStory = useCallback((index: number) => {
+    if (trackCellRef.current?.querySelector('[role="dialog"]')) return;
     useTransport.getState().pause();
     setStoryIndex(index);
   }, []);
@@ -275,7 +284,10 @@ export default function App({ bootstrapError = null }: AppProps) {
               wrapper steps aside (`contents`) and the track cell spans the
               page grid's top two rows (`FULL_TRACK_GRID`). */}
           <div className="flex min-h-0 flex-1 flex-col side:flex-row fulltrack:contents">
-            <div className="group/track relative min-h-0 min-w-0 flex-1 fulltrack:col-start-1 fulltrack:row-span-2 fulltrack:row-start-1">
+            <div
+              ref={trackCellRef}
+              className="group/track relative min-h-0 min-w-0 flex-1 fulltrack:col-start-1 fulltrack:row-span-2 fulltrack:row-start-1"
+            >
               {/* The canvas is memoised, so mounting and unmounting the panel
                   beside it does not re-render it — the replay animates behind the
                   scrim without interruption. Pinned in `App.test.tsx`. On a
