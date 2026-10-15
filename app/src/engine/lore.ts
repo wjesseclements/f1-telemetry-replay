@@ -90,9 +90,23 @@ const Copy = z
     error: "a numeric range takes an en dash (–), not a hyphen",
   });
 
-const Source = z.string().regex(/^https:\/\/\S+$/, {
-  error: "a source is an https URL",
-});
+/**
+ * A query to a service's API, not a page: a machine format asked for in the
+ * query string, or a geocoder's or an API's own host. A source is a page a
+ * reader can open and cite (ruled 2026-10-15, "Drop the map-service links":
+ * three Nominatim geocoder queries had been committed as Silverstone sources).
+ */
+const API_QUERY =
+  /^https:\/\/(?:api|nominatim)\.|[?&](?:format|output)=(?:json|jsonv2|geojson|geocodejson|xml)(?:[&#]|$)/i;
+
+const Source = z
+  .string()
+  .regex(/^https:\/\/\S+$/, {
+    error: "a source is an https URL",
+  })
+  .refine((url) => !API_QUERY.test(url), {
+    error: "a source is a page to cite, not an API query",
+  });
 
 const FeatureSchema = z.strictObject({
   id: Slug,

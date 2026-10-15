@@ -221,6 +221,40 @@ describe("parseCircuitLore — rejection, one per rule", () => {
     rejects((c) => (c.features[0].sources = ["monzanet.it"]), /https URL/);
   });
 
+  it("rejects an API query as a source: a page to cite, not a service's answer", () => {
+    // Ruled 2026-10-15, "Drop the map-service links": the three Nominatim
+    // geocoder queries once committed among Silverstone's sources.
+    for (const query of [
+      "https://nominatim.openstreetmap.org/reverse?lat=52.0728&lon=-1.0178&format=json&zoom=18&addressdetails=1",
+      "https://nominatim.openstreetmap.org/search?q=Silverstone,+West+Northamptonshire&format=json&limit=3",
+      "https://nominatim.openstreetmap.org/search?q=Stowe+School,+Buckingham&format=json&limit=3",
+      // The same kind of thing from anywhere else.
+      "https://nominatim.example.org/search?q=Monza",
+      "https://api.example.org/v1/corners/11",
+      "https://example.org/lookup?q=Monza&format=geojson",
+      "https://example.org/lookup?output=XML",
+      "https://example.org/lookup?format=jsonv2#top",
+    ]) {
+      rejects(
+        (c) => (c.features[0].sources = [query]),
+        /a page to cite, not an API query/,
+      );
+    }
+  });
+
+  it("accepts a page whose address merely mentions a format or an API", () => {
+    for (const page of [
+      "https://example.org/history/format-json-explained",
+      "https://example.org/apis/of-monza",
+      "https://example.org/lookup?format=html",
+      "https://www.example.org/api.html",
+    ]) {
+      const ok = circuit();
+      ok.features[0].sources = [page];
+      expect(() => parseCircuitLore(ok)).not.toThrow();
+    }
+  });
+
   it("rejects a source listed twice", () => {
     rejects(
       (c) => (c.features[0].sources = [SOURCE, SOURCE]),
