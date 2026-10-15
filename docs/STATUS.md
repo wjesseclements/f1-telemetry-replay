@@ -88,4 +88,8 @@ Then **the board: 18 → 20**, with the fixture asymmetry overhaul behind them.
 was ruled on 2026-10-14 (invisible buttons over the painted corner numbers, one
 bundled file per circuit matched by corner positions, today's page where there is no
 lore, Monza and Silverstone first, the event card's shape with pause on open, tap
-areas up to 44 px plus Previous/Next). The copy round comes next, then the build.
+areas up to 44 px plus Previous/Next). The copy was ruled on 2026-10-15 and the
+build is done on the branch, not merged: the lore contract and the two circuits'
+files (18a), then the badges, the corner card and the layout check's state D, 304
+rows (18b), with the draw-call digests unchanged. It waits for review and the
+human's look on a phone (PLAN's Slice 18 entry has the measurements).

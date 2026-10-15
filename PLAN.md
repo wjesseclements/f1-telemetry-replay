@@ -5403,7 +5403,7 @@ pairwise colour-difference check over the loaded field with per-team overrides,
 or a secondary mark (pattern/initial) when two swatches collide. Interacts with
 the filed canvas-flooring rider and Slice 16's re-baseline.
 
-### [ ] Slice 18 — corner lore (after Slice 17) (scope ruled 2026-10-14, copy ruled 2026-10-15; building)
+### [ ] Slice 18 — corner lore (after Slice 17) (scope ruled 2026-10-14, copy ruled 2026-10-15; built 2026-10-15 as 18a + 18b, not merged; awaiting review and the human's look on a phone)
 
 **Filed 2026-09-08 by the human's direction, not built.** A curated per-circuit
 data file — corner name and origin story (Maggotts and Becketts, the Hamilton
@@ -5622,6 +5622,146 @@ measured in Chrome.
 **Size.** About 2,000 lines, half of them tests. One session if the copy is ruled
 first; otherwise 18a (contract, data, matching, asset test) then 18b (badges,
 card, state D).
+
+**Built 2026-10-15, in two halves, not merged.** On `feat/slice-18-corner-lore`,
+every commit gated green on its own (`npm run check`, banner `RUN v4.1.10 …/app`,
+0 matches for warn|error in the full log).
+- **18a, the contract and the data** (3c905aa, ddc476a). `engine/lore.ts` (strict
+  Zod, `LORE_SCHEMA_VERSION = 1`, matching by corner record, eyebrow and name
+  formatters, `stepStory`) and `engine/loreTargets.ts` (the tap squares), both at
+  100%; `src/lore/monza.json` (7 stories over 11 numbers) and `silverstone.json`
+  (14: the Hamilton Straight on the S/F label, then 13 over 18 numbers), the ruled
+  copy verbatim, each story's verified-claim URLs as `sources` (not rendered).
+  `loreAssets.test.ts`: all five gallery assets match at 0.00 m, every layout is
+  matched by an asset, the fixture matches nothing. 1175 → 1204 tests.
+- **18b, the badges and the card** (d0348c8). `render/storyTargets.ts` and
+  `CornerStoryTargets.tsx`: one transparent button per story in TrackCanvas's
+  wrap, placed by style writes straight after each `measure()`; its centre is a
+  translation to the very `paths` point the frame paints, its size
+  `loreTargetSides`'. Grouped numbers are `aria-hidden` member squares inside
+  the one button. The name is `sr-only` text in the ruled format. The ring is inset
+  white (`BADGE_FOCUS_RING`; a story's member squares ring with it), and a wash
+  shows only under `(hover: hover)`. The layer hides under any dialog by
+  `group-has-[[role=dialog]]/track:invisible`. `CornerCard.tsx` is in EventCard's
+  mould and joins overlay.test's DIALOGS. App keeps the card state locally, drops it
+  on a replay change, pauses on open, and hands focus back by id to the badge of the
+  story SHOWN. The gallery, or an event card firing (`ScenarioEvents`'
+  `onEventShown`), closes it. `drawFrame`, `scene.ts` and `paths.ts` are untouched.
+  1204 → 1261 tests.
+- **18b, layout-check state D** (b1f5c62, then a follow-up that reads the asset
+  through `parseReplay`, rule 7). 206 → 304 rows, 304/304; the table without D's
+  rows is the 206-row baseline byte for byte (port and runtime aside). 1261 →
+  1283 tests.
+- **Digests**, captured before 18a's first edit and after 18b: closed
+  cb43a0f8f3a91e99718acf9cf7a05e71, open e30b5b6e59fa23d56cf65244ae76431c, auto
+  monza-2026-red-flag 22 at 764.80 calls/frame: `diff` empty. The lore-present
+  no-op is a TrackCanvas test (the full recorded call list over 90 frames, a seek
+  and a resize, identical with stories and without), and the canvas still commits
+  once with stories present, across frames and a resize (and once per replay
+  inside App, `App.memo.test.tsx`).
+- **Bundle** +33.7 kB minified, +9.7 kB gzipped (321.74 → 355.48 kB). The two lore
+  files are 21.1 kB / 5.2 kB of it; their unrendered sources are ~2.2 kB gzipped.
+- **Compiled CSS** gained only the utilities the new markup uses (`left-1/2`,
+  `top-1/2`, `ring-inset`, the `:has()` rule, the hover wash and the group
+  rings): no stray class from a comment.
+
+**Measured in headless Chrome 155 at the ten gated viewports** (scratch
+instrument `/tmp/f1-slices/s18/build/18b/measure-ui.mts`, against the build).
+Every button and member square sits on the disc the canvas painted, worst 0.011
+px, on both circuits. Sizes in px: for Monza, the story whose best square is
+smallest; for Silverstone, Vale, Club's two squares (T17 beside Vale, T18), and
+the smallest square of the other twelve stories.
+
+| Viewport | Monza | Silverstone: Vale; Club T17, T18; the rest |
+|---|---|---|
+| 375x812 | 37.2 (Parabolica) | 4.8; 4.8, 35.3; 20.8 (Aintree) |
+| 1280x720 | all 44 | 26.3; 26.3, 44; all 44 |
+| 1440x900 | all 44 | 35.6; 35.6, 44; all 44 |
+| 375x667 | 26.2 (Parabolica) | 4.9; 4.9, 36.2; 21.5 (Aintree) |
+| 667x375 | 26.2 (Parabolica) | 5.3; 5.3, 39.1; 23.9 (Aintree) |
+| 740x360 | 31.5 (Lesmo 2) | 5.2; 5.2, 38.2; 23.2 (Aintree) |
+| 360x640 | 26.2 (Parabolica) | 4.7; 4.7, 34.3; 20.0 (Aintree) |
+| 375x626 | 31.0 (Lesmo 2) | 4.7; 4.7, 32.4; 18.4 (Aintree) |
+| 814x312 | 31.0 (Lesmo 2) | 5.2; 5.2, 31.6; 17.7 (Aintree) |
+| 724x257 | 30.8 (Lesmo 2) | 6.1; 6.1, 30.0; 16.5 (Aintree) |
+
+- **The card.** On a desktop it is 448 px wide, centred in the track cell, not
+  modal; on every phone viewport it is the viewport's own box, modal. Previous
+  and Next are 83.8x44 and 54.9x44 on phones, 30 px tall on a desktop. The
+  heading row is 52.5 px with a second name and 36.5 or 44 without. Every one of
+  the 21 cards fits without scrolling at every gated size but 724x257, where six
+  overflow by 4–43 px under the pinned Close. Lesmo 2's Next ends 9.5 px below the
+  screen there; every other card keeps Previous/Next on screen.
+- **Chrome's names.** The dialog, its heading and the badge are each exactly "Turn
+  11: Curva Alboreto (Parabolica)" (and "Turns 17–18: Club" for Silverstone's
+  last story), with no description.
+- **Behaviour, all 20 runs.** The live region says "Turns 1–2: Prima Variante" /
+  "Start/finish: Hamilton Straight" after Next; a trusted Escape returns focus to
+  the badge of the story shown, which is visible again by then. The play toggle
+  read Pause (playing), then Play on open, and Play after close.
+- **Keyboard.** One tab stop per story, in lap order, straight after the header's
+  file picker. The focused Maggotts, Becketts and Chapel badge rings all five of
+  its squares (screenshots under `/tmp/f1-slices/s18/build/18b/measure/shots/`).
+
+**State D's rows**, per viewport (9, and 10 at a phone): "badges hidden under the
+gallery", "badges inside the canvas", "badges centred on the painted discs",
+"badges of different stories disjoint", "badge centres hit their own button",
+"badge names carry no description", "corner card heading row visible", "corner
+card Close button visible", ("corner card covers the viewport"), "focus back on
+its badge". The presses (the gallery's Close, the last badge) and the Escape are
+TRUSTED CDP input (`layout/input.ts`). "Centred on the painted discs" reads the
+canvas's own calls through a recorder installed before the app loads
+(`installPaintRecorder`). It is one row beyond the ruled design, because nothing
+else in the browser compares a badge with its disc.
+
+**Mutation-checked** (build, run, restore, md5 verified). Every mutation failed
+only D rows, never one in A–C:
+
+| Mutation | Rows that failed |
+|---|---|
+| no `:has()` rule | hidden x10 |
+| other stories' squares may overlap | disjoint x6 (the sizes where they meet) |
+| no focus return | focus x10 |
+| card not fixed on phones | covers x8 |
+| a `title` on the badges | names x10 |
+| squares not centred on their point | inside x10, painted x10, hits x7; at 5 sizes the clipped badge cannot be pressed (D reached) |
+| no placement at all | painted x10, hits x10; the 0x0 badge cannot be pressed (D reached x10) |
+
+The unit tests were mutation-checked the same way: each break failed the tests
+named for it. The breaks were the badge points swapped for the on-track points, no
+re-placement on resize, Escape without `stopPropagation`, no pause, focus to the
+wrong story, the gallery not closing the card, no `onEventShown`, the canvas
+touched when lore is present, no reset on a replay change, and an unstable callback
+or unmemoised stories (`App.memo.test.tsx`).
+
+**Deviations from the design, all in 18b.**
+- The dialog is labelled by its heading, and the heading's text for assistive
+  tech is one `sr-only` string; the visible eyebrow, name and second name are
+  `aria-hidden`. Chrome puts a space between separate boxes when it names from
+  content, so three visible lines would have read "Turn 11 Curva Alboreto
+  Parabolica", not the ruled format.
+- The live region stays empty until the first Previous/Next. On open, the
+  dialog's own name is announced.
+- The extra layout row above, and the badge-names row prints a count on a pass.
+- The badge layer mounts only when there are stories. The canvas wrap it mounts
+  in is the sibling `inertOutside` holds, so a badge mounted under a phone modal
+  is inert with it.
+
+**Open, for the human.**
+- On a real phone: the card, the tap squares (Vale is ~5 px on every phone, and
+  Aintree, Brooklands, Woodcote and Maggotts' T12 are 16.5–24 px; Previous/Next
+  is the route there, per ruling 6), and VoiceOver on the badges and the card.
+- The heading row is 52.5 px with a second name, so a phone's pinned bar is
+  76.5 px where `OVERLAY_FOCUS_CLEARANCE` assumes 68. The card's only controls
+  below it are Previous/Next, on one row, so no focus stop lands under the bar.
+- Next moves between presses. The card is centred (`my-auto`, the mould) and
+  Previous/Next is its last row, so each story's length moves the row by half the
+  height change. Measured, Next's top moves by up to 39 px from one story to the
+  next (Silverstone at 375x812, into and out of Brooklands) and by up to 29 px at
+  1280x720, where Next is 30 px tall. Stepping round the lap by pressing Next
+  without moving the pointer can miss. The fix would be a layout decision (the
+  row above the story, or the card anchored at its top), so it is left for a
+  ruling.
 
 ### [x] Slice 9k — adjudicate NOR's declined relocation structurally (done 2026-09-11, ACCEPTED 2026-09-12)
 
