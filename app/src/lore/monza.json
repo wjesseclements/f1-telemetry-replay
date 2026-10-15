@@ -1,0 +1,140 @@
+{
+  "schemaVersion": 1,
+  "id": "monza",
+  "features": [
+    {
+      "id": "prima-variante",
+      "name": "Prima Variante",
+      "story": "The first chicane, built in 1972 to slow cars before the Curva Grande, rebuilt as a double chicane in 1976 and in 2000 as today’s right-left. Prima variante means first chicane; rettifilo, as in its older name Variante del Rettifilo, means straight.",
+      "sources": [
+        "https://monzanet.it/?p=4265",
+        "https://monzanet.it/en/?p=4265",
+        "https://www.motorsportmagazine.com/archive/article/september-2015/74/autodromo-di-monza-lap-93-years/",
+        "https://www.formula1.com/en/latest/article/explained-how-every-corner-at-monza-got-its-name.53lIthEwI2Ko9BC8YRnuZK",
+        "https://sport.sky.it/formula-1/f1-gp-italia-monza-circuito",
+        "https://www.mercedesamgf1.com/news/explained-how-the-monza-corners-got-their-names",
+        "https://infomobility.aci.it/wp-content/uploads/2024/08/ACI-comunicato-stampa-di-presentazione-F1-a-Autodromo-Monza-del-27-agosto-2024.pdf",
+        "https://www.nss-sports.com/it/lifestyle/46630/curve-circuito-monza-nomi-storia"
+      ]
+    },
+    {
+      "id": "curva-biassono",
+      "name": "Curva Biassono",
+      "subtitle": "Curva Grande",
+      "story": "Called Curva Grande, the big curve, for its wide radius of about 300 metres. It was renamed in 1972 after the nearby town of Biassono, though it is still commonly called Curva Grande.",
+      "sources": [
+        "https://monzanet.it/?p=4265",
+        "https://www.formula1.com/en/latest/article/explained-how-every-corner-at-monza-got-its-name.53lIthEwI2Ko9BC8YRnuZK",
+        "https://www.mercedesamgf1.com/news/explained-how-the-monza-corners-got-their-names",
+        "https://monzanet.it/en/?p=4265",
+        "https://www.nss-sports.com/it/lifestyle/46630/curve-circuito-monza-nomi-storia",
+        "https://sport.sky.it/formula-1/f1-gp-italia-monza-circuito"
+      ]
+    },
+    {
+      "id": "seconda-variante",
+      "name": "Seconda Variante",
+      "subtitle": "Variante della Roggia",
+      "story": "The second chicane, built in 1976 to cut speeds on the run to Lesmo. It keeps the name of the old Curva della Roggia, after a small stream nearby.",
+      "sources": [
+        "https://monzanet.it/?p=4265",
+        "https://www.motorsportmagazine.com/archive/article/september-2015/74/autodromo-di-monza-lap-93-years/",
+        "https://www.formula1.com/en/latest/article/explained-how-every-corner-at-monza-got-its-name.53lIthEwI2Ko9BC8YRnuZK",
+        "https://sport.sky.it/formula-1/f1-gp-italia-monza-circuito",
+        "https://www.mercedesamgf1.com/news/explained-how-the-monza-corners-got-their-names"
+      ]
+    },
+    {
+      "id": "prima-curva-di-lesmo",
+      "name": "Prima Curva di Lesmo",
+      "subtitle": "Lesmo 1",
+      "story": "Originally the Curva delle Querce, the curve of the oaks, after the surrounding woods. By 1927 it had taken the name of the nearby town of Lesmo.",
+      "sources": [
+        "https://monzanet.it/?p=4265",
+        "https://www.formula1.com/en/latest/article/explained-how-every-corner-at-monza-got-its-name.53lIthEwI2Ko9BC8YRnuZK",
+        "https://www.mercedesamgf1.com/news/explained-how-the-monza-corners-got-their-names",
+        "https://sport.sky.it/formula-1/f1-gp-italia-monza-circuito"
+      ]
+    },
+    {
+      "id": "seconda-curva-di-lesmo",
+      "name": "Seconda Curva di Lesmo",
+      "subtitle": "Lesmo 2",
+      "story": "Known as the Curva dei 100 Metri in 1922, and in 1927 as the Curva del Bosco dei Cervi, after the park’s deer. It was tightened in 1994–95. The very slight left that follows, the Curva del Serraglio, is not counted as a corner; it is named after a royal hunting lodge in the park.",
+      "sources": [
+        "https://monzanet.it/?p=4265",
+        "https://www.formula1.com/en/latest/article/explained-how-every-corner-at-monza-got-its-name.53lIthEwI2Ko9BC8YRnuZK",
+        "https://www.racefans.net/?p=274283",
+        "https://oversteer48.com/monza-grandstand-11-serraglio/",
+        "https://www.mercedesamgf1.com/news/explained-how-the-monza-corners-got-their-names",
+        "https://monzanet.it/en/?p=4265",
+        "https://sport.sky.it/formula-1/f1-gp-italia-monza-circuito",
+        "https://www.nss-sports.com/it/lifestyle/46630/curve-circuito-monza-nomi-storia",
+        "https://www.ilgiorno.it/monza-brianza/cronaca/le-cascine-di-corte-dallex-deposito-di-formaggi-alle-antiche-scuderie-la-storia-abita-al-parco-c6ec51cf",
+        "https://www.komoot.com/highlight/3032562"
+      ]
+    },
+    {
+      "id": "variante-ascari",
+      "name": "Variante Ascari",
+      "story": "Once the Curva del Vialone or del Platano, it was named in 1955 for Alberto Ascari, twice world champion, who was killed here that May testing a Ferrari sports car. It became the Variante Ascari when the chicane was built in 1972.",
+      "sources": [
+        "https://monzanet.it/?p=4265",
+        "https://www.formula1.com/en/latest/article/explained-how-every-corner-at-monza-got-its-name.53lIthEwI2Ko9BC8YRnuZK",
+        "https://www.mercedesamgf1.com/news/explained-how-the-monza-corners-got-their-names",
+        "https://sport.sky.it/formula-1/f1-gp-italia-monza-circuito",
+        "https://www.goodwood.com/grr/f1/alberto-ascari-italys-greatest-formula-1-star/",
+        "https://www.fondazionepirelli.org/en/?p=79190",
+        "https://www.motorsportmagazine.com/archive/article/september-2015/74/autodromo-di-monza-lap-93-years/",
+        "https://monzanet.it/en/?p=4265",
+        "https://infomobility.aci.it/wp-content/uploads/2024/08/ACI-comunicato-stampa-di-presentazione-F1-a-Autodromo-Monza-del-27-agosto-2024.pdf"
+      ]
+    },
+    {
+      "id": "curva-alboreto",
+      "name": "Curva Alboreto",
+      "subtitle": "Parabolica",
+      "story": "Built in 1955 to replace two hairpins paved with porphyry, and named Parabolica for its shape. In 2021 it was renamed for the Milanese driver Michele Alboreto, twenty years after his death.",
+      "sources": [
+        "https://monzanet.it/?p=4265",
+        "https://sport.sky.it/formula-1/f1-gp-italia-monza-circuito",
+        "https://www.nss-sports.com/it/lifestyle/46630/curve-circuito-monza-nomi-storia",
+        "https://monzanet.it/en/?p=4265",
+        "https://www.mercedesamgf1.com/news/explained-how-the-monza-corners-got-their-names",
+        "https://www.formula1.com/en/latest/article/explained-how-every-corner-at-monza-got-its-name.53lIthEwI2Ko9BC8YRnuZK",
+        "https://www.monzanet.it/en/named-after-michele-alboreto-the-parabolic-curve-of-the-monza-national-circuit/",
+        "https://www.formula1.com/en/latest/article.monza-to-rename-the-parabolica-in-honour-of-michele-alboreto-during-italian.2DPL2VOdDU8nM7Ik0pJDKJ.html",
+        "https://motorinolimits.com/2024/08/29/monza-dedica-un-monumento-ad-alboreto-sotto-silenzio",
+        "https://www.grandprix.com/news/michele-forever.html"
+      ]
+    }
+  ],
+  "layouts": [
+    {
+      "id": "multiviewer-2021",
+      "provenance": "FastF1 circuit_info: MultiViewer circuit 39, its 2021 record, served for 2024 and 2026",
+      "corners": [
+        { "letter": "", "number": 1, "x": -569.6, "y": 8153.7 },
+        { "letter": "", "number": 2, "x": -146.8, "y": 8475.0 },
+        { "letter": "", "number": 3, "x": 611.6, "y": 13310.6 },
+        { "letter": "", "number": 4, "x": 6808.7, "y": 14630.8 },
+        { "letter": "", "number": 5, "x": 7130.9, "y": 15023.1 },
+        { "letter": "", "number": 6, "x": 10554.9, "y": 15713.8 },
+        { "letter": "", "number": 7, "x": 10972.6, "y": 12648.4 },
+        { "letter": "", "number": 8, "x": 2562.9, "y": 6171.0 },
+        { "letter": "", "number": 9, "x": 2478.0, "y": 5270.6 },
+        { "letter": "", "number": 10, "x": 1890.1, "y": 4451.2 },
+        { "letter": "", "number": 11, "x": -55.3, "y": -5800.2 }
+      ],
+      "anchors": {
+        "prima-variante": { "corners": ["1", "2"] },
+        "curva-biassono": { "corners": ["3"] },
+        "seconda-variante": { "corners": ["4", "5"] },
+        "prima-curva-di-lesmo": { "corners": ["6"] },
+        "seconda-curva-di-lesmo": { "corners": ["7"] },
+        "variante-ascari": { "corners": ["8", "9", "10"] },
+        "curva-alboreto": { "corners": ["11"] }
+      }
+    }
+  ]
+}
