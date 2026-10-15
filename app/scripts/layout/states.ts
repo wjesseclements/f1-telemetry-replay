@@ -1,18 +1,32 @@
 /**
- * states.ts — the three states the layout check visits, and what it asserts in
+ * states.ts — the four states the layout check visits, and what it asserts in
  * each.
  *
  *   A  first load — the gallery panel open over the committed fixture;
  *   B  the largest gallery scenario (most cars) loaded by clicking its card;
- *   C  the gallery reopened over that replay.
+ *   C  the gallery reopened over that replay;
+ *   D  that replay's corner stories (Slice 18): the badges under C's gallery,
+ *      then on the track once a trusted press has closed it, then the corner
+ *      card opened from the last badge by a trusted press, and closed by a
+ *      trusted Escape.
  *
  * Every threshold is named and justified where it is declared. Every selector is
  * an existing role, label, id or ARIA attribute in the app — no test ids were
- * added. One row in B reads Chrome's accessibility tree rather than the page: the
- * transport's two icon buttons' names (`accessibility.ts`). The others read
- * boxes and counts.
+ * added. Two rows read Chrome's accessibility tree rather than the page: in B,
+ * the transport's two icon buttons' names, and in D the badges' names
+ * (`accessibility.ts`). The others read boxes, counts and focus.
  */
 import { judgeNames, readAxText } from "./accessibility";
+import {
+  judgeBadgeNames,
+  judgeDisjoint,
+  judgeHidden,
+  judgeHits,
+  judgeInside,
+  judgeOnPaint,
+  type StoryAnchor,
+  type Verdict,
+} from "./badges";
 import type { CdpPage } from "./cdp";
 import {
   contains,
@@ -24,11 +38,15 @@ import {
   xySpan,
   ySpan,
 } from "./geometry";
+import { trustedClick, trustedEscape } from "./input";
 import {
   clickScenario,
   clickToggle,
+  focusedId,
   probeLastCardReach,
   probeLayout,
+  probeStoryTargets,
+  readPaint,
   resetPanelScroll,
   settle,
   type Box,
@@ -62,6 +80,7 @@ export const SELECTORS: Selectors = {
   legend: "figure",
   legendCaption: "figcaption",
   legendName: "colour scale",
+  cornerCard: '#corner-card[role="dialog"]',
 };
 
 // ── budgets for the waits inside a state ─────────────────────────────────────
@@ -69,6 +88,8 @@ const FIRST_LOAD_MS = 15_000;
 /** Fetch + parse + schema-validate a ~5 MB gallery asset, in a headless tab. */
 const SCENARIO_LOAD_MS = 30_000;
 const PANEL_OPEN_MS = 5_000;
+/** A dialog opening or closing on a press: one React commit, in practice. */
+const DIALOG_MS = 5_000;
 const POLL_MS = 50;
 
 // ── thresholds (CSS px / fractions of the viewport) ──────────────────────────
@@ -235,14 +256,20 @@ function recordTransportInView(
   );
 }
 
+/**
+ * The dialog's heading row and its Close are visible. `noun` names the dialog
+ * in the rows: the gallery's are "panel …" (A and C), the corner card's
+ * "corner card …" (D), measured by the same probe with `panel` swapped.
+ */
 function recordPanelHeader(
   ctx: StateContext,
   state: StateKey,
   probe: LayoutProbe,
+  noun = "panel",
 ): void {
   const panel = probe.panel;
   if (panel === null) {
-    record(ctx, state, "panel present", false, "dialog not found");
+    record(ctx, state, `${noun} present`, false, "dialog not found");
     return;
   }
   const clip = intersect(
@@ -252,7 +279,7 @@ function recordPanelHeader(
   recordVisible(
     ctx,
     state,
-    "panel heading row",
+    `${noun} heading row`,
     panel.headingRow,
     clip,
     panel.headingHit,
@@ -260,7 +287,7 @@ function recordPanelHeader(
   recordVisible(
     ctx,
     state,
-    "panel Close button",
+    `${noun} Close button`,
     panel.close,
     clip,
     panel.closeHit,
@@ -280,9 +307,10 @@ function recordPanelCovers(
   ctx: StateContext,
   state: StateKey,
   probe: LayoutProbe,
+  noun = "panel",
 ): void {
   if (!ctx.phone) return;
-  const what = "panel covers the viewport";
+  const what = `${noun} covers the viewport`;
   if (probe.panel === null) {
     record(ctx, state, what, false, "dialog not found");
     return;
@@ -558,4 +586,165 @@ export async function stateC(ctx: StateContext): Promise<void> {
   );
   recordPanelHeader(ctx, "C", probe);
   recordPanelCovers(ctx, "C", probe);
+}
+
+/**
+ * One corner story the replay in B carries: its button's id, its name, and
+ * which painted points its squares belong on.
+ */
+export interface StoryExpectation extends StoryAnchor {
+  /** The button's DOM id (`storyButtonId`, `src/render/storyTargets.ts`). */
+  buttonId: string;
+  /** The ruled accessible name, "Turn 11: Curva Alboreto (Parabolica)". */
+  name: string;
+}
+
+function recordVerdict(
+  ctx: StateContext,
+  assertion: string,
+  verdict: Verdict,
+): void {
+  record(ctx, "D", assertion, verdict.pass, verdict.measured);
+}
+
+/**
+ * The badges' names as Chrome exposes them: each exactly its story's ruled
+ * name, with no description. They are `sr-only` text with no `title`, so a
+ * description could only come from a change that this row exists to catch (a
+ * tooltip, an `aria-describedby`). A failed read is this row's FAIL.
+ */
+async function recordStoryNames(
+  ctx: StateContext,
+  stories: readonly StoryExpectation[],
+): Promise<void> {
+  const what = "badge names carry no description";
+  ctx.step("reading the badges' accessible names");
+  try {
+    const checks = [];
+    for (const story of stories) {
+      checks.push({
+        what: story.buttonId,
+        expected: [story.name],
+        reading: await readAxText(ctx.page, `#${story.buttonId}`),
+      });
+    }
+    recordVerdict(ctx, what, judgeBadgeNames(checks));
+  } catch (err) {
+    record(
+      ctx,
+      "D",
+      what,
+      false,
+      `could not read the accessibility tree: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
+/**
+ * D — the corner stories (Slice 18) of the replay B loaded, starting from C's
+ * reopened gallery.
+ *
+ *  1. Under the gallery every badge is hidden. The only gate for the `:has()`
+ *     rule that hides them (jsdom cannot evaluate it), and it needs at least
+ *     one badge, so it cannot pass for want of any.
+ *  2. A trusted press on the gallery's Close. Then the badges' squares: inside
+ *     the canvas, each centred on the disc (or S/F label) the canvas painted
+ *     for it, no two stories' sharing area, every centre reaching its own
+ *     button; and their names in Chrome's accessibility tree.
+ *  3. A trusted press on the LAST story's badge (Monza's Parabolica, the most
+ *     isolated badge on the circuit; no copy is named here), then the corner
+ *     card's heading row and Close, read by the gallery's own probe, and on a
+ *     phone its box against the viewport's.
+ *  4. A trusted Escape, then focus: back on the badge the card was opened
+ *     from, which proves the `:has()` hiding lifted in time for it.
+ */
+export async function stateD(
+  ctx: StateContext,
+  stories: readonly StoryExpectation[],
+): Promise<void> {
+  const { page } = ctx;
+  const ids = stories.map((s) => s.buttonId);
+  const targets = () =>
+    page.evaluate(probeStoryTargets, { ids, canvas: SELECTORS.canvas });
+
+  ctx.step("measuring the badges under the gallery");
+  recordVerdict(
+    ctx,
+    "badges hidden under the gallery",
+    judgeHidden(await targets()),
+  );
+
+  ctx.step("closing the gallery with a trusted press");
+  const open = await page.evaluate(probeLayout, SELECTORS);
+  const close = open.panel?.close ?? null;
+  if (close === null) throw new Error("the gallery's Close was not found");
+  await trustedClick(
+    page,
+    close.left + close.width / 2,
+    close.top + close.height / 2,
+  );
+  await waitFor(
+    ctx,
+    "the gallery to close",
+    DIALOG_MS,
+    () => page.evaluate(probeLayout, SELECTORS),
+    (p) => p.panel === null,
+  );
+  await page.evaluate(settle, undefined);
+
+  ctx.step("measuring the badges");
+  const probe = await targets();
+  recordVerdict(ctx, "badges inside the canvas", judgeInside(probe));
+  recordVerdict(
+    ctx,
+    "badges centred on the painted discs",
+    judgeOnPaint(probe, stories, await page.evaluate(readPaint, undefined)),
+  );
+  recordVerdict(
+    ctx,
+    "badges of different stories disjoint",
+    judgeDisjoint(probe),
+  );
+  recordVerdict(ctx, "badge centres hit their own button", judgeHits(probe));
+  await recordStoryNames(ctx, stories);
+
+  const last = probe.targets[probe.targets.length - 1];
+  const square = last?.squares[0];
+  if (square === undefined) throw new Error("no badge to press");
+  ctx.step("opening the corner card from the last badge");
+  await trustedClick(
+    page,
+    square.left + square.width / 2,
+    square.top + square.height / 2,
+  );
+  const card = { ...SELECTORS, panel: SELECTORS.cornerCard };
+  await waitFor(
+    ctx,
+    "the corner card to open",
+    DIALOG_MS,
+    () => page.evaluate(probeLayout, card),
+    (p) => p.panel !== null,
+  );
+  await page.evaluate(settle, undefined);
+  const opened = await page.evaluate(probeLayout, card);
+  recordPanelHeader(ctx, "D", opened, "corner card");
+  recordPanelCovers(ctx, "D", opened, "corner card");
+
+  ctx.step("closing the corner card with a trusted Escape");
+  await trustedEscape(page);
+  await waitFor(
+    ctx,
+    "the corner card to close",
+    DIALOG_MS,
+    () => page.evaluate(probeLayout, card),
+    (p) => p.panel === null,
+  );
+  const focused = await page.evaluate(focusedId, undefined);
+  record(
+    ctx,
+    "D",
+    "focus back on its badge",
+    focused === last.id,
+    `focus on ${focused === "" ? "no element with an id" : `#${focused}`} (want #${last.id})`,
+  );
 }

@@ -290,3 +290,28 @@ describe("the side-by-side layout's variants", () => {
     }
   });
 });
+
+/**
+ * The corner-story badges (Slice 18) hide under any open dialog by a `:has()`
+ * rule on the track cell: `group/track` on the cell, a `group-has-*` variant on
+ * the badges' layer. jsdom evaluates neither `:has()` nor `visibility`, so the
+ * compiled rule is pinned here; the layout check's "badges hidden under the
+ * gallery" row is what reads Chrome's answer.
+ */
+describe("the corner badges' hiding rule", () => {
+  it("compiles to: any [role=dialog] inside the track cell hides the badges' layer", () => {
+    expect(
+      ruleBody(
+        ".group\\/track:has([role=dialog]) .group-has-\\[\\[role\\=dialog\\]\\]\\/track\\:invisible",
+      ),
+    ).toBe("visibility:hidden;");
+  });
+
+  it("lights a badge under a mouse only where the pointer can hover", () => {
+    expect(
+      mediaFor(
+        ".\\[\\@media\\(hover\\:hover\\)\\]\\:hover\\:bg-txt\\/10:hover",
+      ),
+    ).toBe("(hover:hover)");
+  });
+});

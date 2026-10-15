@@ -84,3 +84,23 @@ human's phone check. A real-iPhone check is the missing evidence for both slices
 `inert`, sticky bars under Safari's toolbars, scroll anchoring, WebKit's range thumb,
 the installed app's real viewport, and VoiceOver with the titles and the CSS glyphs.
 Then **the board: 18 → 20**, with the fixture asymmetry overhaul behind them.
+**Slice 18** (corner lore) is in progress on `feat/slice-18-corner-lore`: its scope
+was ruled on 2026-10-14 (invisible buttons over the painted corner numbers, one
+bundled file per circuit matched by corner positions, today's page where there is no
+lore, Monza and Silverstone first, the event card's shape with pause on open, tap
+areas up to 44 px plus Previous/Next). The copy was ruled on 2026-10-15. The build
+is done on the branch, not merged: the lore contract and the two circuits' files
+(18a), then the badges, the corner card and the layout check's state D, 304 rows
+(18b). Three reviews (code, a real browser, the copy) each said ship, with nothing
+blocking; their fix pass made no replay able to match two lore layouts, made a badge
+press open nothing while another dialog is open even without `:has()`, and made the
+paint row count each story's squares. The draw-call digests are unchanged
+throughout; on the branch, `npm run check` is green with 1298 tests and the layout
+check 304/304. The human ruled the review's ten questions on 2026-10-15:
+Previous/Next now sit above the story and the card keeps its top, so Next stays put
+between presses (moving the row alone did not, by measurement); the three map-service
+source links are gone; the rest are kept as built or filed as follow-ups. It is PR
+#83. The four undiscussed details of that fix (the card at the top, an empty line on
+two Monza cards, 4 px taller cards, a schema rule on sources) were each ruled kept the
+same day. **Slice 18 stays unticked:** it waits only for a look on a real phone.
+PLAN's Slice 18 entry has the measurements.

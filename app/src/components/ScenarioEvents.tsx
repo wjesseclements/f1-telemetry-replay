@@ -52,7 +52,16 @@ import { useTransport } from "../store/transport";
 import { useTelemetry } from "../telemetry/useTelemetry";
 import { EventCard } from "./EventCard";
 
-export function ScenarioEvents() {
+export interface ScenarioEventsProps {
+  /**
+   * Called as an event's card is shown (Slice 18): narration outranks lore, so
+   * `App` closes an open corner card rather than stack two dialogs. Stable, or
+   * the detector's effect re-runs on every render of its parent.
+   */
+  onEventShown?: () => void;
+}
+
+export function ScenarioEvents({ onEventShown }: ScenarioEventsProps = {}) {
   const { clock, cars, wraps } = useTelemetry();
   const scenario = useTransport((s) => s.scenario);
   const replay = useTransport((s) => s.replay);
@@ -116,6 +125,7 @@ export function ScenarioEvents() {
     }
     if (crossed !== null) {
       setActive(crossed);
+      onEventShown?.();
       // Pause is the ruled behaviour: the card narrates a stoppage; the replay
       // holds while it is read. `getState` rather than a subscription — this
       // effect needs the action once, not a re-render per transport change.
@@ -125,7 +135,7 @@ export function ScenarioEvents() {
       // should be the moment it narrates (EventCard), so put it back on the mark.
       if (wrapped) transport.seek(crossedMark);
     }
-  }, [clock, cars, wraps, scenario, replay, active]);
+  }, [clock, cars, wraps, scenario, replay, active, onEventShown]);
 
   if (scenario === null || active === null) return null;
 

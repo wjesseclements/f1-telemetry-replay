@@ -1,0 +1,236 @@
+{
+  "schemaVersion": 1,
+  "id": "silverstone",
+  "features": [
+    {
+      "id": "hamilton-straight",
+      "name": "Hamilton Straight",
+      "story": "The International Pits Straight until December 2020, when it was renamed for Lewis Hamilton after his seventh world title. It was the first part of the circuit named after a person.",
+      "sources": [
+        "https://www.silverstone.co.uk/news/silverstone-renames-international-pits-straight",
+        "https://www.formula1.com/en/latest/article/silverstone-renames-pit-straight-in-honour-of-seven-time-champion-hamilton.5TZJlnwHTbTztorjozeikD",
+        "https://motorsportmagazine.com/articles/single-seaters/f1/silverstone-to-dedicate-hamilton-straight-in-honour-of-f1-champion"
+      ]
+    },
+    {
+      "id": "abbey",
+      "name": "Abbey",
+      "story": "Named after Luffield Abbey, a medieval Benedictine priory whose remains were found nearby.",
+      "sources": [
+        "https://www.formula1.com/en/latest/article/whats-in-a-name-the-history-behind-silverstones-iconic-corners.4Q3miKVCXBkz5rKtyYnL5z",
+        "https://www.formula1.com/en/latest/article/explained-how-every-silverstone-corner-got-its-name.idMlxFC2gfN2ApcPmifxN",
+        "https://www.autosport.com/f1/news/silverstone-circuit-guide-to-f1-track-including-corner-names-and-history/10631887/",
+        "https://mercedesamgf1.com/news/explained-how-the-silverstone-corners-got-their-names",
+        "https://her.northamptonshire.gov.uk/Monument/MNN11530",
+        "https://heritageportal.buckinghamshire.gov.uk/Monument/MBC4717",
+        "https://en.wikipedia.org/wiki/Luffield_Abbey",
+        "https://her.northamptonshire.gov.uk/Event/ENN5390"
+      ]
+    },
+    {
+      "id": "farm",
+      "name": "Farm",
+      "story": "Named after a farm that the original straight here once ran past.",
+      "sources": [
+        "https://www.formula1.com/en/latest/article/whats-in-a-name-the-history-behind-silverstones-iconic-corners.4Q3miKVCXBkz5rKtyYnL5z",
+        "https://www.formula1.com/en/latest/article/explained-how-every-silverstone-corner-got-its-name.idMlxFC2gfN2ApcPmifxN",
+        "https://mercedesamgf1.com/news/explained-how-the-silverstone-corners-got-their-names",
+        "https://www.autosport.com/f1/news/silverstone-circuit-guide-to-f1-track-including-corner-names-and-history/10631887/"
+      ]
+    },
+    {
+      "id": "village",
+      "name": "Village",
+      "story": "Named after Silverstone, the village just north of the circuit that also gave the track its name. It was built with the Arena section in 2010.",
+      "sources": [
+        "https://www.formula1.com/en/latest/article/explained-how-every-silverstone-corner-got-its-name.idMlxFC2gfN2ApcPmifxN",
+        "https://www.formula1.com/en/latest/article/whats-in-a-name-the-history-behind-silverstones-iconic-corners.4Q3miKVCXBkz5rKtyYnL5z",
+        "https://mercedesamgf1.com/news/explained-how-the-silverstone-corners-got-their-names",
+        "https://www.motorsportmagazine.com/articles/single-seaters/f1/silverstone-circuit-how-f1s-spiritual-home-has-evolved/",
+        "https://www.autosport.com/f1/news/silverstone-circuit-guide-to-f1-track-including-corner-names-and-history/10631887/"
+      ]
+    },
+    {
+      "id": "the-loop",
+      "name": "The Loop",
+      "story": "The only Silverstone corner named for its shape: a tight left-hand hairpin and the slowest point of the lap, added in 2010.",
+      "sources": [
+        "https://www.formula1.com/en/latest/article/whats-in-a-name-the-history-behind-silverstones-iconic-corners.4Q3miKVCXBkz5rKtyYnL5z",
+        "https://www.gpfans.com/en/f1-news/1023750/f1-silverstone-circuit-corner-names/",
+        "https://es.motorsport.com/all/news/nombres-curvas-silverstone-origen/4493847/",
+        "https://www.formula1.com/en/latest/article/explained-how-every-silverstone-corner-got-its-name.idMlxFC2gfN2ApcPmifxN",
+        "https://www.autosport.com/f1/news/silverstone-circuit-guide-to-f1-track-including-corner-names-and-history/10631887/",
+        "https://mercedesamgf1.com/news/explained-how-the-silverstone-corners-got-their-names",
+        "https://www.motorsportmagazine.com/articles/single-seaters/f1/silverstone-circuit-how-f1s-spiritual-home-has-evolved/",
+        "https://racingcircuits.info/europe/united-kingdom/silverstone.html"
+      ]
+    },
+    {
+      "id": "aintree",
+      "name": "Aintree",
+      "story": "Named after Aintree, near Liverpool, where a circuit in the racecourse grounds held the British Grand Prix five times between 1955 and 1962.",
+      "sources": [
+        "https://www.formula1.com/en/latest/article/explained-how-every-silverstone-corner-got-its-name.idMlxFC2gfN2ApcPmifxN",
+        "https://www.formula1.com/en/latest/article/whats-in-a-name-the-history-behind-silverstones-iconic-corners.4Q3miKVCXBkz5rKtyYnL5z",
+        "https://mercedesamgf1.com/news/explained-how-the-silverstone-corners-got-their-names",
+        "https://www.thejockeyclub.co.uk/aintree/media/press-releases/2025/07/formula-one-star-george-russell-hailed-a-recent-trip-to-aintree-racecourse-as-an-unforgettable-experience-after-he-visited-the-jockey-club-venue-to-pay-homage-to-its-historical-importance-in-british-motorsport/",
+        "https://www.liverpoolmuseums.org.uk/stories/liverpool-grand-prix",
+        "https://sportscardigest.com/?p=336292"
+      ]
+    },
+    {
+      "id": "brooklands",
+      "name": "Brooklands",
+      "story": "Named after Brooklands in Surrey, the first purpose-built motor racing circuit, which held the first two British Grands Prix, in 1926 and 1927. The Wellington Straight leading to it is built on a wartime runway and named after the Vickers Wellington bombers flown from RAF Silverstone.",
+      "sources": [
+        "https://www.formula1.com/en/latest/article/explained-how-every-silverstone-corner-got-its-name.idMlxFC2gfN2ApcPmifxN",
+        "https://www.autosport.com/f1/news/silverstone-circuit-guide-to-f1-track-including-corner-names-and-history/10631887/",
+        "https://mercedesamgf1.com/news/explained-how-the-silverstone-corners-got-their-names",
+        "https://www.heritagefund.org.uk/news/lottery-grant-success-home-worlds-first-motor-racing-circuit",
+        "https://www.gpfans.com/en/f1-news/1023750/f1-silverstone-circuit-corner-names/",
+        "https://www.royalautomobileclub.co.uk/about-the-club/history-of-the-club/",
+        "https://motorsportmagazine.com/archive/article/january-2023/89/delage-a-trois-1927-british-gp-winners-reunited",
+        "https://motorsportmagazine.com/archive/article/july-2024/158/brooklands-birthplace-of-british-motor-sport",
+        "https://www.formula1.com/en/latest/article/whats-in-a-name-the-history-behind-silverstones-iconic-corners.4Q3miKVCXBkz5rKtyYnL5z",
+        "https://racingcircuits.info/europe/united-kingdom/silverstone.html",
+        "https://her.northamptonshire.gov.uk/Monument/MNN17558",
+        "https://heritageportal.buckinghamshire.gov.uk/Monument/MBC23730"
+      ]
+    },
+    {
+      "id": "luffield",
+      "name": "Luffield",
+      "story": "Like Abbey, named after the medieval Luffield priory. Added in the late 1980s, it was once two corners and is now one long right-hander.",
+      "sources": [
+        "https://www.formula1.com/en/latest/article/explained-how-every-silverstone-corner-got-its-name.idMlxFC2gfN2ApcPmifxN",
+        "https://www.autosport.com/f1/news/silverstone-circuit-guide-to-f1-track-including-corner-names-and-history/10631887/",
+        "https://mercedesamgf1.com/news/explained-how-the-silverstone-corners-got-their-names",
+        "https://www.formula1.com/en/latest/article/whats-in-a-name-the-history-behind-silverstones-iconic-corners.4Q3miKVCXBkz5rKtyYnL5z",
+        "https://www.silverstone.co.uk/index.php/news/lap-through-ages-silverstone-celebrates-75-years-memorable-moments"
+      ]
+    },
+    {
+      "id": "woodcote",
+      "name": "Woodcote",
+      "story": "Named after Woodcote Park in Surrey, the country club of the Royal Automobile Club, which ran the first British Grand Prix at Silverstone, in 1948. It was once the last corner of the lap.",
+      "sources": [
+        "https://www.royalautomobileclub.co.uk/about-the-club/history-of-the-club/",
+        "https://www.formula1.com/en/latest/article/whats-in-a-name-the-history-behind-silverstones-iconic-corners.4Q3miKVCXBkz5rKtyYnL5z",
+        "https://www.formula1.com/en/latest/article/explained-how-every-silverstone-corner-got-its-name.idMlxFC2gfN2ApcPmifxN",
+        "https://www.silverstone.co.uk/index.php/news/lap-through-ages-silverstone-celebrates-75-years-memorable-moments",
+        "https://www.motorsportmagazine.com/articles/single-seaters/f1/silverstone-circuit-how-f1s-spiritual-home-has-evolved/",
+        "https://www.motorsportmagazine.com/archive/article/february-1991/4/around-and-about-february-1991"
+      ]
+    },
+    {
+      "id": "copse",
+      "name": "Copse",
+      "story": "Named after the small woods nearby, Chapel Copse and Cheese Copse. It was the first corner of the lap for almost sixty years.",
+      "sources": [
+        "https://www.formula1.com/en/latest/article/explained-how-every-silverstone-corner-got-its-name.idMlxFC2gfN2ApcPmifxN",
+        "https://www.formula1.com/en/latest/article/whats-in-a-name-the-history-behind-silverstones-iconic-corners.4Q3miKVCXBkz5rKtyYnL5z",
+        "https://www.autosport.com/f1/news/silverstone-circuit-guide-to-f1-track-including-corner-names-and-history/10631887/",
+        "https://www.silverstone.co.uk/index.php/news/lap-through-ages-silverstone-celebrates-75-years-memorable-moments",
+        "https://www.motorsportmagazine.com/articles/single-seaters/f1/silverstone-circuit-how-f1s-spiritual-home-has-evolved/"
+      ]
+    },
+    {
+      "id": "maggotts-becketts-chapel",
+      "name": "Maggotts, Becketts and Chapel",
+      "story": "Maggotts takes its name from a nearby moor, and Becketts and Chapel from a medieval chapel of St Thomas Becket, demolished in 1943 to make way for an airfield runway. The three bends became one run of esses in 1991.",
+      "sources": [
+        "https://www.formula1.com/en/latest/article/whats-in-a-name-the-history-behind-silverstones-iconic-corners.4Q3miKVCXBkz5rKtyYnL5z",
+        "https://www.formula1.com/en/latest/article/explained-how-every-silverstone-corner-got-its-name.idMlxFC2gfN2ApcPmifxN",
+        "https://mercedesamgf1.com/news/explained-how-the-silverstone-corners-got-their-names",
+        "https://jjheritage.com/why-silverstone-is-one-of-the-worlds-most-historic-motor-racing-circuits/",
+        "https://heritageportal.buckinghamshire.gov.uk/Monument/MBC2354",
+        "https://www.autosport.com/f1/news/silverstone-circuit-guide-to-f1-track-including-corner-names-and-history/10631887/",
+        "https://www.silverstone.co.uk/about/our-history",
+        "https://www.motorsportmagazine.com/archive/article/february-1991/4/around-and-about-february-1991",
+        "https://www.motorsportmagazine.com/articles/single-seaters/f1/silverstone-circuit-how-f1s-spiritual-home-has-evolved/"
+      ]
+    },
+    {
+      "id": "stowe",
+      "name": "Stowe",
+      "story": "Named after Stowe School, south of the circuit. The Hangar Straight leading to it is named after the wartime RAF base’s aircraft hangars, two of which stood beside the straight.",
+      "sources": [
+        "https://www.formula1.com/en/latest/article/whats-in-a-name-the-history-behind-silverstones-iconic-corners.4Q3miKVCXBkz5rKtyYnL5z",
+        "https://www.autosport.com/f1/news/silverstone-circuit-guide-to-f1-track-including-corner-names-and-history/10631887/",
+        "https://mercedesamgf1.com/news/explained-how-the-silverstone-corners-got-their-names",
+        "https://www.formula1.com/en/latest/article/explained-how-every-silverstone-corner-got-its-name.idMlxFC2gfN2ApcPmifxN",
+        "https://her.northamptonshire.gov.uk/Monument/MNN17558"
+      ]
+    },
+    {
+      "id": "vale",
+      "name": "Vale",
+      "story": "Its origin is not settled: the name may describe the slight dip on the run down from Stowe, or come from Aylesbury Vale, the district this part of the circuit lay in until 2020.",
+      "sources": [
+        "https://www.formula1.com/en/latest/article/whats-in-a-name-the-history-behind-silverstones-iconic-corners.4Q3miKVCXBkz5rKtyYnL5z",
+        "https://www.formula1.com/en/latest/article/explained-how-every-silverstone-corner-got-its-name.idMlxFC2gfN2ApcPmifxN",
+        "https://mercedesamgf1.com/news/explained-how-the-silverstone-corners-got-their-names",
+        "https://www.autosport.com/f1/news/silverstone-circuit-guide-to-f1-track-including-corner-names-and-history/10631887/",
+        "https://www.motorsportmagazine.com/archive/article/february-1991/4/around-and-about-february-1991"
+      ]
+    },
+    {
+      "id": "club",
+      "name": "Club",
+      "story": "Named after the Royal Automobile Club’s clubhouse on Pall Mall in London. It is now the last corner of the lap.",
+      "sources": [
+        "https://www.formula1.com/en/latest/article/whats-in-a-name-the-history-behind-silverstones-iconic-corners.4Q3miKVCXBkz5rKtyYnL5z",
+        "https://www.formula1.com/en/latest/article/explained-how-every-silverstone-corner-got-its-name.idMlxFC2gfN2ApcPmifxN",
+        "https://mercedesamgf1.com/news/explained-how-the-silverstone-corners-got-their-names",
+        "https://www.royalautomobileclub.co.uk/about-the-club/history-of-the-club/",
+        "https://www.silverstone.co.uk/index.php/news/lap-through-ages-silverstone-celebrates-75-years-memorable-moments",
+        "https://www.motorsportmagazine.com/articles/single-seaters/f1/silverstone-circuit-how-f1s-spiritual-home-has-evolved/",
+        "https://www.silverstone.co.uk/news/silverstone-renames-international-pits-straight"
+      ]
+    }
+  ],
+  "layouts": [
+    {
+      "id": "multiviewer-2022",
+      "provenance": "FastF1 circuit_info: MultiViewer circuit 2, its 2022 record, served for 2024",
+      "corners": [
+        { "letter": "", "number": 1, "x": 1192.5, "y": 4503.8 },
+        { "letter": "", "number": 2, "x": 2770.3, "y": 4462.9 },
+        { "letter": "", "number": 3, "x": 4845.3, "y": 5895.1 },
+        { "letter": "", "number": 4, "x": 5802.7, "y": 4733.5 },
+        { "letter": "", "number": 5, "x": 6232.3, "y": 6459.0 },
+        { "letter": "", "number": 6, "x": 631.4, "y": 10910.2 },
+        { "letter": "", "number": 7, "x": -566.3, "y": 9540.4 },
+        { "letter": "", "number": 8, "x": 761.3, "y": 12361.6 },
+        { "letter": "", "number": 9, "x": 5893.9, "y": 12947.2 },
+        { "letter": "", "number": 10, "x": 7295.8, "y": 7780.5 },
+        { "letter": "", "number": 11, "x": 7535.0, "y": 6906.2 },
+        { "letter": "", "number": 12, "x": 7336.7, "y": 5474.7 },
+        { "letter": "", "number": 13, "x": 7776.5, "y": 4163.5 },
+        { "letter": "", "number": 14, "x": 6806.8, "y": 3146.7 },
+        { "letter": "", "number": 15, "x": 2399.0, "y": -4099.2 },
+        { "letter": "", "number": 16, "x": -620.4, "y": -993.8 },
+        { "letter": "", "number": 17, "x": -1438.1, "y": -1146.8 },
+        { "letter": "", "number": 18, "x": -2309.3, "y": -105.7 }
+      ],
+      "anchors": {
+        "hamilton-straight": { "startFinish": true },
+        "abbey": { "corners": ["1"] },
+        "farm": { "corners": ["2"] },
+        "village": { "corners": ["3"] },
+        "the-loop": { "corners": ["4"] },
+        "aintree": { "corners": ["5"] },
+        "brooklands": { "corners": ["6"] },
+        "luffield": { "corners": ["7"] },
+        "woodcote": { "corners": ["8"] },
+        "copse": { "corners": ["9"] },
+        "maggotts-becketts-chapel": {
+          "corners": ["10", "11", "12", "13", "14"]
+        },
+        "stowe": { "corners": ["15"] },
+        "vale": { "corners": ["16"] },
+        "club": { "corners": ["17", "18"] }
+      }
+    }
+  ]
+}

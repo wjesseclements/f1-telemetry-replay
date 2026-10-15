@@ -24,17 +24,35 @@ import { useEffect, useMemo, useRef, memo } from "react";
 import { advanceClock, frameDelta } from "../engine/clock";
 import { canvasInsets, fitTransform } from "../engine/geometry";
 import { sampleAt, wrapClock } from "../engine/interpolate";
+import type { LoreStory } from "../engine/lore";
 import type { Replay } from "../engine/schema";
 import { useTransport } from "../store/transport";
 import { telemetry } from "../telemetry/channel";
+import { CornerStoryTargets } from "./CornerStoryTargets";
 import { readChromeColors } from "./palette";
 import { buildScenePaths, type ScenePaths } from "./paths";
 import { buildScene, drawFrame, type Viewport } from "./scene";
+import { placeStoryTargets, storySquares } from "./storyTargets";
 
 export interface TrackCanvasProps {
   /** A validated replay. Loading and validation happen before mount. */
   replay: Replay;
+  /**
+   * This replay's corner stories, in lap order (Slice 18), or `null` for a
+   * replay with none, which renders exactly what it rendered before stories
+   * existed. Resolved once per replay by `App`, so it changes with `replay` and
+   * never on its own.
+   */
+  stories?: readonly LoreStory[] | null;
+  /**
+   * Open story `index`. STABLE for the canvas's life (`App` memoises it): a new
+   * function per render would defeat the memo below.
+   */
+  onOpenStory?: (index: number) => void;
 }
+
+/** The default `onOpenStory`: one function, so the default never breaks memo. */
+const IGNORE_STORY = (): void => {};
 
 /**
  * MEMOISED, and it is load-bearing rather than an optimisation.
@@ -46,12 +64,20 @@ export interface TrackCanvasProps {
  * pinned since Slice 5. Opening a panel is not a reason to re-render a canvas that
  * owns its own rAF loop and reads everything else through refs.
  *
- * `replay` is the only prop and it is compared by identity, which is already the
- * granularity the effects below key on. See `App.test.tsx` for the toggle test.
+ * Every prop is compared by identity, which is already the granularity the effects
+ * below key on: `replay`, and since Slice 18 the corner `stories` resolved from it
+ * and a stable `onOpenStory`, both of which change only when the replay does. See
+ * `App.test.tsx` for the toggle test.
  */
-function TrackCanvasImpl({ replay }: TrackCanvasProps) {
+function TrackCanvasImpl({
+  replay,
+  stories = null,
+  onOpenStory = IGNORE_STORY,
+}: TrackCanvasProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  /** The corner-story buttons' layer, when this replay has stories. */
+  const storiesRef = useRef<HTMLDivElement>(null);
   /**
    * The live playback clock, in seconds. A ref, not state — see the file header.
    * It outlives the effect so resizing (or StrictMode's remount) resumes the lap
@@ -135,9 +161,29 @@ function TrackCanvasImpl({ replay }: TrackCanvasProps) {
       };
     };
 
+    /**
+     * Lay the corner-story buttons over the badges just measured (Slice 18):
+     * the same `paths` points the next frame paints, so on a resize the buttons
+     * move in the frame the discs do. Style writes, never state; no stories, no
+     * work. See `storyTargets.ts`.
+     */
+    const placeStories = ({
+      view,
+      paths,
+    }: ReturnType<typeof measure>): void => {
+      const layer = storiesRef.current;
+      if (layer === null || stories === null) return;
+      placeStoryTargets(
+        layer,
+        storySquares(stories, paths, view.width, view.height),
+      );
+    };
+
     let measured = measure();
+    placeStories(measured);
     const observer = new ResizeObserver(() => {
       measured = measure();
+      placeStories(measured);
     });
     observer.observe(wrap);
 
@@ -212,11 +258,18 @@ function TrackCanvasImpl({ replay }: TrackCanvasProps) {
       cancelAnimationFrame(rafId);
       observer.disconnect();
     };
-  }, [replay, scene, duration]);
+  }, [replay, scene, duration, stories]);
 
   return (
     <div ref={wrapRef} className="relative h-full w-full min-w-0">
       <canvas ref={canvasRef} className="block" />
+      {stories !== null && stories.length > 0 && (
+        <CornerStoryTargets
+          ref={storiesRef}
+          stories={stories}
+          onOpenStory={onOpenStory}
+        />
+      )}
     </div>
   );
 }

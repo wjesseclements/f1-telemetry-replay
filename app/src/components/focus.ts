@@ -42,3 +42,35 @@ export const COMPACT_FOCUS_RING =
   "compact:focus-visible:ring-inset compact:focus-visible:ring-offset-0 compact:focus-visible:ring-txt";
 export const COMPACT_PEER_FOCUS_RING =
   "compact:peer-focus-visible:ring-inset compact:peer-focus-visible:ring-offset-0 compact:peer-focus-visible:ring-txt";
+
+/**
+ * A corner-story badge's focus ring (Slice 18), drawn INSIDE its tap area.
+ *
+ * The badges' buttons are invisible squares over the discs the canvas paints, up
+ * to 44 px a side (`engine/loreTargets.ts`), and a square near an edge of the
+ * canvas reaches it: a ring 2 px outside, as `FOCUS_RING` draws, would be cut off
+ * there by the canvas layer's clip. Inset and white (`--c-txt`), as on the compact
+ * bars (`COMPACT_FOCUS_RING`, ruled 2026-10-12), it stays whole inside the square
+ * and is not mistaken for a selected state.
+ *
+ * `group/badge` names the button for its member squares: a story over several
+ * corner numbers (Maggotts, Becketts and Chapel) is one tab stop, and its other
+ * squares ring with it (`BADGE_MEMBER_FOCUS_RING`), so a keyboard visitor sees
+ * every number the press will open.
+ */
+export const BADGE_FOCUS_RING =
+  "group/badge outline-none ring-inset focus-visible:ring-2 focus-visible:ring-txt";
+/** `BADGE_FOCUS_RING` on a story's other squares, driven by its button. */
+export const BADGE_MEMBER_FOCUS_RING =
+  "ring-inset group-focus-visible/badge:ring-2 group-focus-visible/badge:ring-txt";
+
+/**
+ * A corner-story badge under a mouse (Slice 18): a faint wash over the square,
+ * and over every other square of its story (`BADGE_MEMBER_HOVER`; hovering a
+ * member hovers its button too). Only where the primary pointer can hover, so a
+ * tap on a phone does not leave a square lit. A wash rather than a ring, so it
+ * never competes with the focus ring on a focused badge under the pointer.
+ */
+export const BADGE_HOVER = "[@media(hover:hover)]:hover:bg-txt/10";
+export const BADGE_MEMBER_HOVER =
+  "[@media(hover:hover)]:group-hover/badge:bg-txt/10";

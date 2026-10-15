@@ -1,6 +1,7 @@
-import { useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useCompactLayout } from "./components/compactLayout";
+import { CornerCard } from "./components/CornerCard";
 import { FeaturedPanel } from "./components/FeaturedPanel";
 import { COMPACT_FOCUS_RING, FOCUS_RING } from "./components/focus";
 import { Hud } from "./components/Hud";
@@ -12,7 +13,10 @@ import { StatusBanner } from "./components/StatusBanner";
 import { SpeedLegend } from "./components/SpeedLegend";
 import { TOUCH_TARGET } from "./components/touchTarget";
 import { TransportBar } from "./components/TransportBar";
+import { resolveLore } from "./engine/lore";
 import { useTransportKeys } from "./keyboard/useTransportKeys";
+import { LORE } from "./lore";
+import { storyButtonId } from "./render/storyTargets";
 import { TrackCanvas } from "./render/TrackCanvas";
 import { useTransport } from "./store/transport";
 
@@ -106,6 +110,79 @@ export default function App({ bootstrapError = null }: AppProps) {
     galleryToggleRef.current?.focus();
   };
 
+  /**
+   * The corner stories for this replay (Slice 18), found by its corner record
+   * (`engine/lore.ts`) once per replay, or `null`: a replay whose corners match
+   * no lore file renders exactly the page it rendered before stories existed.
+   * Memoised on the replay, so the canvas's `stories` prop changes only with
+   * its `replay` prop and the canvas still commits once per replay.
+   */
+  const stories = useMemo(
+    () =>
+      replay === null
+        ? null
+        : (resolveLore(replay.track.corners, LORE)?.stories ?? null),
+    [replay],
+  );
+
+  /**
+   * Which story the corner card shows, or `null` while it is closed. Local
+   * state, like the gallery's, not the store: nothing in the render loop reads
+   * it (CLAUDE.md rule 1's field list is unchanged).
+   *
+   * A card must never outlive the replay its stories belong to, so a new
+   * replay drops it DURING render, on a value comparison — `ScenarioEvents`'
+   * pattern — and the stale card never paints.
+   */
+  const [storyIndex, setStoryIndex] = useState<number | null>(null);
+  const [storiesOf, setStoriesOf] = useState(replay);
+  if (replay !== storiesOf) {
+    setStoriesOf(replay);
+    setStoryIndex(null);
+  }
+
+  /**
+   * Open a story from its badge. It pauses the replay, and closing the card
+   * leaves it paused (ruled 2026-10-14, the event card's precedent): the card
+   * is read over a still frame. Stable, so the memoised canvas that takes it
+   * as a prop is not re-rendered by App's own state.
+   *
+   * One dialog at a time: while the track cell holds any dialog (the gallery,
+   * an event card, this card) a press opens nothing. The badges are already
+   * hidden then, by the `:has([role=dialog])` rule on this same cell
+   * (`render/CornerStoryTargets.tsx`); this is that rule in JS, for a browser
+   * without `:has()`, where a keyboard user could otherwise open a card under
+   * the desktop gallery. Read from the DOM at the press, so it stays stable.
+   */
+  const trackCellRef = useRef<HTMLDivElement>(null);
+  const openStory = useCallback((index: number) => {
+    if (trackCellRef.current?.querySelector('[role="dialog"]')) return;
+    useTransport.getState().pause();
+    setStoryIndex(index);
+  }, []);
+
+  /**
+   * Drop the card without moving focus: the route for the gallery opening and
+   * an event card firing over it (narration outranks lore, ruled 2026-10-14),
+   * each of which takes focus itself. Stable for `ScenarioEvents`' effect.
+   */
+  const dropStory = useCallback(() => setStoryIndex(null), []);
+
+  /**
+   * Close, by Close or Escape, and put focus on the badge of the story the
+   * card was SHOWING, after any Previous/Next, by its id. Committed
+   * synchronously first, as the gallery's close is: on a phone the open card
+   * holds the canvas inert, and every badge is hidden while any dialog is
+   * open, so the badge can take focus only once the card is gone.
+   */
+  const closeStory = () => {
+    const shown =
+      stories !== null && storyIndex !== null ? stories[storyIndex] : null;
+    flushSync(() => setStoryIndex(null));
+    if (shown !== null)
+      document.getElementById(storyButtonId(shown.id))?.focus();
+  };
+
   // App itself subscribes to NOTHING per-frame. `Hud` and `TransportBar` own their own
   // telemetry subscriptions, which is what keeps their 30 Hz re-renders away from
   // `TrackCanvas` — a subscription up here would re-render the canvas with them.
@@ -165,7 +242,15 @@ export default function App({ bootstrapError = null }: AppProps) {
         <button
           ref={galleryToggleRef}
           type="button"
-          onClick={() => (galleryOpen ? closeGallery() : setGalleryOpen(true))}
+          onClick={() => {
+            if (galleryOpen) {
+              closeGallery();
+            } else {
+              // The gallery outranks a corner card: one dialog at a time.
+              dropStory();
+              setGalleryOpen(true);
+            }
+          }}
           aria-expanded={galleryOpen}
           aria-controls={GALLERY_PANEL_ID}
           // The label as a tooltip, only where it is visually hidden behind the
@@ -199,13 +284,20 @@ export default function App({ bootstrapError = null }: AppProps) {
               wrapper steps aside (`contents`) and the track cell spans the
               page grid's top two rows (`FULL_TRACK_GRID`). */}
           <div className="flex min-h-0 flex-1 flex-col side:flex-row fulltrack:contents">
-            <div className="relative min-h-0 min-w-0 flex-1 fulltrack:col-start-1 fulltrack:row-span-2 fulltrack:row-start-1">
+            <div
+              ref={trackCellRef}
+              className="group/track relative min-h-0 min-w-0 flex-1 fulltrack:col-start-1 fulltrack:row-span-2 fulltrack:row-start-1"
+            >
               {/* The canvas is memoised, so mounting and unmounting the panel
                   beside it does not re-render it — the replay animates behind the
                   scrim without interruption. Pinned in `App.test.tsx`. On a
                   phone the panel and the event card cover the whole screen from
                   here: `fixed`, not moved (`components/overlay.ts`). */}
-              <TrackCanvas replay={replay} />
+              <TrackCanvas
+                replay={replay}
+                stories={stories}
+                onOpenStory={openStory}
+              />
               <SpeedLegend />
               {/* The abnormal-flag strip and the narrated-moment overlay
                   (Slice 17): siblings of the canvas with their own ≤30 Hz
@@ -213,7 +305,20 @@ export default function App({ bootstrapError = null }: AppProps) {
                   subscribes to nothing per-frame. The banner sits under the
                   panel and the card (z-5 vs z-10): narration outranks signage. */}
               <StatusBanner replay={replay} />
-              <ScenarioEvents />
+              {/* The corner card (Slice 18): before the event card and the
+                  gallery, which each close it rather than stack over it. The
+                  track cell is `group/track`, so while any of the three is
+                  open the badges under it are hidden
+                  (`render/CornerStoryTargets.tsx`). */}
+              {stories !== null && storyIndex !== null && (
+                <CornerCard
+                  stories={stories}
+                  index={storyIndex}
+                  onStep={setStoryIndex}
+                  onClose={closeStory}
+                />
+              )}
+              <ScenarioEvents onEventShown={dropStory} />
               {galleryOpen && (
                 <FeaturedPanel id={GALLERY_PANEL_ID} onClose={closeGallery} />
               )}

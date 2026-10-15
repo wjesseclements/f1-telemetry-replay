@@ -7,7 +7,7 @@
  * load silences everything.
  */
 import { act, cleanup, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import sampleLap from "../engine/__fixtures__/sample-lap.json";
 import { lastInstant } from "../engine/clock";
 import { parseReplay } from "../engine/load";
@@ -85,6 +85,25 @@ describe("ScenarioEvents", () => {
     expect(screen.getByText("RED FLAG")).toBeInTheDocument();
     expect(screen.getByText("The stoppage, narrated.")).toBeInTheDocument();
     expect(useTransport.getState().isPlaying).toBe(false);
+  });
+
+  it("says when a card is shown, once per firing, so App can close a corner card (Slice 18)", () => {
+    // Narration outranks lore: App closes an open corner card on this call
+    // rather than stack two dialogs. Arming, ticking short of the mark and
+    // sitting past it say nothing.
+    const onEventShown = vi.fn();
+    render(<ScenarioEvents onEventShown={onEventShown} />);
+    tick(10);
+    tick(29);
+    expect(onEventShown).not.toHaveBeenCalled();
+    tick(31);
+    expect(onEventShown).toHaveBeenCalledOnce();
+    tick(32);
+    expect(onEventShown).toHaveBeenCalledOnce();
+    act(() => screen.getByRole("button", { name: "Close" }).click());
+    tick(10);
+    tick(35);
+    expect(onEventShown).toHaveBeenCalledTimes(2);
   });
 
   it("treats the first observed clock as arming, not crossing — landing past the mark is quiet", () => {
