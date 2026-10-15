@@ -62,6 +62,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { preview, type PreviewServer } from "vite";
 import { scenarioUrl } from "../src/engine/gallery";
+import { parseReplay } from "../src/engine/load";
 import { resolveLore } from "../src/engine/lore";
 import { SCENARIOS } from "../src/gallery/scenarios";
 import { LORE } from "../src/lore";
@@ -390,8 +391,8 @@ function largestScenario(): Scenario & { file: string } {
 
 /**
  * The corner stories the largest scenario carries (Slice 18), resolved the way
- * the app resolves them: the BUILT asset's corner record against the bundled
- * lore. State D reads each badge by its id and expects its ruled name; no copy
+ * the app resolves them: the BUILT asset, validated, its corner record against
+ * the bundled lore. State D reads each badge by its id and expects its ruled name; no copy
  * is written down here. A scenario with no stories gives an empty list, and
  * D's rows then FAIL rather than pass with nothing to check.
  */
@@ -399,11 +400,9 @@ function storiesOf(file: string): StoryExpectation[] {
   const scenario = SCENARIOS.find((s) => s.file === file);
   if (scenario === undefined) throw new Error(`no scenario for ${file}`);
   const path = join(DIST_DIR, scenarioUrl(scenario, "/"));
-  const { track } = JSON.parse(readFileSync(path, "utf8")) as {
-    track: {
-      corners: { number: number; letter: string; x: number; y: number }[];
-    };
-  };
+  // Through the replay contract, like every replay the app reads (rule 7):
+  // the corners matched here are the ones a visitor's page matches.
+  const { track } = parseReplay(JSON.parse(readFileSync(path, "utf8")), path);
   const lore = resolveLore(track.corners, LORE);
   return (lore?.stories ?? []).map((story) => ({
     buttonId: storyButtonId(story.id),
