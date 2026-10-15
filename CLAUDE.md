@@ -72,7 +72,8 @@ from FastF1 data. PRD.md holds the detail; this file holds the law.
     - Slice 27's 724x257 (Safari on a 375x812 iPhone held sideways, tab bar shown). It
       is the one viewport where `fulltrack:` decides the layout.
   - **States.** It visits first load, the largest gallery scenario loaded by its card,
-    and the gallery reopened. Every assertion prints PASS/FAIL with what it measured.
+    the gallery reopened, and (state D, Slice 18) that scenario's corner stories. Every
+    assertion prints PASS/FAIL with what it measured.
   - **Phone rows.** At the eight phone-layout viewports (every one but 1280x720 and
     1440x900), first load and the reopened gallery each add "panel covers the viewport":
     the full-screen gallery's box must equal the viewport's within 1 px (Slice 26).
@@ -84,9 +85,9 @@ from FastF1 data. PRD.md holds the detail; this file holds the law.
     ruled 2026-10-13). At 724x257 the header is a grid item beside the track, where a
     misplaced one passed every other row.
   - **Names row.** At every viewport, the loaded scenario then adds "transport names
-    carry no description" (Slice 27, fourth batch). It is the one row that reads
-    Chrome's accessibility tree; the others read boxes, counts, and the run's requests
-    and exceptions.
+    carry no description" (Slice 27, fourth batch). It and state D's names row are
+    the rows that read Chrome's accessibility tree; the others read boxes, counts,
+    focus, and the run's requests and exceptions.
     - It reads it over CDP (`scripts/layout/accessibility.ts`) and fails if play/pause
       or restart carries a description, or a name other than Play/Pause and Restart
       lap. It reads the toggle paused, as "Play"; the playing state is pinned only by
@@ -94,13 +95,31 @@ from FastF1 data. PRD.md holds the detail; this file holds the law.
     - Why: Chrome exposes a `title` as a description unless the title equals the
       button's rendered text, `aria-hidden` text included. jsdom cannot see that, so a
       glyph drawn as text passed every test.
-    - That makes 206 rows. The human kept this row (2026-10-14).
+    - That made 206 rows. The human kept this row (2026-10-14).
+  - **State D, the corner stories** (Slice 18). Appended after C: per viewport, A–C
+    print exactly as before, then D's rows, then the two whole-run rows; the table
+    without D's rows is the 206-row table byte for byte.
+    - It starts on C's reopened gallery: "badges hidden under the gallery" (the only
+      gate for the `:has()` rule; it needs at least one badge).
+    - A trusted CDP press closes the gallery. Then the badges' squares: "inside the
+      canvas", "centred on the painted discs" (within 0.5 px), "of different stories
+      disjoint", "centres hit their own button", and "badge names carry no
+      description" (the ruled names, read from Chrome's accessibility tree).
+    - A trusted press on the LAST story's badge opens the corner card: its heading
+      row and Close (the gallery's own probe, `panel` swapped) and, at the eight
+      phone viewports, "corner card covers the viewport". A trusted Escape, then
+      "focus back on its badge".
+    - The stories come from the built asset's corner record through the bundled
+      lore (`resolveLore`), so no copy is written into the check. "Centred on the
+      painted discs" reads the canvas's own badge calls: a recorder installed
+      before the app loads (`installPaintRecorder`) that passes every call through.
+    - That makes 304 rows (9 per viewport, 10 at a phone).
   - **Offline inside the browser too.** Every host but loopback is unresolvable
     (`--host-resolver-rules` + `--no-proxy-server`). Any request off the preview origin
     (page, workers, frames) is a FAIL, as is an uncaught page exception.
   - **Exit codes.** 1 = the run finished with a FAIL row (read the table). 2 = it did
     not finish: no build, no Chrome, or the 90 s cap (read the ABORTED line). A run
-    takes about 5 s.
+    takes about 6.5 s.
   - **Gated** (Slice 23): it runs last in `npm run check` and as a step of CI's
     `verify`.
   - **PLAN entries that carry its history:**
@@ -110,6 +129,7 @@ from FastF1 data. PRD.md holds the detail; this file holds the law.
     - Slice 26's: the Safari matrix.
     - Slice 27's: why 724x300 is not gated (it passes with the header in either place)
       and that no failed-load state is gated.
+    - Slice 18's: state D, and the mutation that fails each of its rows.
   - **The layout variants:**
     - `side:` is the side-by-side switch: `md`, or any screen 5:4 or wider.
     - `onerow:` is the header's one-line rule: 5:4 or wider, at most 43.75rem tall, or

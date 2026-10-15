@@ -5,20 +5,31 @@
  * prove WHAT renders but never WHERE. This drives the system's headless Chrome
  * over the DevTools Protocol against the BUILT app (`dist/`, served by Vite's own
  * `preview()`) and asserts the geometric facts a visitor depends on, at ten
- * viewports (`VIEWPORTS`) and in three states (`layout/states.ts`):
+ * viewports (`VIEWPORTS`) and in four states (`layout/states.ts`):
  *
  *   A  first load — the gallery panel open over the committed fixture;
  *   B  the largest gallery scenario (most cars) loaded by clicking its card;
- *   C  the gallery reopened over that replay.
+ *   C  the gallery reopened over that replay;
+ *   D  that replay's corner stories (Slice 18): the badges hidden under C's
+ *      gallery, then, with the gallery closed by a trusted press, inside the
+ *      canvas, on the discs it painted, disjoint and reachable; the corner
+ *      card opened from the last badge by a trusted press; focus back on that
+ *      badge after a trusted Escape.
  *
  * Every assertion prints PASS/FAIL with the numbers it measured. Per viewport,
  * two more rows cover the whole run: no request off the preview origin (from the
  * page, its workers or its frames) and no uncaught page exception. At a
  * phone-layout viewport (`isPhoneLayout`), A and C each add one: the gallery
- * covers the whole viewport (Slice 26). One row in B reads Chrome's
- * accessibility tree rather than the page: play/pause (paused, so "Play") and
- * restart have their names and no description, so a tooltip is not exposed as a
- * description repeating the name (Slice 27, `layout/accessibility.ts`).
+ * covers the whole viewport (Slice 26); and D one more, the corner card's.
+ * Two rows read Chrome's accessibility tree rather than the page: in B,
+ * play/pause (paused, so "Play") and restart have their names and no
+ * description, so a tooltip is not exposed as a description repeating the name
+ * (Slice 27, `layout/accessibility.ts`); in D, every badge has its story's ruled
+ * name and no description.
+ *
+ * D is appended after C, so per viewport A–C print first and exactly as they
+ * did before it, then D's rows, then the two whole-run rows; the table without
+ * D's rows is the table before them.
  *
  *     npm run build && npm run check:layout
  *
@@ -51,18 +62,25 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { preview, type PreviewServer } from "vite";
 import { scenarioUrl } from "../src/engine/gallery";
+import { resolveLore } from "../src/engine/lore";
 import { SCENARIOS } from "../src/gallery/scenarios";
+import { LORE } from "../src/lore";
+import { CORNER_BADGE_RADIUS } from "../src/render/scene";
+import { storyButtonId } from "../src/render/storyTargets";
 import { CdpClient, CdpPage } from "./layout/cdp";
 import { findChrome, startChrome, type ChromeProcess } from "./layout/chrome";
 import { preflight } from "./layout/preflight";
+import { installPaintRecorder } from "./layout/probe";
 import { PageRecorder } from "./layout/recorder";
 import { Report } from "./layout/report";
 import {
   stateA,
   stateB,
   stateC,
+  stateD,
   type Scenario,
   type StateContext,
+  type StoryExpectation,
 } from "./layout/states";
 import { Targets } from "./layout/targets";
 
@@ -191,6 +209,7 @@ async function checkViewport(
   vp: { width: number; height: number },
   origin: string,
   scenario: Scenario,
+  stories: readonly StoryExpectation[],
 ): Promise<void> {
   const name = `${vp.width}x${vp.height}`;
   step(`opening a ${name} tab`);
@@ -234,6 +253,14 @@ async function checkViewport(
     await page.send("Emulation.setEmulatedMedia", {
       features: [{ name: "prefers-reduced-motion", value: "reduce" }],
     });
+    // State D's paint recorder (Slice 18): it keeps the corner badges the
+    // canvas paints, for "badges centred on the painted discs". Installed
+    // before the app loads, and it only records, so A–C measure the page
+    // exactly as before (their rows are byte-identical with and without it).
+    await page.send("Page.enable");
+    await page.send("Page.addScriptToEvaluateOnNewDocument", {
+      source: `(${installPaintRecorder.toString()})(${CORNER_BADGE_RADIUS})`,
+    });
 
     const ctx: StateContext = {
       page,
@@ -242,7 +269,7 @@ async function checkViewport(
       step,
       phone: isPhoneLayout(vp),
     };
-    let reached: "none" | "A" | "B" = "none";
+    let reached: "none" | "A" | "B" | "C" = "none";
     try {
       step(`loading the app at ${name}`);
       const nav = await page.send<{ errorText?: string }>("Page.navigate", {
@@ -256,16 +283,28 @@ async function checkViewport(
       await stateB(ctx, scenario);
       reached = "B";
       await stateC(ctx);
+      reached = "C";
+      await stateD(ctx, stories);
     } catch (err) {
       // A state that could not be reached is a FAIL, never a silent skip — and
       // so is every state that depended on it.
-      const failed = reached === "none" ? "A" : reached === "A" ? "B" : "C";
+      const failed =
+        reached === "none"
+          ? "A"
+          : reached === "A"
+            ? "B"
+            : reached === "B"
+              ? "C"
+              : "D";
       report.record(name, failed, "reached", false, message(err));
       if (failed === "A") {
         report.record(name, "B", "reached", false, "A not reached");
       }
-      if (failed !== "C") {
+      if (failed === "A" || failed === "B") {
         report.record(name, "C", "reached", false, "B not reached");
+      }
+      if (failed !== "D") {
+        report.record(name, "D", "reached", false, "C not reached");
       }
     }
   } finally {
@@ -347,6 +386,31 @@ function largestScenario(): Scenario & { file: string } {
   }
   if (best === null) throw new Error("the gallery manifest has no scenarios");
   return best;
+}
+
+/**
+ * The corner stories the largest scenario carries (Slice 18), resolved the way
+ * the app resolves them: the BUILT asset's corner record against the bundled
+ * lore. State D reads each badge by its id and expects its ruled name; no copy
+ * is written down here. A scenario with no stories gives an empty list, and
+ * D's rows then FAIL rather than pass with nothing to check.
+ */
+function storiesOf(file: string): StoryExpectation[] {
+  const scenario = SCENARIOS.find((s) => s.file === file);
+  if (scenario === undefined) throw new Error(`no scenario for ${file}`);
+  const path = join(DIST_DIR, scenarioUrl(scenario, "/"));
+  const { track } = JSON.parse(readFileSync(path, "utf8")) as {
+    track: {
+      corners: { number: number; letter: string; x: number; y: number }[];
+    };
+  };
+  const lore = resolveLore(track.corners, LORE);
+  return (lore?.stories ?? []).map((story) => ({
+    buttonId: storyButtonId(story.id),
+    name: story.accessibleName,
+    startFinish: story.startFinish,
+    corners: story.cornerIndices,
+  }));
 }
 
 /**
@@ -461,6 +525,7 @@ async function main(): Promise<void> {
   step("checking the build");
   checkBuild();
   const scenario = largestScenario();
+  const stories = storiesOf(scenario.file);
   const binary = findChrome();
 
   server = await within(
@@ -506,7 +571,7 @@ async function main(): Promise<void> {
   for (const vp of VIEWPORTS) {
     if (report.isSealed) return; // aborted mid-run: the abort owns the exit
     try {
-      await checkViewport(client, targets, vp, origin, scenario);
+      await checkViewport(client, targets, vp, origin, scenario, stories);
     } catch (err) {
       report.record(
         `${vp.width}x${vp.height}`,

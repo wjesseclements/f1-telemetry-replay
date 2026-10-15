@@ -8,13 +8,23 @@
  * the teardown it triggered, say) is not news and is not printed twice.
  */
 
-/** A: first load · B: the largest scenario · C: gallery reopened · *: whole run */
-export type StateKey = "A" | "B" | "C" | "*";
+/**
+ * A: first load · B: the largest scenario · C: gallery reopened · D: its corner
+ * stories (Slice 18) · *: whole run
+ */
+export type StateKey = "A" | "B" | "C" | "D" | "*";
 
+/**
+ * Column widths are the widest cell's, so a name longer than the widest here
+ * would re-pad every row of a run that had none: "D stories" is no wider than
+ * "A first load", and D's assertions no wider than B's longest, so A–C print
+ * exactly as they did before D existed.
+ */
 const STATE_NAMES: Record<StateKey, string> = {
   A: "A first load",
   B: "B scenario",
   C: "C reopened",
+  D: "D stories",
   "*": "* whole run",
 };
 

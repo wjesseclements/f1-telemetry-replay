@@ -9,7 +9,8 @@
  *
  * They only READ, with two deliberate exceptions that put state back: the reach
  * probe scrolls the panel to its end and then restores `scrollTop`, and the click
- * helpers click. Every selector arrives in the argument, so the list of what the
+ * helpers click. (State D's clicks and its Escape are TRUSTED input, sent over
+ * CDP from Node, `input.ts`; nothing in-page fakes them.) Every selector arrives in the argument, so the list of what the
  * check depends on in the app's markup lives in one place (`SELECTORS`, in
  * `states.ts`). The one lookup that is not a selector is the panel's heading,
  * found the way assistive tech finds it: through the dialog's `aria-labelledby`.
@@ -62,6 +63,12 @@ export interface Selectors {
   legendCaption: string;
   /** …and a substring of that name, which is how the legend is told apart. */
   legendName: string;
+  /**
+   * The corner card (Slice 18), state D's dialog: measured by `probeLayout`
+   * with `panel` swapped for this, so its heading and Close are found exactly
+   * as the gallery's are.
+   */
+  cornerCard: string;
 }
 
 export interface PanelProbe {
@@ -286,4 +293,134 @@ export function clickToggle(sel: Selectors): boolean {
   if (toggle === null) return false;
   toggle.click();
   return true;
+}
+
+/** One corner story's button, as state D reads it (Slice 18). */
+export interface StoryTargetReading {
+  id: string;
+  /** Whether an element with this id exists at all. */
+  found: boolean;
+  /** Its computed `visibility` is `visible`: not hidden under a dialog. */
+  visible: boolean;
+  /** Its tap squares: the button's own first, then its member squares'. */
+  squares: Box[];
+  /** Per square: a hit test at its centre lands inside the story's button. */
+  hits: boolean[];
+}
+
+export interface StoryTargetsProbe {
+  canvas: Box | null;
+  targets: StoryTargetReading[];
+}
+
+/**
+ * Measure every corner story's button by id (`ids`, in lap order): whether it
+ * is visible, its squares (a story over several corner numbers has one button
+ * and `aria-hidden` member squares inside it), and whether a hit test at each
+ * square's centre reaches that button. The canvas box is the clip they must
+ * stay inside.
+ */
+export function probeStoryTargets(arg: {
+  ids: string[];
+  canvas: string;
+}): StoryTargetsProbe {
+  const box = (el: Element): Box => {
+    const r = el.getBoundingClientRect();
+    return {
+      top: r.top,
+      left: r.left,
+      bottom: r.bottom,
+      right: r.right,
+      width: r.width,
+      height: r.height,
+    };
+  };
+  const canvas = document.querySelector(arg.canvas);
+  const targets = arg.ids.map((id) => {
+    const button = document.getElementById(id);
+    if (button === null) {
+      return { id, found: false, visible: false, squares: [], hits: [] };
+    }
+    const squares = [
+      button,
+      ...Array.from(button.querySelectorAll(":scope > [aria-hidden]")),
+    ].map(box);
+    const hits = squares.map((s) => {
+      const target = document.elementFromPoint(
+        s.left + s.width / 2,
+        s.top + s.height / 2,
+      );
+      return target !== null && button.contains(target);
+    });
+    return {
+      id,
+      found: true,
+      visible: getComputedStyle(button).visibility === "visible",
+      squares,
+      hits,
+    };
+  });
+  return { canvas: canvas === null ? null : box(canvas), targets };
+}
+
+/** The id of the focused element, or "" (the body, or nothing, has none). */
+export function focusedId(): string {
+  return document.activeElement?.id ?? "";
+}
+
+/**
+ * What the canvas painted in its last whole frame (Slice 18): the centre of
+ * every corner badge's disc, in the order `drawCorners` paints them (the
+ * replay's corner order), and the point the `S/F` label is drawn at. Canvas
+ * CSS px.
+ */
+export interface BadgePaint {
+  arcs: [number, number][];
+  startFinish: [number, number] | null;
+}
+
+/**
+ * Record the badges the canvas paints, for state D's "badges centred on the
+ * painted discs". Installed on every new document BEFORE the app's script runs
+ * (`Page.addScriptToEvaluateOnNewDocument`, `layout-check.ts`): it wraps the 2D
+ * context's `arc`, `fillText` and `clearRect`, keeps each frame's discs of
+ * radius `radius` (the badges' radius; no car marker uses it) and its `S/F`
+ * point, and publishes a frame when the next one starts clearing. It records
+ * and passes every call through unchanged, so what is drawn is what was drawn.
+ */
+export function installPaintRecorder(radius: number): void {
+  const proto = CanvasRenderingContext2D.prototype;
+  const { arc, fillText, clearRect } = proto;
+  const page = window as unknown as { __layoutCheckPaint?: BadgePaint };
+  let frame: BadgePaint = { arcs: [], startFinish: null };
+  proto.clearRect = function (
+    this: CanvasRenderingContext2D,
+    ...args: Parameters<CanvasRenderingContext2D["clearRect"]>
+  ) {
+    page.__layoutCheckPaint = frame;
+    frame = { arcs: [], startFinish: null };
+    return clearRect.apply(this, args);
+  };
+  proto.arc = function (
+    this: CanvasRenderingContext2D,
+    ...args: Parameters<CanvasRenderingContext2D["arc"]>
+  ) {
+    if (args[2] === radius) frame.arcs.push([args[0], args[1]]);
+    return arc.apply(this, args);
+  };
+  proto.fillText = function (
+    this: CanvasRenderingContext2D,
+    ...args: Parameters<CanvasRenderingContext2D["fillText"]>
+  ) {
+    if (args[0] === "S/F") frame.startFinish = [args[1], args[2]];
+    return fillText.apply(this, args);
+  };
+}
+
+/** The last whole frame `installPaintRecorder` kept, or `null`. */
+export function readPaint(): BadgePaint | null {
+  return (
+    (window as unknown as { __layoutCheckPaint?: BadgePaint })
+      .__layoutCheckPaint ?? null
+  );
 }

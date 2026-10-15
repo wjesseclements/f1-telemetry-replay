@@ -25,8 +25,12 @@ import type { CdpPage } from "./cdp";
 import {
   clickScenario,
   clickToggle,
+  focusedId,
+  installPaintRecorder,
   probeLastCardReach,
   probeLayout,
+  probeStoryTargets,
+  readPaint,
   resetPanelScroll,
   settle,
 } from "./probe";
@@ -47,6 +51,22 @@ export async function preflight(page: CdpPage): Promise<void> {
     ],
     ["clickToggle", () => page.evaluate(clickToggle, SELECTORS)],
     ["settle", () => page.evaluate(settle, undefined)],
+    // State D's (Slice 18). On a blank page the target probe finds no canvas
+    // and no badge, but still runs its top level, where its `box` is declared.
+    [
+      "probeStoryTargets",
+      () =>
+        page.evaluate(probeStoryTargets, {
+          ids: ["no-such-badge"],
+          canvas: SELECTORS.canvas,
+        }),
+    ],
+    ["focusedId", () => page.evaluate(focusedId, undefined)],
+    // Shipped as a new-document script rather than evaluated, but it is the
+    // same source text, so it runs here too (on the blank page it patches a
+    // context nothing draws on).
+    ["installPaintRecorder", () => page.evaluate(installPaintRecorder, 9)],
+    ["readPaint", () => page.evaluate(readPaint, undefined)],
   ];
   for (const [name, run] of probes) {
     try {
