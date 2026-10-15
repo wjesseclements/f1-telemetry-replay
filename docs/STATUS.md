@@ -88,8 +88,15 @@ Then **the board: 18 → 20**, with the fixture asymmetry overhaul behind them.
 was ruled on 2026-10-14 (invisible buttons over the painted corner numbers, one
 bundled file per circuit matched by corner positions, today's page where there is no
 lore, Monza and Silverstone first, the event card's shape with pause on open, tap
-areas up to 44 px plus Previous/Next). The copy was ruled on 2026-10-15 and the
-build is done on the branch, not merged: the lore contract and the two circuits'
-files (18a), then the badges, the corner card and the layout check's state D, 304
-rows (18b), with the draw-call digests unchanged. It waits for review and the
-human's look on a phone (PLAN's Slice 18 entry has the measurements).
+areas up to 44 px plus Previous/Next). The copy was ruled on 2026-10-15. The build
+is done on the branch, not merged: the lore contract and the two circuits' files
+(18a), then the badges, the corner card and the layout check's state D, 304 rows
+(18b). Three reviews (code, a real browser, the copy) each said ship, with nothing
+blocking; their fix pass made no replay able to match two lore layouts, made a badge
+press open nothing while another dialog is open even without `:has()`, and made the
+paint row count each story's squares. The draw-call digests are unchanged
+throughout; on the branch, `npm run check` is green with 1291 tests and the layout
+check 304/304. **Slice 18 stays unticked:** it waits for the human's rulings (Next's
+travel between stories, the 724x257 card overflow, arrow keys inside the card, the
+legend over the focus rings, Vale's 5 px target, the shipped sources) and a look on
+a real phone. PLAN's Slice 18 entry has the measurements.

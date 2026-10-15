@@ -5403,7 +5403,7 @@ pairwise colour-difference check over the loaded field with per-team overrides,
 or a secondary mark (pattern/initial) when two swatches collide. Interacts with
 the filed canvas-flooring rider and Slice 16's re-baseline.
 
-### [ ] Slice 18 — corner lore (after Slice 17) (scope ruled 2026-10-14, copy ruled 2026-10-15; built 2026-10-15 as 18a + 18b, not merged; awaiting review and the human's look on a phone)
+### [ ] Slice 18 — corner lore (after Slice 17) (scope ruled 2026-10-14, copy ruled 2026-10-15; built 2026-10-15 as 18a + 18b, reviewed and fixed 2026-10-15, not merged; awaiting the human's rulings and look on a phone)
 
 **Filed 2026-09-08 by the human's direction, not built.** A curated per-circuit
 data file — corner name and origin story (Maggotts and Becketts, the Hamilton
@@ -5747,7 +5747,7 @@ or unmemoised stories (`App.memo.test.tsx`).
   in is the sibling `inertOutside` holds, so a badge mounted under a phone modal
   is inert with it.
 
-**Open, for the human.**
+**Open, for the human (after 18b; superseded by "Still open" below).**
 - On a real phone: the card, the tap squares (Vale is ~5 px on every phone, and
   Aintree, Brooklands, Woodcote and Maggotts' T12 are 16.5–24 px; Previous/Next
   is the route there, per ruling 6), and VoiceOver on the badges and the card.
@@ -5762,6 +5762,156 @@ or unmemoised stories (`App.memo.test.tsx`).
   without moving the pointer can miss. The fix would be a layout decision (the
   row above the story, or the card anchored at its top), so it is left for a
   ruling.
+
+**Reviewed 2026-10-15: three reviews, each "ship", nothing blocking.**
+- **Code** (eaa205d, in a detached worktree):
+  - `npm run check` green on every commit (1175 → 1283 tests, 206 → 304 rows).
+  - Digests re-captured: identical. The compiled CSS only adds selectors, none from a
+    comment.
+  - 37 valid mutants, 35 killed. The 2 survivors are benign: the duplicate-label return
+    in `layoutOffsetM` is equivalent, and an un-memoised `dropStory` only re-runs an
+    idempotent detector.
+  - Precedence probes:
+    - gallery over the card, then Escape: the card stays closed;
+    - the card's Escape never reaches a window listener;
+    - a replay change or an event card drops the card.
+- **Real browser** (headless Chrome 155):
+  - Coverage: 15 viewport configurations (the ten gated, 430x932, 600x900, and DPR 2/3),
+    four scenarios, 60 lore runs.
+  - Placement:
+    - Every square sits on its disc or S/F point, worst 0.01 px by the paint calls.
+    - Fitted from screenshot pixels: worst 0.19 CSS px at DPR 2/3.
+  - Hit tests and naming: every disc's hit test opens its own story, 60/60; the painted
+    number equals the label at every member disc.
+  - Hiding: the badges are hidden and un-hittable under the gallery, the card and the
+    red flag's event card.
+  - The card:
+    - the copy is verbatim on all 21 cards at 12 viewports;
+    - pause on open and paused after close, 60/60;
+    - Next and Previous wrap; focus returns to the shown story's badge;
+    - the tab order is one stop per story, straight after the file picker.
+  - Fixture against the branch base: screenshots, accessibility trees and tab order
+    identical. 0 off-origin requests, exceptions or console errors.
+- **Copy:**
+  - All 21 features are byte-equal to the ruled table in the JSON, the bundle and the
+    rendered DOM. No other new user-visible wording: a string-set diff of the bundle
+    against 292b96a.
+  - Each story's sources are exactly the union of its verified claims' URLs.
+  - 56 schema probes, 0 wrongly accepted.
+
+**Amendments from the review's fix pass** (4cf28ee, cac6835, 54861be). Each commit was
+gated green on its own.
+- **No replay can match two layouts** (the code review). `parseLoreCatalogue` said a
+  replay could never match two, but it rejected only layouts within the 10 m tolerance
+  of each other. Two layouts with the same labels and a corner 15 m apart were accepted,
+  a replay 7.5 m from each matched both, and `resolveLore` took the first.
+  - The rule is now the exact one: same labels and every corner within twice the
+    tolerance is rejected. That is the spacing the schema already holds a layout's own
+    corners to, and past it no point is within reach of both.
+  - Both sides are pinned: 15 m rejected, 20.1 m accepted and its halfway replay matches
+    neither.
+- **One bad point no longer sizes every tap area NaN.** `loreTargetSides` skips a
+  non-finite neighbour, and a side that is not more than 0 is 0.
+- **Two more mechanical copy guards**, both passed by the ruled copy: "corner 11" joins
+  the turn-number ban, and "1994 - 95" is a hyphen range like "1994-95".
+- **One dialog at a time, without `:has()` too.** Only CSS kept it so: in jsdom, a badge
+  pressed under the gallery mounted two dialogs. A browser without `:has()` (Safari
+  before 15.4, Firefox before 121) would let a keyboard user open a card under the
+  non-modal desktop gallery.
+  - `openStory` now ignores a press while App's track cell holds any `[role="dialog"]`.
+    That is the `:has()` rule's own selector, read at the press, so the callback stays
+    stable and the canvas still commits once per replay.
+  - Ignoring rather than closing the gallery is the JS form of the ruled "hidden under
+    any dialog".
+  - Three App tests pin it; removing the guard fails exactly those three.
+- **The gated-size sweep checks the shipped squares.** `loreAssets.test.ts` now calls
+  `storySquares`, TrackCanvas's own call, instead of rebuilding the points, and checks
+  one square per painted number. `GATED_CANVASES` is labelled a snapshot of 2026-10-15;
+  the live gate is state D.
+- **"Centred on the painted discs" counts squares.** A story whose square count differs
+  from its painted points (1 for S/F) fails, by name. A badge that lost its member
+  squares used to pass every D row. A pass prints as before.
+- The row named "lore targets hidden under the gallery" in three comments is now "badges
+  hidden under the gallery".
+- Every new rule was mutation-checked: each break failed only the tests named for it.
+
+**Evidence after the fix pass** (HEAD 54861be).
+- **Gates.** `npm run check`: exit 0, banner `RUN v4.1.10 …/app`, 0 matches for
+  warn|error.
+  - Tests: 70 files, 1291 (1283 → 1287 → 1290 → 1291). Engine coverage 100% on every
+    metric (1114/1114 statements, 582/582 branches).
+  - Layout check: 304/304, every row identical to 18b's run.
+- **Digests.** closed cb43a0f8f3a91e99718acf9cf7a05e71, open
+  e30b5b6e59fa23d56cf65244ae76431c, auto monza-2026-red-flag 22 at 764.80 calls/frame.
+  `diff` against the capture before 18a: empty.
+- **Bundle.**
+  - JS 355.48 → 355.78 kB minified. Against main: +34.0 kB minified, about +9.8 kB
+    gzipped.
+  - The lore files are 21.1 kB / 5.2 kB of it, about 2.2 kB gzipped of which is
+    unrendered sources.
+  - The CSS is byte-identical to 18b's.
+- Scratch is under `/tmp/f1-slices/s18/build/fix/`.
+
+**Measured by the reviews, beyond the build record.**
+- **Next moves further than recorded above.**
+  - Up to 50.5 px between presses at 724x257 (Monza; 46.3 px for Silverstone).
+  - 39 px on portrait phones.
+  - 29.3 px on a desktop, where Next is 30 px tall.
+- **Silverstone's Vale** (and Club's T17 square) is 4.48–6.08 px on phones, and 7.0 px
+  at the ungated 600x900. Focusing Vale draws a 5x5 px white block over the "1" of
+  Club's "17".
+- **The speed legend paints over some badges' focus rings** on short phones.
+  - Curva Biassono: one side of the ring fully hidden at 375x626; 38% coverage at
+    724x257 and 76–78% at 814x312.
+  - Prima Variante: 66–89% at 360x640, 375x626 and 667x375.
+  - The ring is never wholly hidden, and taps pass through (the legend is
+    pointer-events-none).
+- **Edge contacts.** The only contact between stories is Hamilton Straight against
+  Club's T18 square, at most 0.41/64 px deep (layout's rounding). The disjoint row
+  allows 1 px.
+- **Card overflow at 724x257.**
+  - Monza: Prima Variante +15 px, Curva Biassono +4, Lesmo 2 +43 (Next ends at y=266.5),
+    Variante Ascari +15, Curva Alboreto +4.
+  - Silverstone: Brooklands +34.
+  - The pinned Close stays on top when scrolled.
+- **Arrow keys while the card is open still drive the transport**, as under the event
+  card and the gallery. ArrowRight seeks the replay behind the card. A seek past a
+  scenario mark swaps the corner card for the event card.
+
+**Not applied, and why.**
+- **A length cap on names and subtitles:** no length was ruled, and the committed copy
+  is gated byte for byte.
+- **A ban on number-word turns ("Turn eleven"):** the ruled copy uses number words
+  legitimately.
+- **A live source for `GATED_CANVASES`:** jsdom cannot measure a layout.
+- **A Silverstone pass of state D:** about +98 rows, a new row contract. Filed below for
+  a ruling.
+
+**Still open, for the human.**
+- **Rulings:**
+  - Next's travel: put Previous/Next above the story, anchor the card at its top, or
+    keep.
+  - The 724x257 overflow.
+  - Arrows inside the card: step Previous/Next, or keep driving the transport.
+  - The legend over the focus rings: moving it re-baselines the digests.
+  - Vale's focus block over Club's "17".
+  - Whether sources ship in the bundle or move to a sibling file `index.ts` does not
+    import.
+  - The three Nominatim API URLs among the sources (Abbey, Village, Stowe).
+  - Confirm "ignore the press" for the JS one-dialog guard.
+- **On a real phone:**
+  - the card and the tap squares;
+  - VoiceOver on the badges and the card;
+  - Safari not focusing tapped buttons;
+  - `:has()` (Safari 15.4+; the JS guard now holds the rule without it);
+  - the 76.5 px pinned bar against `OVERLAY_FOCUS_CLEARANCE`'s 68;
+  - the flag pill over a focused badge;
+  - touch tap adjustment.
+
+**Follow-ups to file in the backlog.**
+- State D on a Silverstone scenario: the S/F story, the 14-stop tab order, the 5 px Vale
+  squares.
+- The speed-legend-over-badges item, extended to the focus rings.
 
 ### [x] Slice 9k — adjudicate NOR's declined relocation structurally (done 2026-09-11, ACCEPTED 2026-09-12)
 

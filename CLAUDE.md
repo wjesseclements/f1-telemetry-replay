@@ -102,9 +102,10 @@ from FastF1 data. PRD.md holds the detail; this file holds the law.
     - It starts on C's reopened gallery: "badges hidden under the gallery" (the only
       gate for the `:has()` rule; it needs at least one badge).
     - A trusted CDP press closes the gallery. Then the badges' squares: "inside the
-      canvas", "centred on the painted discs" (within 0.5 px), "of different stories
-      disjoint", "centres hit their own button", and "badge names carry no
-      description" (the ruled names, read from Chrome's accessibility tree).
+      canvas", "centred on the painted discs" (within 0.5 px, and exactly one square
+      per painted number, one for S/F), "of different stories disjoint", "centres hit
+      their own button", and "badge names carry no description" (the ruled names,
+      read from Chrome's accessibility tree).
     - A trusted press on the LAST story's badge opens the corner card: its heading
       row and Close (the gallery's own probe, `panel` swapped) and, at the eight
       phone viewports, "corner card covers the viewport". A trusted Escape, then
@@ -114,6 +115,11 @@ from FastF1 data. PRD.md holds the detail; this file holds the law.
       painted discs" reads the canvas's own badge calls: a recorder installed
       before the app loads (`installPaintRecorder`) that passes every call through.
     - That makes 304 rows (9 per viewport, 10 at a phone).
+    - It covers the largest scenario only (Monza's red flag). Silverstone's S/F story,
+      its 14-stop tab order and its 5 px Vale squares have no browser gate.
+      `src/data/loreAssets.test.ts` sizes the shipped squares (`storySquares`) for
+      every gallery asset at the ten canvas boxes; that table is a 2026-10-15
+      snapshot, refreshed from D's "badges inside the canvas" row.
   - **Offline inside the browser too.** Every host but loopback is unresolvable
     (`--host-resolver-rules` + `--no-proxy-server`). Any request off the preview origin
     (page, workers, frames) is a FAIL, as is an uncaught page exception.
@@ -258,6 +264,12 @@ Rules that come with it:
 
 ## Gotchas
 
+- **One overlay dialog at a time is held twice** (Slice 18). The corner badges hide
+  under any `[role=dialog]` in App's track cell by a `:has()` rule, and App's
+  `openStory` ignores a badge press while that cell holds one (for browsers without
+  `:has()`). A new overlay dialog must mount inside the track cell (`group/track`),
+  or the badges stay tabbable and pressable under it. `App.test.tsx` pins the three
+  that exist: the gallery, the event card and the corner card.
 - Run all npm/npx commands from `app/`. `npx` at the repo root silently fetches a
   transient wrong-major vitest and runs it with the REPO ROOT as its root dir; the
   output looks plausible and nothing announces it. Treat the vitest banner's version
