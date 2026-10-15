@@ -1,7 +1,8 @@
 /**
  * CornerCard tests — the corner card's own contract (Slice 18): the ruled copy,
  * verbatim, in the ruled formats; Close focused on open; Escape that stays in
- * the card; Previous/Next round the lap; the live announcement; modal on a phone.
+ * the card; Previous/Next round the lap, above the story (ruled 2026-10-15);
+ * the live announcement; modal on a phone.
  * Opening, pausing and where focus goes on close are `App`'s, pinned in
  * `App.test.tsx`; where it sits is `overlay.test.tsx`'s, which lists it among
  * the overlay dialogs.
@@ -13,30 +14,37 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { resolveLore } from "../engine/lore";
+import { resolveLore, type LoreStory } from "../engine/lore";
 import { LORE } from "../lore";
 import { CORNER_CARD_ID, CornerCard } from "./CornerCard";
 import { PHONE_QUERY } from "./phoneLayout";
 
-const monza = LORE.find((circuit) => circuit.id === "monza");
-if (monza === undefined) throw new Error("no Monza lore");
-const resolved = resolveLore(monza.layouts[0].corners, LORE);
-if (resolved === null) throw new Error("Monza's record does not match itself");
-const STORIES = resolved.stories;
+/** A circuit's stories, resolved from its lore file's own corner record. */
+const storiesOf = (id: string): readonly LoreStory[] => {
+  const circuit = LORE.find((c) => c.id === id);
+  if (circuit === undefined) throw new Error(`no ${id} lore`);
+  const resolved = resolveLore(circuit.layouts[0].corners, LORE);
+  if (resolved === null)
+    throw new Error(`${id}'s record does not match itself`);
+  return resolved.stories;
+};
+const STORIES = storiesOf("monza");
 const byId = (id: string): number => STORIES.findIndex((s) => s.id === id);
 
 /** The card with its index held the way App holds it. */
 function Harness({
   start,
   onClose = () => {},
+  stories = STORIES,
 }: {
   start: number;
   onClose?: () => void;
+  stories?: readonly LoreStory[];
 }) {
   const [index, setIndex] = useState(start);
   return (
     <CornerCard
-      stories={STORIES}
+      stories={stories}
       index={index}
       onStep={setIndex}
       onClose={onClose}
@@ -86,11 +94,67 @@ describe("CornerCard", () => {
     expect(dialog()).toHaveAttribute("id", CORNER_CARD_ID);
   });
 
-  it("has no second-name line for a story without one, and a range eyebrow for a run", () => {
+  it("keeps an empty second-name line for a story without one, where another story has one", () => {
+    // Monza: Variante Ascari has no second name, Curva Alboreto has one. The
+    // line stays, empty, so the heading is as tall on every card and the row
+    // under it does not move (ruled 2026-10-15: Next stays put).
     render(<Harness start={byId("variante-ascari")} />);
     expect(dialog()).toHaveAccessibleName("Turns 8–10: Variante Ascari");
     const heading = screen.getByRole("heading", { level: 2 });
-    expect(heading.querySelectorAll("[aria-hidden]")).toHaveLength(2);
+    const lines = heading.querySelectorAll("[aria-hidden]");
+    expect(lines).toHaveLength(3);
+    expect(lines[2]).toBeEmptyDOMElement();
+    // Its height with nothing in it: the second name's own 1rem line.
+    expect(lines[2]).toHaveClass("block", "min-h-4", "text-xs");
+    expect(
+      heading.querySelector(":scope > :not([aria-hidden])")?.textContent,
+    ).toBe("Turns 8–10: Variante Ascari");
+  });
+
+  it("keeps no second-name line on a circuit where no story has one", () => {
+    const silverstone = storiesOf("silverstone");
+    expect(silverstone.every((s) => s.subtitle === undefined)).toBe(true);
+    render(<Harness stories={silverstone} start={0} />);
+    for (let i = 0; i < silverstone.length; i++) {
+      const heading = screen.getByRole("heading", { level: 2 });
+      expect(heading.querySelectorAll("[aria-hidden]")).toHaveLength(2);
+      press("Next");
+    }
+  });
+
+  it("puts Previous and Next between the heading and the story, outside the pinned bar", () => {
+    // Ruled 2026-10-15: above the story, so its length cannot move them. A
+    // screen reader meets the heading, Close, Previous, Next, then the story.
+    render(<Harness start={byId("curva-alboreto")} />);
+    const heading = screen.getByRole("heading", { level: 2 });
+    const previous = screen.getByRole("button", { name: "Previous" });
+    const next = screen.getByRole("button", { name: "Next" });
+    const story = screen.getByText(STORIES[byId("curva-alboreto")].story);
+    const inOrder = [heading, previous, next, story];
+    for (let i = 1; i < inOrder.length; i++) {
+      expect(
+        inOrder[i - 1].compareDocumentPosition(inOrder[i]) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    }
+    // Every visible line, in DOM order: the steps come before the story.
+    const card = dialog().firstElementChild as HTMLElement;
+    const order = Array.from(
+      card.querySelectorAll("h2 > [aria-hidden], button, p:not([aria-live])"),
+    ).map((el) => el.textContent);
+    expect(order).toEqual([
+      "Turn 11",
+      "Curva Alboreto",
+      "Parabolica",
+      "Close",
+      "Previous",
+      "Next",
+      STORIES[byId("curva-alboreto")].story,
+    ]);
+    // The pinned bar on a phone is the heading row alone, as in the mould.
+    const bar = heading.parentElement?.parentElement;
+    expect(bar).not.toContainElement(previous);
+    expect(bar).not.toContainElement(next);
   });
 
   it("moves focus to Close on open", () => {

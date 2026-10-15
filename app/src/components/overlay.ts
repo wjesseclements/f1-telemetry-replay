@@ -3,9 +3,10 @@
  * there (Slice 26).
  *
  * The gallery (`FeaturedPanel`) and the event card (`EventCard`), and since
- * Slice 18 the corner card (`CornerCard`, in the event card's mould), are
- * scrims over the track cell: `absolute inset-0`, inside the cell, so on a
- * desktop the tower and the transport bar stay beside them and usable. On a
+ * Slice 18 the corner card (`CornerCard`, in the event card's mould, its card
+ * at the top rather than centred so that Next stays put), are scrims over the
+ * track cell: `absolute inset-0`, inside the cell, so on a desktop the tower
+ * and the transport bar stay beside them and usable. On a
  * phone — below `md`, or a screen at most 30rem tall (`phone:`,
  * `tailwind.config.js`) — the track cell is the short part of the screen, so
  * the same scrim is positioned against the VIEWPORT instead and covers the
@@ -127,6 +128,11 @@ export const OVERLAY_CLOSE_TARGET = "phone:min-h-11 phone:min-w-11";
  * font size does; the px part is the ring's, which does not. On the dialog,
  * the scroller, not on the card. It moves nothing at rest: it only says where
  * a control scrolled to by focus comes to a stop.
+ *
+ * The corner card's Previous and Next sit straight under its bar (ruled
+ * 2026-10-15), and its heading can be three lines, taller than Close: its bar
+ * is then 76.5 px. So its steps carry a 12 px scroll margin of their own on
+ * top of this (`CornerCard.tsx` has the sum).
  */
 export const OVERLAY_FOCUS_CLEARANCE = "phone:scroll-pt-[calc(4.25rem+5px)]";
 

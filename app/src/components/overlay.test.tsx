@@ -14,6 +14,11 @@
  * jsdom has no layout, so this pins the idiom, not the geometry. The geometry is
  * the layout check's — which never fires a scenario event, so for the event card
  * this is the only guard there is.
+ *
+ * The corner card keeps the safe half and drops the centring (ruled 2026-10-15,
+ * "Move Previous/Next above the story"): its card sits at the top of its
+ * scroller whether or not it fits, because a centred card's top moves by half
+ * of every change in its height, and Next, under the heading, moved with it.
  */
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
@@ -78,7 +83,7 @@ describe("overlay dialogs centre their card safely", () => {
     },
   );
 
-  it.each(DIALOGS)(
+  it.each(DIALOGS.filter(([name]) => name !== "CornerCard"))(
     "%s: centres the card with auto margins, which collapse to 0 when it overflows",
     (_, mount) => {
       mount();
@@ -86,6 +91,17 @@ describe("overlay dialogs centre their card safely", () => {
       expect(card).toHaveClass("my-auto");
     },
   );
+
+  it("CornerCard: keeps its card at the top, so the card's top never moves between stories", () => {
+    // Measured in Chrome: centred, Next moved by up to 39 px from one story to
+    // the next even above the story; at the top it does not move.
+    const [, mount] = DIALOGS[2];
+    mount();
+    const card = screen.getByRole("dialog").firstElementChild as HTMLElement;
+    expect(card.className).not.toMatch(
+      /(?:^|\s)(?:[a-z]+:)*m[ty]?-auto(?:\s|$)/,
+    );
+  });
 });
 
 /**
@@ -185,6 +201,19 @@ describe("each dialog's heading row is pinned on a phone", () => {
     expect(bar).toHaveClass("phone:mb-1");
   });
 
+  it("leaves the corner card's Previous/Next focus ring outside the bar", () => {
+    // The same 4 px, for the steps straight under the corner card's bar
+    // (ruled 2026-10-15). Measured in Chrome at 375x812 with no margin: the
+    // top of a focused Next's ring was painted over by the bar.
+    const [, mount] = DIALOGS[2];
+    mount();
+    const { bar } = rowAndBar();
+    expect(bar).toHaveClass("phone:mb-1");
+    expect(bar.nextElementSibling).toContainElement(
+      screen.getByRole("button", { name: "Previous" }),
+    );
+  });
+
   it.each(DIALOGS)(
     "%s: pays back every px the bar borrows, so at rest nothing moves",
     (_, mount) => {
@@ -265,4 +294,48 @@ describe("keyboard focus stops below the pinned bar on a phone", () => {
       expect(dialog.className).not.toMatch(/(?:^|\s)scroll-p/);
     },
   );
+
+  /**
+   * The corner card's Previous and Next sit straight under its bar (ruled
+   * 2026-10-15), and on a circuit with second names its heading is three lines,
+   * taller than Close's 44 px, so its bar is taller than the clearance above
+   * allows for. The steps add a scroll margin of their own. Measured in Chrome
+   * at 724x257, a card scrolled to its end and a trusted Tab from Close: without
+   * it, 8 px of Previous's box and ring went under the bar; with it, none.
+   *
+   *     the dialog's clearance (above)              73 px
+   *   + the steps' scroll margin                    12 px   (step 3)
+   *   = where a focus scroll stops a step           85 px
+   *
+   *     the bar's top padding                       16 px
+   *   + the heading: the eyebrow line             16.5 px   (11 px x the root 1.5)
+   *   +              the name line                  20 px   (`text-sm`'s 1.25rem)
+   *   +              the second-name line           16 px   (`min-h-4`)
+   *   + the bar's bottom padding                     8 px
+   *   + the focus ring, and a half-pixel snap        5 px
+   *   = what it must clear                        81.5 px
+   */
+  it("CornerCard: stops a focus scroll on Previous or Next below its taller bar", () => {
+    const [, mount] = DIALOGS[2];
+    mount();
+    const dialog = screen.getByRole("dialog");
+    const heading = screen.getByRole("heading");
+    const secondLine = heading.querySelectorAll("[aria-hidden]")[2];
+    const clearance =
+      /(?:^|\s)phone:scroll-pt-\[calc\((\d+(?:\.\d+)?)rem\+(\d+)px\)\](?:\s|$)/;
+    const stop =
+      16 * read(dialog.className, clearance, 1) +
+      read(dialog.className, clearance, 2);
+    for (const name of ["Previous", "Next"]) {
+      const button = screen.getByRole("button", { name });
+      const margin =
+        4 * read(button.className, /(?:^|\s)phone:scroll-mt-(\d+)(?:\s|$)/);
+      const lineHeight =
+        4 * read(secondLine.className, /(?:^|\s)min-h-(\d+)(?:\s|$)/);
+      expect([stop, margin, lineHeight]).toEqual([73, 12, 16]);
+      expect(stop + margin).toBeGreaterThanOrEqual(
+        16 + 16.5 + 20 + lineHeight + 8 + 5,
+      );
+    }
+  });
 });

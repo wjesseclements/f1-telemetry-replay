@@ -1289,6 +1289,32 @@ describe("corner stories (Slice 18)", () => {
     expect(screen.getByRole("button", { name: "Close" })).toHaveFocus();
   });
 
+  it("shows the card's heading, then Previous and Next, then the story (ruled 2026-10-15)", () => {
+    renderOnTrack();
+    open(ALBORETO);
+    const dialog = screen.getByRole("dialog", { name: ALBORETO });
+    // Tab order inside the card: Close, then the steps.
+    expect(
+      within(dialog)
+        .getAllByRole("button")
+        .map((b) => b.textContent),
+    ).toEqual(["Close", "Previous", "Next"]);
+    const alboreto = STORIES[STORIES.length - 1];
+    const story = within(dialog).getByText(alboreto.story);
+    const inOrder = [
+      within(dialog).getByRole("heading", { level: 2 }),
+      within(dialog).getByRole("button", { name: "Previous" }),
+      within(dialog).getByRole("button", { name: "Next" }),
+      story,
+    ];
+    for (let i = 1; i < inOrder.length; i++) {
+      expect(
+        inOrder[i - 1].compareDocumentPosition(inOrder[i]) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    }
+  });
+
   it("closes from Close back to the badge it came from, still paused", () => {
     renderOnTrack();
     open(ALBORETO);
