@@ -159,7 +159,9 @@ export const ON_PAINT_PX = 0.5;
 /**
  * Every square is centred on what the canvas painted for it: a corner story's
  * k-th square on its k-th corner's disc, a start/finish story's on the `S/F`
- * label's point (`installPaintRecorder`, the last whole frame).
+ * label's point (`installPaintRecorder`, the last whole frame). And every story
+ * has exactly one square per painted point, so a badge that lost a member
+ * square (a number with no tap area) cannot pass by having fewer to check.
  */
 export function judgeOnPaint(
   probe: StoryTargetsProbe,
@@ -174,6 +176,17 @@ export function judgeOnPaint(
   const off: string[] = [];
   targets.forEach((target, i) => {
     const anchor = anchors[i];
+    const want =
+      anchor === undefined
+        ? null
+        : anchor.startFinish
+          ? 1
+          : anchor.corners.length;
+    if (target.found && want !== null && target.squares.length !== want) {
+      off.push(
+        `${target.id}: ${target.squares.length} squares for ${want} painted points`,
+      );
+    }
     target.squares.forEach((square, k) => {
       squares++;
       const at = anchor?.startFinish

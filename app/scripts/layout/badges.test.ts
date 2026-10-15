@@ -284,6 +284,23 @@ describe("judgeOnPaint", () => {
     expect(judgeOnPaint(good(), anchors, noSf).pass).toBe(false);
   });
 
+  it("fails a story with a square missing, or one too many, naming it", () => {
+    // The pair's member square gone: its one square still sits on disc 0, so
+    // only the count can see the number left with no tap area.
+    const lost = good();
+    lost.targets[0] = story("pair", [sq(100, 100, 44)]);
+    expect(judgeOnPaint(lost, anchors, paint())).toEqual({
+      pass: false,
+      measured:
+        "2 squares, worst 0.000 px from its painted point (max 0.5) · pair: 1 squares for 2 painted points",
+    });
+    const extra = good();
+    extra.targets[1] = story("lone", [sq(300, 300, 26), sq(300, 300, 26)]);
+    expect(judgeOnPaint(extra, anchors, paint()).measured).toMatch(
+      /lone: 2 squares for 1 painted points/,
+    );
+  });
+
   it("never passes with nothing to place, or a story the check did not expect", () => {
     expect(
       judgeOnPaint({ canvas: CANVAS, targets: [] }, [], paint()).pass,

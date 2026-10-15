@@ -1343,7 +1343,7 @@ describe("TrackCanvas corner stories (Slice 18)", () => {
 
   it("hides the layer under any open dialog in the track cell, and clips it to the canvas", () => {
     // jsdom evaluates no `:has()`: the class is pinned here, and the layout
-    // check's "lore targets hidden under the gallery" row reads Chrome's answer.
+    // check's "badges hidden under the gallery" row reads Chrome's answer.
     render(<TrackCanvas replay={replay} stories={STORIES} />);
     const layer = button("line").parentElement as HTMLElement;
     expect(layer).toHaveClass(

@@ -15,7 +15,8 @@
  * - the committed fixture matches nothing, so the draw-call digests (which run on
  *   it) keep measuring the no-lore page;
  * - on every matched asset, at the canvas sizes the layout check gates, the tap
- *   areas keep their three rules.
+ *   squares the app ships (`storySquares`, the call `TrackCanvas` makes after
+ *   each measure) keep their three rules.
  *
  * Assets are read with `readFileSync`, never imported, so they stay out of the
  * bundle. This is a test-time read, not a fetch; the offline trap stays armed.
@@ -28,21 +29,13 @@ import manifest from "../gallery/manifest.json";
 import { parseGalleryManifest } from "../engine/gallery";
 import { canvasInsets, fitTransform } from "../engine/geometry";
 import { parseReplay } from "../engine/load";
-import {
-  cornerLabel,
-  layoutOffsetM,
-  resolveLore,
-  type ResolvedLore,
-} from "../engine/lore";
-import {
-  LORE_TARGET_MAX_PX,
-  loreTargetSides,
-  type LoreTargetPoint,
-} from "../engine/loreTargets";
+import { cornerLabel, layoutOffsetM, resolveLore } from "../engine/lore";
+import { LORE_TARGET_MAX_PX } from "../engine/loreTargets";
 import type { Replay } from "../engine/schema";
 import { LORE } from "../lore";
 import { buildScenePaths } from "../render/paths";
 import { buildScene } from "../render/scene";
+import { storySquares } from "../render/storyTargets";
 import { installCanvasEnvironment } from "../test/canvas";
 import { loadFixtureReplay } from "./fixture";
 
@@ -62,6 +55,13 @@ const LORE_EXEMPT: ReadonlyMap<string, string> = new Map();
  * The canvas box at each of the layout check's ten viewports, in CSS px, as it
  * measured them on the loaded scenario (2026-10-15). The canvas fills its grid
  * cell, so the box depends on the viewport, not on the replay.
+ *
+ * A SNAPSHOT: nothing here can measure a layout, so a layout change that moves
+ * these boxes leaves this table stale without failing. The live gate is the
+ * layout check's state D, which sizes the real squares in Chrome at every
+ * viewport ("badges inside the canvas", "of different stories disjoint"), on the
+ * largest scenario; its "inside the canvas" row prints the box to refresh this
+ * from.
  */
 const GATED_CANVASES: readonly (readonly [string, number, number])[] = [
   ["375x812", 375, 381],
@@ -158,19 +158,6 @@ describe("tap areas at the gated canvas sizes", () => {
     vi.unstubAllGlobals();
   });
 
-  /** Every painted point a story's button covers: the drawn badges, or S/F. */
-  const pointsOf = (
-    lore: ResolvedLore,
-    paths: ReturnType<typeof buildScenePaths>,
-  ): LoreTargetPoint[] =>
-    lore.stories.flatMap((story, k) => [
-      ...(story.startFinish ? [{ story: k, ...paths.startFinish.label }] : []),
-      ...story.cornerIndices.map((i) => ({
-        story: k,
-        ...paths.corners[i].badge,
-      })),
-    ]);
-
   it.each(FILES.filter((file) => !LORE_EXEMPT.has(file)))(
     "%s: at most 44 px, inside the canvas, and disjoint between stories",
     (file) => {
@@ -184,29 +171,32 @@ describe("tap areas at the gated canvas sizes", () => {
           scene,
           fitTransform(scene.bounds, w, h, canvasInsets(w, h)),
         );
-        const points = pointsOf(lore, paths);
-        // One point per painted number, plus the S/F label where it has a story.
-        expect(points).toHaveLength(
-          lore.stories.reduce(
-            (n, s) => n + s.cornerIndices.length + (s.startFinish ? 1 : 0),
-            0,
-          ),
+        // The squares the app places: the same call `TrackCanvas` makes.
+        const perStory = storySquares(lore.stories, paths, w, h);
+        // One square per painted number, plus the S/F label where it has a story.
+        lore.stories.forEach((story, k) =>
+          expect(
+            perStory[k],
+            `${file} at ${viewport}, ${story.id}`,
+          ).toHaveLength(story.startFinish ? 1 : story.cornerIndices.length),
         );
-        const sides = loreTargetSides(points, w, h);
-        points.forEach((p, i) => {
-          const half = sides[i] / 2;
+        const squares = perStory.flatMap((own, story) =>
+          own.map((square) => ({ story, ...square })),
+        );
+        squares.forEach((p) => {
+          const half = p.side / 2;
           const where = `${file} at ${viewport}, story ${lore.stories[p.story].id}`;
-          expect(sides[i], where).toBeLessThanOrEqual(LORE_TARGET_MAX_PX);
+          expect(p.side, where).toBeLessThanOrEqual(LORE_TARGET_MAX_PX);
           expect(p.x - half, where).toBeGreaterThanOrEqual(0);
           expect(p.y - half, where).toBeGreaterThanOrEqual(0);
           expect(p.x + half, where).toBeLessThanOrEqual(w + 1e-9);
           expect(p.y + half, where).toBeLessThanOrEqual(h + 1e-9);
-          points.forEach((q, j) => {
+          squares.forEach((q) => {
             if (q.story === p.story) return;
             expect(
               Math.max(Math.abs(p.x - q.x), Math.abs(p.y - q.y)),
               `${where} against ${lore.stories[q.story].id}`,
-            ).toBeGreaterThanOrEqual((sides[i] + sides[j]) / 2 - 1e-9);
+            ).toBeGreaterThanOrEqual((p.side + q.side) / 2 - 1e-9);
           });
         });
       }

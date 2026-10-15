@@ -17,7 +17,8 @@
  *   the whole layer is `visibility: hidden`, by a `:has()` rule on App's track
  *   cell (`group/track`): out of the tab order, the accessibility tree and hit
  *   testing, with no React render. jsdom cannot evaluate `:has()`; the layout
- *   check's "lore targets hidden under the gallery" row reads Chrome's answer.
+ *   check's "badges hidden under the gallery" row reads Chrome's answer.
+ *   `App`'s `openStory` holds the same rule in JS, for a browser without it.
  */
 import { forwardRef } from "react";
 import type { LoreStory } from "../engine/lore";
